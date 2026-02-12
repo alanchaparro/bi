@@ -23,3 +23,5 @@
 - [x] TKP pago en anuales: promedio por contrato-mes con pago.
 - [x] Culminados vigentes: cuenta por tramo en mes de culminacion hasta corte.
 - [x] LTV culminado vigente: validado sobre dataset controlado en tests.
+- [x] Movimiento moroso: meses completos en serie y `% = transiciones / vigentes`.
+- [x] Movimiento moroso: `avg_cuota` solo de contratos que transicionan.
