@@ -2919,13 +2919,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         const selCat = getAppliedSelected('analisisCartera', 'aca-cat');
         const summary = document.getElementById('aca-selection-summary');
         if (summary) {
-            const unLabel = getSelectionLabel('aca-un', selUn, 'Todas');
-            const anioLabel = getSelectionLabel('aca-anio', selAnio, 'Todos');
-            const fechaLabel = getSelectionLabel('aca-fecha', selFecha, 'Historia');
-            const viaLabel = getSelectionLabel('aca-via-cobro', selViaCobro, 'Todas');
-            const superLabel = getSelectionLabel('aca-super', selSuper, 'Todos');
-            const catLabel = getSelectionLabel('aca-cat', selCat, 'Todas');
-            summary.innerHTML = `<strong>Selección actual:</strong> UN: ${unLabel} | Año Gestión: ${anioLabel} | Gestión: ${fechaLabel} | Vía Cobro: ${viaLabel} | Supervisor: ${superLabel} | Categoría: ${catLabel}`;
+            const labels = {
+                un: getSelectionLabel('aca-un', selUn, 'Todas'),
+                anio: getSelectionLabel('aca-anio', selAnio, 'Todos'),
+                fecha: getSelectionLabel('aca-fecha', selFecha, 'Historia'),
+                via: getSelectionLabel('aca-via-cobro', selViaCobro, 'Todas'),
+                supervisor: getSelectionLabel('aca-super', selSuper, 'Todos'),
+                categoria: getSelectionLabel('aca-cat', selCat, 'Todas')
+            };
+            if (tabModules.analisisCartera && typeof tabModules.analisisCartera.renderSelectionSummary === 'function') {
+                const rendered = tabModules.analisisCartera.renderSelectionSummary(summary, labels);
+                if (!rendered) {
+                    summary.innerHTML = `<strong>Selección actual:</strong> UN: ${labels.un} | Año Gestión: ${labels.anio} | Gestión: ${labels.fecha} | Vía Cobro: ${labels.via} | Supervisor: ${labels.supervisor} | Categoría: ${labels.categoria}`;
+                }
+            } else if (tabModules.analisisCartera && typeof tabModules.analisisCartera.buildSelectionSummary === 'function') {
+                summary.innerHTML = tabModules.analisisCartera.buildSelectionSummary(labels);
+            } else {
+                summary.innerHTML = `<strong>Selección actual:</strong> UN: ${labels.un} | Año Gestión: ${labels.anio} | Gestión: ${labels.fecha} | Vía Cobro: ${labels.via} | Supervisor: ${labels.supervisor} | Categoría: ${labels.categoria}`;
+            }
         }
 
         const initTramoMetric = () => ({ debt: 0, paid: 0, contractsTotal: 0, contractsPaid: 0 });
@@ -3234,27 +3245,39 @@ document.addEventListener('DOMContentLoaded', async () => {
             const el = document.getElementById(id);
             if (el) el.textContent = value;
         };
-        setTxt('aca-total', (stats.total || 0).toLocaleString());
-        setTxt('aca-vigente', (stats.vigente || 0).toLocaleString());
-        setTxt('aca-moroso', (stats.moroso || 0).toLocaleString());
-        setTxt('aca-cobrador', (stats.cobrador || 0).toLocaleString());
-        setTxt('aca-debito', (stats.debito || 0).toLocaleString());
+        const headerValues = (tabModules.analisisCartera && typeof tabModules.analisisCartera.getHeaderValues === 'function')
+            ? tabModules.analisisCartera.getHeaderValues(stats)
+            : {
+                total: Number(stats.total || 0),
+                vigente: Number(stats.vigente || 0),
+                moroso: Number(stats.moroso || 0),
+                cobrador: Number(stats.cobrador || 0),
+                debito: Number(stats.debito || 0)
+            };
+        setTxt('aca-total', (headerValues.total || 0).toLocaleString());
+        setTxt('aca-vigente', (headerValues.vigente || 0).toLocaleString());
+        setTxt('aca-moroso', (headerValues.moroso || 0).toLocaleString());
+        setTxt('aca-cobrador', (headerValues.cobrador || 0).toLocaleString());
+        setTxt('aca-debito', (headerValues.debito || 0).toLocaleString());
 
-        const months = Object.keys(stats.byGestion || {}).sort((a, b) => monthToSerial(a) - monthToSerial(b));
-        const vigenteData = months.map(m => stats.byGestion[m].vigente || 0);
-        const morosoData = months.map(m => stats.byGestion[m].moroso || 0);
-        const cobradorData = months.map(m => stats.byGestion[m].cobrador || 0);
-        const debitoData = months.map(m => stats.byGestion[m].debito || 0);
-        const debtData = months.map(m => stats.byGestion[m].debt || 0);
-        const paidData = months.map(m => stats.byGestion[m].paid || 0);
-        const complianceData = months.map((m, i) => {
+        const vm = (tabModules.analisisCartera && typeof tabModules.analisisCartera.prepareViewModel === 'function')
+            ? tabModules.analisisCartera.prepareViewModel(stats, { monthToSerial })
+            : null;
+        const months = vm ? vm.months : Object.keys(stats.byGestion || {}).sort((a, b) => monthToSerial(a) - monthToSerial(b));
+        const vigenteData = vm ? vm.vigenteData : months.map(m => stats.byGestion[m].vigente || 0);
+        const morosoData = vm ? vm.morosoData : months.map(m => stats.byGestion[m].moroso || 0);
+        const cobradorData = vm ? vm.cobradorData : months.map(m => stats.byGestion[m].cobrador || 0);
+        const debitoData = vm ? vm.debitoData : months.map(m => stats.byGestion[m].debito || 0);
+        const debtData = vm ? vm.debtData : months.map(m => stats.byGestion[m].debt || 0);
+        const paidData = vm ? vm.paidData : months.map(m => stats.byGestion[m].paid || 0);
+        const complianceData = vm ? vm.complianceData : months.map((m, i) => {
             const d = debtData[i] || 0;
             const p = paidData[i] || 0;
             return d > 0 ? Math.round((p / d) * 1000) / 10 : 0;
         });
-        const totalContractsData = months.map(m => stats.byGestion[m].total || 0);
-        const paidContractsData = months.map(m => stats.byGestion[m].paidContracts || 0);
-        const complianceContractsData = months.map((m, i) => {
+        const totalContractsData = vm ? vm.totalContractsData : months.map(m => stats.byGestion[m].total || 0);
+        const paidContractsData = vm ? vm.paidContractsData : months.map(m => stats.byGestion[m].paidContracts || 0);
+        const complianceContractsData = vm ? vm.complianceContractsData : months.map((m, i) => {
             const d = totalContractsData[i] || 0;
             const p = paidContractsData[i] || 0;
             return d > 0 ? Math.round((p / d) * 1000) / 10 : 0;

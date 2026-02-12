@@ -31,6 +31,13 @@ class DashboardStaticTests(unittest.TestCase):
         self.assertIn('renderAnualesUI', content)
         self.assertIn('normalizeRows', content)
 
+    def test_analisis_cartera_module_exports_helpers(self):
+        content = (ROOT / 'tabs' / 'analisisCartera.js').read_text(encoding='utf-8')
+        self.assertIn('buildSelectionSummary', content)
+        self.assertIn('renderSelectionSummary', content)
+        self.assertIn('prepareViewModel', content)
+        self.assertIn('getHeaderValues', content)
+
     def test_docs_contracts_exist(self):
         expected = [
             'docs/data-contracts.md',
