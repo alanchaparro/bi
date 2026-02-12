@@ -2320,6 +2320,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function buildAcaMorosoMovement(selUn, selAnio, selFecha, selViaCobro, selCat) {
+        if (tabModules.acaMovimiento && typeof tabModules.acaMovimiento.computeLocalMovement === 'function') {
+            return tabModules.acaMovimiento.computeLocalMovement({
+                state,
+                selUn,
+                selAnio,
+                selFecha,
+                selViaCobro,
+                selCat,
+                monthToSerial,
+                getYearFromGestionMonth,
+                normalizeViaCobro,
+                addMonths
+            });
+        }
         const result = {
             available: false,
             reason: '',

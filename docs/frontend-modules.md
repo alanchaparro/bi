@@ -15,7 +15,7 @@
 - `ui/notifications.js`: toast-like notifications.
 
 ## Tabs
-- `tabs/acaMovimiento.js`: movimiento mapper + resumen UI helpers.
+- `tabs/acaMovimiento.js`: movimiento mapper + resumen UI + cálculo local fallback helpers.
 - `tabs/acaAnuales.js`: render de tabla anual + resumen UI helpers.
 - `tabs/analisisCartera-api.js`: API adapter for Analisis Cartera.
 - `tabs/rendimiento-api.js`: API adapter for Rendimiento.
