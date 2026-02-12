@@ -4663,15 +4663,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function updatePerformanceUI(stats) {
         const { totalDebt, totalPaid, totalContracts, totalContractsPaid, tramoStats, unStats, viaCStats, gestorStats, matrixStats, trendStats } = stats;
+        const headerValues = (tabModules.rendimiento && typeof tabModules.rendimiento.getHeaderValues === 'function')
+            ? tabModules.rendimiento.getHeaderValues(stats)
+            : {
+                totalDebt: Number(totalDebt || 0),
+                totalPaid: Number(totalPaid || 0),
+                totalContracts: Number(totalContracts || 0),
+                totalContractsPaid: Number(totalContractsPaid || 0),
+                globalRate: Number(totalDebt || 0) > 0 ? (Number(totalPaid || 0) / Number(totalDebt || 0)) : 0,
+                globalCountRate: Number(totalContracts || 0) > 0 ? (Number(totalContractsPaid || 0) / Number(totalContracts || 0)) : 0
+            };
 
-        const globalRate = totalDebt > 0 ? (totalPaid / totalDebt) : 0;
-        const globalCountRate = totalContracts > 0 ? (totalContractsPaid / totalContracts) : 0;
-
-        document.getElementById('perf-recovery-rate').textContent = (globalRate * 100).toFixed(1) + '%';
-        document.getElementById('perf-total-contracts').textContent = totalContracts.toLocaleString();
-        document.getElementById('perf-total-debt').textContent = formatPYG(totalDebt);
-        document.getElementById('perf-total-contracts-paid').textContent = totalContractsPaid.toLocaleString();
-        document.getElementById('perf-total-paid').textContent = formatPYG(totalPaid);
+        document.getElementById('perf-recovery-rate').textContent = (headerValues.globalRate * 100).toFixed(1) + '%';
+        document.getElementById('perf-total-contracts').textContent = headerValues.totalContracts.toLocaleString();
+        document.getElementById('perf-total-debt').textContent = formatPYG(headerValues.totalDebt);
+        document.getElementById('perf-total-contracts-paid').textContent = headerValues.totalContractsPaid.toLocaleString();
+        document.getElementById('perf-total-paid').textContent = formatPYG(headerValues.totalPaid);
 
         const drawPerfPercentBubble = (ctx, text, x, y) => {
             const padX = 6;
@@ -4767,43 +4774,46 @@ document.addEventListener('DOMContentLoaded', async () => {
         const perfBarPlugins = showPerfChartLabels ? [perfBarValueLabelsPlugin] : [];
 
         // Performance Trend Chart
-        const sortedMonths = Object.keys(trendStats).sort((a, b) => {
+        const perfVm = (tabModules.rendimiento && typeof tabModules.rendimiento.prepareViewModel === 'function')
+            ? tabModules.rendimiento.prepareViewModel(stats, { monthToSerial })
+            : null;
+        const sortedMonths = perfVm ? perfVm.sortedMonths : Object.keys(trendStats).sort((a, b) => {
             const [m1, y1] = a.split('/'); const [m2, y2] = b.split('/');
             return new Date(y1, m1 - 1) - new Date(y2, m2 - 1);
         });
-        const trendData = sortedMonths.map(m => (trendStats[m].d > 0 ? (trendStats[m].p / trendStats[m].d) * 100 : 0));
+        const trendData = perfVm ? perfVm.trendData : sortedMonths.map(m => (trendStats[m].d > 0 ? (trendStats[m].p / trendStats[m].d) * 100 : 0));
         renderChart('perfTrendChart', 'rendimiento', 'line', sortedMonths, trendData, '% Eficacia', '#38bdf8', perfLinePlugins);
 
         // Performance Trend by Count
-        const trendCountData = sortedMonths.map(m => (trendStats[m].c > 0 ? (trendStats[m].cp / trendStats[m].c) * 100 : 0));
+        const trendCountData = perfVm ? perfVm.trendCountData : sortedMonths.map(m => (trendStats[m].c > 0 ? (trendStats[m].cp / trendStats[m].c) * 100 : 0));
         renderChart('perfTrendCountChart', 'rendimiento', 'line', sortedMonths, trendCountData, '% Eficacia (Cantidad)', '#f59e0b', perfLinePlugins);
 
         // Charts per Tramo
-        const tramoLabels = Object.keys(tramoStats).sort((a, b) => a - b);
-        const tramoEff = tramoLabels.map(t => (tramoStats[t].d > 0 ? (tramoStats[t].p / tramoStats[t].d) * 100 : 0));
+        const tramoLabels = perfVm ? perfVm.tramoLabels : Object.keys(tramoStats).sort((a, b) => a - b);
+        const tramoEff = perfVm ? perfVm.tramoEff : tramoLabels.map(t => (tramoStats[t].d > 0 ? (tramoStats[t].p / tramoStats[t].d) * 100 : 0));
         renderChart('perfTramoChart', 'rendimiento', 'bar', tramoLabels.map(t => 'Tramo ' + t), tramoEff, '% Eficacia', '#818cf8', perfBarPlugins);
 
         // Charts per UN
-        const unLabels = Object.keys(unStats).sort();
-        const unEff = unLabels.map(u => (unStats[u].d > 0 ? (unStats[u].p / unStats[u].d) * 100 : 0));
+        const unLabels = perfVm ? perfVm.unLabels : Object.keys(unStats).sort();
+        const unEff = perfVm ? perfVm.unEff : unLabels.map(u => (unStats[u].d > 0 ? (unStats[u].p / unStats[u].d) * 100 : 0));
         renderChart('perfUnChart', 'rendimiento', 'bar', unLabels, unEff, '% Eficacia', '#6366f1', perfBarPlugins);
 
         // NEW: Charts per Via de Cobro (Intencion)
-        const vcLabels = Object.keys(viaCStats).sort();
-        const vcEff = vcLabels.map(v => (viaCStats[v].d > 0 ? (viaCStats[v].p / viaCStats[v].d) * 100 : 0));
+        const vcLabels = perfVm ? perfVm.vcLabels : Object.keys(viaCStats).sort();
+        const vcEff = perfVm ? perfVm.vcEff : vcLabels.map(v => (viaCStats[v].d > 0 ? (viaCStats[v].p / viaCStats[v].d) * 100 : 0));
         renderChart('perfViaCobroChart', 'rendimiento', 'bar', vcLabels, vcEff, '% Eficacia (Intencion)', '#10b981', perfBarPlugins);
 
         // NEW: Matrix Chart (Stacked Bar)
-        const allActualVias = [...new Set(Object.values(matrixStats).flatMap(o => Object.keys(o)))].sort();
-
-        const matrixDatasets = allActualVias.map((vAct, idx) => {
-            const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-            return {
-                label: vAct,
-                data: vcLabels.map(vc => matrixStats[vc][vAct] || 0),
-                backgroundColor: colors[idx % colors.length]
-            };
-        });
+        const matrixDatasets = perfVm
+            ? perfVm.matrixDatasets
+            : [...new Set(Object.values(matrixStats).flatMap(o => Object.keys(o || {})))].sort().map((vAct, idx) => {
+                const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+                return {
+                    label: vAct,
+                    data: vcLabels.map(vc => (matrixStats[vc] && matrixStats[vc][vAct]) || 0),
+                    backgroundColor: colors[idx % colors.length]
+                };
+            });
 
         const matrixEl = document.getElementById('perfViaMatrixChart');
         if (matrixEl) {

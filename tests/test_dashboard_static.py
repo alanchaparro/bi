@@ -38,6 +38,11 @@ class DashboardStaticTests(unittest.TestCase):
         self.assertIn('prepareViewModel', content)
         self.assertIn('getHeaderValues', content)
 
+    def test_rendimiento_module_exports_helpers(self):
+        content = (ROOT / 'tabs' / 'rendimiento.js').read_text(encoding='utf-8')
+        self.assertIn('prepareViewModel', content)
+        self.assertIn('getHeaderValues', content)
+
     def test_docs_contracts_exist(self):
         expected = [
             'docs/data-contracts.md',
