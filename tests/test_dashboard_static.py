@@ -25,6 +25,12 @@ class DashboardStaticTests(unittest.TestCase):
         self.assertIn('tabs/acaAnuales.js', html)
         self.assertIn('charts/renderers.js', html)
 
+    def test_aca_anuales_module_exports_render_helpers(self):
+        content = (ROOT / 'tabs' / 'acaAnuales.js').read_text(encoding='utf-8')
+        self.assertIn('renderSelectionSummary', content)
+        self.assertIn('renderAnualesUI', content)
+        self.assertIn('normalizeRows', content)
+
     def test_docs_contracts_exist(self):
         expected = [
             'docs/data-contracts.md',

@@ -2739,37 +2739,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     function updateAcaAnualesUI(rows) {
         const tbody = document.getElementById('acaa-table-body');
         if (!tbody) return;
+        if (tabModules.acaAnuales && typeof tabModules.acaAnuales.renderAnualesUI === 'function') {
+            const delegated = tabModules.acaAnuales.renderAnualesUI({
+                tbody,
+                rows,
+                formatNumber,
+                formatPYG
+            });
+            if (delegated) return;
+        }
         if (tabModules.acaAnuales && typeof tabModules.acaAnuales.renderTable === 'function') {
             tabModules.acaAnuales.renderTable(tbody, rows, { number: formatNumber, pyg: formatPYG });
             return;
         }
-        tbody.innerHTML = '';
-        if (!rows || rows.length === 0) {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="13" style="text-align:center; color:#94a3b8;">Sin datos para filtros seleccionados.</td>`;
-            tbody.appendChild(tr);
-            return;
-        }
-        for (let i = 0; i < rows.length; i++) {
-            const r = rows[i];
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${r.year}</td>
-                <td>${formatNumber(r.contracts)}</td>
-                <td>${formatNumber(r.contractsVigentes)}</td>
-                <td>${formatPYG(r.tkpContrato)}</td>
-                <td>${formatPYG(r.tkpTransaccional)}</td>
-                <td>${formatPYG(r.tkpPago)}</td>
-                <td>${formatNumber(r.culminados)}</td>
-                <td>${formatNumber(r.culminadosVigentes)}</td>
-                <td>${formatPYG(r.tkpContratoCulminado)}</td>
-                <td>${formatPYG(r.tkpPagoCulminado)}</td>
-                <td>${formatPYG(r.tkpContratoCulminadoVigente)}</td>
-                <td>${formatPYG(r.tkpPagoCulminadoVigente)}</td>
-                <td>${(r.ltvCulminadoVigente || 0).toFixed(2)}</td>
-            `;
-            tbody.appendChild(tr);
-        }
+        tbody.innerHTML = '<tr><td colspan="13" style="text-align:center; color:#94a3b8;">Sin datos para filtros seleccionados.</td></tr>';
     }
 
     async function calculateAcaAnuales() {
@@ -2817,21 +2800,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const summary = document.getElementById('acaa-selection-summary');
-        if (summary) {
-            const unLabel = getSelectionLabel('acaa-un', selUn, 'Todas');
-            const anioLabel = getSelectionLabel('acaa-anio', selAnio, 'Todos');
-            const mesContratoLabel = getSelectionLabel('acaa-mes-contrato', selMesContrato, 'Todos');
-            if (tabModules.acaAnuales && typeof tabModules.acaAnuales.buildSelectionSummary === 'function') {
-                summary.innerHTML = tabModules.acaAnuales.buildSelectionSummary({
-                    un: unLabel,
-                    anio: anioLabel,
-                    mesContrato: mesContratoLabel,
-                    corte: cutoffMonth
-                });
-            } else {
-                summary.innerHTML = `<strong>Selección actual:</strong> UN: ${unLabel} | Año: ${anioLabel} | Mes/Año Contrato: ${mesContratoLabel} | Corte: ${cutoffMonth}`;
+        const renderAcaaSummary = (corteValue) => {
+            if (!summary) return;
+            const labels = {
+                un: getSelectionLabel('acaa-un', selUn, 'Todas'),
+                anio: getSelectionLabel('acaa-anio', selAnio, 'Todos'),
+                mesContrato: getSelectionLabel('acaa-mes-contrato', selMesContrato, 'Todos'),
+                corte: corteValue
+            };
+            if (tabModules.acaAnuales && typeof tabModules.acaAnuales.renderSelectionSummary === 'function') {
+                const rendered = tabModules.acaAnuales.renderSelectionSummary(summary, labels);
+                if (rendered) return;
             }
-        }
+            if (tabModules.acaAnuales && typeof tabModules.acaAnuales.buildSelectionSummary === 'function') {
+                summary.innerHTML = tabModules.acaAnuales.buildSelectionSummary(labels);
+                return;
+            }
+            summary.innerHTML = `<strong>Selección actual:</strong> UN: ${labels.un} | Año: ${labels.anio} | Mes/Año Contrato: ${labels.mesContrato} | Corte: ${labels.corte}`;
+        };
+        renderAcaaSummary(cutoffMonth);
 
         if (useAnalyticsApi && analyticsApi && useApiAnuales && tabModules.acaAnualesApi) {
             try {
@@ -2846,21 +2833,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ? tabModules.acaAnuales.normalizeRows(rawApiRows)
                     : rawApiRows;
                 const apiCutoff = String((payload && payload.cutoff) || cutoffMonth || '');
-                if (summary) {
-                    const unLabel = getSelectionLabel('acaa-un', selUn, 'Todas');
-                    const anioLabel = getSelectionLabel('acaa-anio', selAnio, 'Todos');
-                    const mesContratoLabel = getSelectionLabel('acaa-mes-contrato', selMesContrato, 'Todos');
-                    if (tabModules.acaAnuales && typeof tabModules.acaAnuales.buildSelectionSummary === 'function') {
-                        summary.innerHTML = tabModules.acaAnuales.buildSelectionSummary({
-                            un: unLabel,
-                            anio: anioLabel,
-                            mesContrato: mesContratoLabel,
-                            corte: apiCutoff
-                        });
-                    } else {
-                        summary.innerHTML = `<strong>Selección actual:</strong> UN: ${unLabel} | Año: ${anioLabel} | Mes/Año Contrato: ${mesContratoLabel} | Corte: ${apiCutoff}`;
-                    }
-                }
+                renderAcaaSummary(apiCutoff);
                 debugLog('acaAnuales.api', {
                     filters: {
                         un: [...selUn],

@@ -9,6 +9,12 @@
         return `<strong>Selección actual:</strong> UN: ${unLabel} | Año: ${anioLabel} | Mes/Año Contrato: ${mesContratoLabel} | Corte: ${corte}`;
     }
 
+    function renderSelectionSummary(summaryEl, labels) {
+        if (!summaryEl) return false;
+        summaryEl.innerHTML = buildSelectionSummary(labels || {});
+        return true;
+    }
+
     function renderTable(tbody, rows, formatters) {
         if (!tbody) return;
         const fmtNumber = formatters && formatters.number ? formatters.number : (n) => String(n);
@@ -42,6 +48,16 @@
             `;
             tbody.appendChild(tr);
         }
+    }
+
+    function renderAnualesUI(ctx) {
+        const tbody = ctx && ctx.tbody;
+        const rows = ctx && Array.isArray(ctx.rows) ? ctx.rows : [];
+        const formatNumber = ctx && ctx.formatNumber;
+        const formatPYG = ctx && ctx.formatPYG;
+        if (!tbody) return false;
+        renderTable(tbody, rows, { number: formatNumber, pyg: formatPYG });
+        return true;
     }
 
     function normalizeRows(rawRows) {
@@ -364,7 +380,9 @@
     global.TabModules.acaAnuales = {
         id: 'acaAnuales',
         buildSelectionSummary,
+        renderSelectionSummary,
         renderTable,
+        renderAnualesUI,
         normalizeRows,
         computeLocalRows
     };
