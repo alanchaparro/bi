@@ -24,6 +24,10 @@ class DashboardStaticTests(unittest.TestCase):
         self.assertIn('tabs/acaMovimiento.js', html)
         self.assertIn('tabs/acaAnuales.js', html)
         self.assertIn('charts/renderers.js', html)
+        self.assertIn('id="analytics-fallback-summary"', html)
+        self.assertIn('id="analytics-backend-summary"', html)
+        self.assertIn('id="refresh-ops-metrics"', html)
+        self.assertIn('id="reset-api-outcomes"', html)
 
     def test_aca_anuales_module_exports_render_helpers(self):
         content = (ROOT / 'tabs' / 'acaAnuales.js').read_text(encoding='utf-8')

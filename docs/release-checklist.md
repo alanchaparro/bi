@@ -31,3 +31,9 @@
 - [ ] Feature flags loaded (`data/feature-flags.js`) and expected defaults active.
 - [ ] If stale assets appear, run hard refresh (`Ctrl+F5`) after deploy.
 - [ ] Confirm fallback behavior when analytics API endpoint is unavailable.
+- [ ] Validate frontend fallback-rate per tab in Config > Monitoreo API.
+- [ ] Validate backend endpoint metrics in `/analytics/ops/metrics`:
+  - [ ] `error_rate_pct <= 2.0%`
+  - [ ] `p95_ms <= 1200ms`
+  - [ ] cache-hit rate healthy after warmup
+- [ ] If threshold breached, disable affected `FF_API_*` flag and retry rollout by slices.

@@ -245,8 +245,68 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (outcome === 'fallback_local') metrics[tab].fallback_local += 1;
             localStorage.setItem(key, JSON.stringify(metrics));
             debugLog('api.outcome', { tab, outcome, counters: metrics[tab] });
+            renderOpsMetricsSummary();
         } catch (e) {
             // Keep app behavior resilient if localStorage is not available.
+        }
+    }
+
+    function getApiOutcomeMetrics() {
+        const key = 'analytics_api_metrics_v1';
+        try {
+            const raw = localStorage.getItem(key);
+            return raw ? JSON.parse(raw) : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    async function renderOpsMetricsSummary() {
+        const fallbackEl = document.getElementById('analytics-fallback-summary');
+        const backendEl = document.getElementById('analytics-backend-summary');
+        if (fallbackEl) {
+            const metrics = getApiOutcomeMetrics();
+            const tabs = Object.keys(metrics).sort();
+            if (!tabs.length) {
+                fallbackEl.textContent = 'Sin métricas de fallback todavía.';
+            } else {
+                const parts = [];
+                for (let i = 0; i < tabs.length; i++) {
+                    const t = tabs[i];
+                    const m = metrics[t] || {};
+                    const ok = Number(m.api_success || 0);
+                    const fb = Number(m.fallback_local || 0);
+                    const total = ok + fb;
+                    const rate = total > 0 ? ((fb / total) * 100).toFixed(1) : '0.0';
+                    parts.push(`${t}: ${rate}% (${fb}/${total})`);
+                }
+                fallbackEl.textContent = `Fallback-rate por tab: ${parts.join(' | ')}`;
+            }
+        }
+
+        if (backendEl) {
+            try {
+                const res = await fetch('/analytics/ops/metrics');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const payload = await res.json();
+                const byEndpoint = (payload && payload.metrics && payload.metrics.by_endpoint) || {};
+                const keys = Object.keys(byEndpoint).sort();
+                if (!keys.length) {
+                    backendEl.textContent = 'Sin métricas backend todavía.';
+                } else {
+                    const parts = [];
+                    for (let i = 0; i < keys.length; i++) {
+                        const ep = keys[i];
+                        const m = byEndpoint[ep] || {};
+                        const p95 = Number(m.p95_ms || 0).toFixed(1);
+                        const err = Number(m.error_rate_pct || 0).toFixed(1);
+                        parts.push(`${ep}: p95 ${p95}ms, err ${err}%`);
+                    }
+                    backendEl.textContent = `Backend endpoints: ${parts.join(' | ')}`;
+                }
+            } catch (e) {
+                backendEl.textContent = `No se pudo leer métricas backend: ${e.message || e}`;
+            }
         }
     }
 
@@ -345,6 +405,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             exportAnalisisCarteraPdf().catch((e) => showError('No se pudo iniciar la exportación PDF.', e));
         });
     }
+    const refreshOpsBtn = document.getElementById('refresh-ops-metrics');
+    if (refreshOpsBtn) {
+        refreshOpsBtn.addEventListener('click', () => {
+            renderOpsMetricsSummary().catch(() => { /* non-blocking */ });
+        });
+    }
+    const resetApiOutcomesBtn = document.getElementById('reset-api-outcomes');
+    if (resetApiOutcomesBtn) {
+        resetApiOutcomesBtn.addEventListener('click', () => {
+            try {
+                localStorage.removeItem('analytics_api_metrics_v1');
+            } catch (e) {
+                // non-blocking
+            }
+            renderOpsMetricsSummary().catch(() => { /* non-blocking */ });
+        });
+    }
+    renderOpsMetricsSummary().catch(() => { /* non-blocking */ });
 
     function setDataReady(dataset, ready) {
         if (Object.prototype.hasOwnProperty.call(uiState.dataReadiness, dataset)) {

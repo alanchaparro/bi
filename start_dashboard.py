@@ -51,11 +51,76 @@ ANALYTICS_MONTHLY_CACHE = {
     "rows": [],
 }
 ANALYTICS_MONTHLY_LOCK = threading.Lock()
+OPS_METRICS = {
+    "by_endpoint": {},
+    "started_at": time.time(),
+}
 
 
 def log_event(event, **fields):
     payload = {"event": event, "ts": time.time(), **fields}
     print(json.dumps(payload, ensure_ascii=False))
+
+
+def percentile(values, p):
+    if not values:
+        return 0.0
+    arr = sorted(values)
+    idx = int(round((len(arr) - 1) * p))
+    idx = max(0, min(len(arr) - 1, idx))
+    return float(arr[idx])
+
+
+def record_ops_metric(endpoint, ms, ok=True, cache_hit=False):
+    name = str(endpoint or "unknown")
+    bucket = OPS_METRICS["by_endpoint"].setdefault(
+        name,
+        {
+            "requests": 0,
+            "errors": 0,
+            "cache_hits": 0,
+            "latencies_ms": [],
+            "last_ms": 0.0,
+            "last_ts": 0.0,
+        },
+    )
+    bucket["requests"] += 1
+    if not ok:
+        bucket["errors"] += 1
+    if cache_hit:
+        bucket["cache_hits"] += 1
+    ms_val = float(ms or 0.0)
+    bucket["latencies_ms"].append(ms_val)
+    if len(bucket["latencies_ms"]) > 5000:
+        bucket["latencies_ms"] = bucket["latencies_ms"][-5000:]
+    bucket["last_ms"] = ms_val
+    bucket["last_ts"] = time.time()
+
+
+def snapshot_ops_metrics():
+    by_endpoint = {}
+    for endpoint, bucket in OPS_METRICS["by_endpoint"].items():
+        lat = bucket.get("latencies_ms", [])
+        requests = int(bucket.get("requests", 0))
+        errors = int(bucket.get("errors", 0))
+        cache_hits = int(bucket.get("cache_hits", 0))
+        avg_ms = (sum(lat) / len(lat)) if lat else 0.0
+        p95_ms = percentile(lat, 0.95) if lat else 0.0
+        by_endpoint[endpoint] = {
+            "requests": requests,
+            "errors": errors,
+            "error_rate_pct": round((errors / requests) * 100.0, 3) if requests > 0 else 0.0,
+            "cache_hits": cache_hits,
+            "cache_hit_rate_pct": round((cache_hits / requests) * 100.0, 3) if requests > 0 else 0.0,
+            "avg_ms": round(avg_ms, 3),
+            "p95_ms": round(p95_ms, 3),
+            "last_ms": round(float(bucket.get("last_ms", 0.0)), 3),
+            "last_ts": float(bucket.get("last_ts", 0.0)),
+        }
+    return {
+        "started_at": OPS_METRICS.get("started_at", 0.0),
+        "by_endpoint": by_endpoint,
+    }
 
 
 def norm_d(value):
@@ -1452,17 +1517,30 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
 
         if parsed_path.path.startswith('/analytics/'):
             start = time.time()
+            if parsed_path.path == '/analytics/ops/metrics':
+                payload = {"meta": {"source": "api"}, "metrics": snapshot_ops_metrics()}
+                self._send_json(payload)
+                return
+            if parsed_path.path == '/analytics/ops/reset':
+                OPS_METRICS["by_endpoint"] = {}
+                OPS_METRICS["started_at"] = time.time()
+                self._send_json({"ok": True, "meta": {"source": "api"}})
+                return
             if not has_any_filter(params):
+                record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=False)
                 return self._send_error_json('FILTER_REQUIRED', 'Incluye al menos un filtro para procesar analytics API')
             use_monthly = os.path.exists(ANALYTICS_MONTHLY_FILE)
 
             if parsed_path.path == '/analytics/portfolio/summary':
                 if not validate_month_set(parse_filter_set(params, 'gestion_month')):
+                    record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=False)
                     return self._send_error_json('INVALID_FILTER', 'gestion_month debe ser MM/YYYY')
                 if not validate_year_set(parse_filter_set(params, 'anio')):
+                    record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=False)
                     return self._send_error_json('INVALID_FILTER', 'anio debe ser YYYY')
                 key = analytics_cache_key(parsed_path.path, params)
                 if key in ANALYTICS_CACHE:
+                    record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=True, cache_hit=True)
                     self._send_json(ANALYTICS_CACHE[key])
                     return
                 if use_monthly:
@@ -1481,16 +1559,20 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     months=len(by_gestion),
                     total_contracts=payload.get("total", 0),
                 )
+                record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=True, cache_hit=False)
                 self._send_json(payload)
                 return
 
             if parsed_path.path == '/analytics/portfolio/trend':
                 if not validate_month_set(parse_filter_set(params, 'gestion_month')):
+                    record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=False)
                     return self._send_error_json('INVALID_FILTER', 'gestion_month debe ser MM/YYYY')
                 if not validate_year_set(parse_filter_set(params, 'anio')):
+                    record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=False)
                     return self._send_error_json('INVALID_FILTER', 'anio debe ser YYYY')
                 key = analytics_cache_key(parsed_path.path, params)
                 if key in ANALYTICS_CACHE:
+                    record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=True, cache_hit=True)
                     self._send_json(ANALYTICS_CACHE[key])
                     return
                 if use_monthly:
@@ -1510,16 +1592,20 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     debug=debug_mode,
                     filters=filter_count_snapshot(params),
                 )
+                record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=True, cache_hit=False)
                 self._send_json(payload)
                 return
 
             if parsed_path.path == '/analytics/performance/by-management-month':
                 if not validate_month_set(parse_filter_set(params, 'gestion_month')):
+                    record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=False)
                     return self._send_error_json('INVALID_FILTER', 'gestion_month debe ser MM/YYYY')
                 if not validate_year_set(parse_filter_set(params, 'anio')):
+                    record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=False)
                     return self._send_error_json('INVALID_FILTER', 'anio debe ser YYYY')
                 key = analytics_cache_key(parsed_path.path, params)
                 if key in ANALYTICS_CACHE:
+                    record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=True, cache_hit=True)
                     self._send_json(ANALYTICS_CACHE[key])
                     return
                 if use_monthly:
@@ -1538,16 +1624,20 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     filters=filter_count_snapshot(params),
                     months=len((payload.get("trendStats") or {}).keys()),
                 )
+                record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=True, cache_hit=False)
                 self._send_json(payload)
                 return
 
             if parsed_path.path == '/analytics/movement/moroso-trend':
                 if not validate_month_set(parse_filter_set(params, 'gestion_month')):
+                    record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=False)
                     return self._send_error_json('INVALID_FILTER', 'gestion_month debe ser MM/YYYY')
                 if not validate_year_set(parse_filter_set(params, 'anio')):
+                    record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=False)
                     return self._send_error_json('INVALID_FILTER', 'anio debe ser YYYY')
                 key = analytics_cache_key(parsed_path.path, params)
                 if key in ANALYTICS_CACHE:
+                    record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=True, cache_hit=True)
                     self._send_json(ANALYTICS_CACHE[key])
                     return
                 payload = compute_movement_moroso_trend(params)
@@ -1566,16 +1656,20 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     filters=filter_count_snapshot(params),
                     cutoff=movement_cutoff,
                 )
+                record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=True, cache_hit=False)
                 self._send_json(payload)
                 return
 
             if parsed_path.path == '/analytics/anuales/summary':
                 if not validate_month_set(parse_filter_set(params, 'contract_month')):
+                    record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=False)
                     return self._send_error_json('INVALID_FILTER', 'contract_month debe ser MM/YYYY')
                 if not validate_year_set(parse_filter_set(params, 'anio')):
+                    record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=False)
                     return self._send_error_json('INVALID_FILTER', 'anio debe ser YYYY')
                 key = analytics_cache_key(parsed_path.path, params)
                 if key in ANALYTICS_CACHE:
+                    record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=True, cache_hit=True)
                     self._send_json(ANALYTICS_CACHE[key])
                     return
                 payload = compute_anuales_summary(params)
@@ -1592,9 +1686,11 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     filters=filter_count_snapshot(params),
                     cutoff=payload.get("cutoff", ""),
                 )
+                record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=True, cache_hit=False)
                 self._send_json(payload)
                 return
 
+            record_ops_metric(parsed_path.path, (time.time() - start) * 1000, ok=False)
             return self._send_error_json('NOT_FOUND', 'Analytics endpoint no encontrado')
 
         if parsed_path.path == '/api/run-export':

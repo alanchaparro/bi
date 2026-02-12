@@ -147,6 +147,25 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="config-card">
+                    <div class="config-info">
+                        <h3>Monitoreo API</h3>
+                        <p>Fallback-rate por tab (frontend) y latencia/errores de endpoints (backend).</p>
+                    </div>
+                    <div class="config-actions" style="align-items:flex-start; flex-direction:column; gap:0.75rem;">
+                        <div id="analytics-fallback-summary" style="font-size:0.85rem; color:#cbd5e1;">
+                            Sin métricas de fallback todavía.
+                        </div>
+                        <div id="analytics-backend-summary" style="font-size:0.85rem; color:#93c5fd;">
+                            Sin métricas backend todavía.
+                        </div>
+                        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                            <button class="btn-secondary" id="refresh-ops-metrics">Actualizar métricas</button>
+                            <button class="btn-reset" id="reset-api-outcomes">Reset fallback-rate</button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="config-actions"

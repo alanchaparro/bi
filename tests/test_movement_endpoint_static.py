@@ -12,6 +12,8 @@ class MovementEndpointStaticTests(unittest.TestCase):
         self.assertIn('/analytics/anuales/summary', content)
         self.assertIn('compute_anuales_summary', content)
         self.assertIn('anio debe ser YYYY', content)
+        self.assertIn('/analytics/ops/metrics', content)
+        self.assertIn('/analytics/ops/reset', content)
 
     def test_api_client_has_movement_method(self):
         content = (ROOT / 'data' / 'api-client.js').read_text(encoding='utf-8')
