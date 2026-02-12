@@ -4219,26 +4219,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                     chartId,
                     'acaMovimiento',
                     labels,
-                    [
-                        {
-                            type: 'bar',
-                            label: 'Contratos que pasaron a moroso',
-                            data: values,
-                            backgroundColor: '#f97316',
-                            borderRadius: 6,
-                            yAxisID: 'y'
-                        },
-                        {
-                            type: 'line',
-                            label: '% sobre Vigentes',
-                            data: percentValues,
-                            borderColor: 'rgba(0,0,0,0)',
-                            backgroundColor: 'rgba(0,0,0,0)',
-                            tension: 0.35,
-                            pointRadius: 0,
-                            yAxisID: 'y1'
-                        }
-                    ],
+                    (tabModules.acaMovimiento && typeof tabModules.acaMovimiento.buildMovementDatasets === 'function')
+                        ? tabModules.acaMovimiento.buildMovementDatasets(movementVm || { values, percentValues })
+                        : [
+                            {
+                                type: 'bar',
+                                label: 'Contratos que pasaron a moroso',
+                                data: values,
+                                backgroundColor: '#f97316',
+                                borderRadius: 6,
+                                yAxisID: 'y'
+                            },
+                            {
+                                type: 'line',
+                                label: '% sobre Vigentes',
+                                data: percentValues,
+                                borderColor: 'rgba(0,0,0,0)',
+                                backgroundColor: 'rgba(0,0,0,0)',
+                                tension: 0.35,
+                                pointRadius: 0,
+                                yAxisID: 'y1'
+                            }
+                        ],
                     {
                         plugins: {
                             tooltip: {
@@ -4312,42 +4314,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             destroyCulVigChart();
             if (culVigLabels.length > 0) {
                 if (culVigWrap) culVigWrap.classList.remove('hidden');
-                const datasets = [];
-                const totalCulVig = culVigData.reduce((acc, v) => acc + (Number(v) || 0), 0);
-                const totalCulMor = culMorData.reduce((acc, v) => acc + (Number(v) || 0), 0);
-                const totalCulUnknown = culUnknownData.reduce((acc, v) => acc + (Number(v) || 0), 0);
-                if (totalCulVig > 0) {
-                    datasets.push({
-                        label: 'Culminados vigentes',
-                        data: culVigData,
-                        backgroundColor: '#22c55e',
-                        borderRadius: 6
-                    });
-                }
-                if (totalCulMor > 0) {
-                    datasets.push({
-                        label: 'Culminados morosos',
-                        data: culMorData,
-                        backgroundColor: '#ef4444',
-                        borderRadius: 6
-                    });
-                }
-                if (totalCulUnknown > 0) {
-                    datasets.push({
-                        label: 'Culminados sin tramo',
-                        data: culUnknownData,
-                        backgroundColor: '#94a3b8',
-                        borderRadius: 6
-                    });
-                }
-                if (datasets.length === 0) {
-                    datasets.push({
-                        label: 'Culminados vigentes',
-                        data: culVigData,
-                        backgroundColor: '#22c55e',
-                        borderRadius: 6
-                    });
-                }
+                const datasets = (tabModules.acaMovimiento && typeof tabModules.acaMovimiento.buildCulVigDatasets === 'function')
+                    ? tabModules.acaMovimiento.buildCulVigDatasets(movementVm || { culVigData, culMorData, culUnknownData })
+                    : [
+                        { label: 'Culminados vigentes', data: culVigData, backgroundColor: '#22c55e', borderRadius: 6 },
+                        { label: 'Culminados morosos', data: culMorData, backgroundColor: '#ef4444', borderRadius: 6 }
+                    ];
 
                 renderGroupedChart(
                     culVigChartId,

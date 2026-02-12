@@ -369,11 +369,79 @@
         return vm;
     }
 
+    function buildMovementDatasets(vm) {
+        return [
+            {
+                type: 'bar',
+                label: 'Contratos que pasaron a moroso',
+                data: vm && Array.isArray(vm.values) ? vm.values : [],
+                backgroundColor: '#f97316',
+                borderRadius: 6,
+                yAxisID: 'y'
+            },
+            {
+                type: 'line',
+                label: '% sobre Vigentes',
+                data: vm && Array.isArray(vm.percentValues) ? vm.percentValues : [],
+                borderColor: 'rgba(0,0,0,0)',
+                backgroundColor: 'rgba(0,0,0,0)',
+                tension: 0.35,
+                pointRadius: 0,
+                yAxisID: 'y1'
+            }
+        ];
+    }
+
+    function buildCulVigDatasets(vm) {
+        const culVigData = vm && Array.isArray(vm.culVigData) ? vm.culVigData : [];
+        const culMorData = vm && Array.isArray(vm.culMorData) ? vm.culMorData : [];
+        const culUnknownData = vm && Array.isArray(vm.culUnknownData) ? vm.culUnknownData : [];
+        const totalCulVig = culVigData.reduce((acc, v) => acc + (Number(v) || 0), 0);
+        const totalCulMor = culMorData.reduce((acc, v) => acc + (Number(v) || 0), 0);
+        const totalCulUnknown = culUnknownData.reduce((acc, v) => acc + (Number(v) || 0), 0);
+        const datasets = [];
+        if (totalCulVig > 0) {
+            datasets.push({
+                label: 'Culminados vigentes',
+                data: culVigData,
+                backgroundColor: '#22c55e',
+                borderRadius: 6
+            });
+        }
+        if (totalCulMor > 0) {
+            datasets.push({
+                label: 'Culminados morosos',
+                data: culMorData,
+                backgroundColor: '#ef4444',
+                borderRadius: 6
+            });
+        }
+        if (totalCulUnknown > 0) {
+            datasets.push({
+                label: 'Culminados sin tramo',
+                data: culUnknownData,
+                backgroundColor: '#94a3b8',
+                borderRadius: 6
+            });
+        }
+        if (datasets.length === 0) {
+            datasets.push({
+                label: 'Culminados vigentes',
+                data: culVigData,
+                backgroundColor: '#22c55e',
+                borderRadius: 6
+            });
+        }
+        return datasets;
+    }
+
     global.TabModules.acaMovimiento = {
         id: 'acaMovimiento',
         mapApiPayloadToUi,
         buildSelectionSummary,
         computeLocalMovement,
-        prepareViewModel
+        prepareViewModel,
+        buildMovementDatasets,
+        buildCulVigDatasets
     };
 })(window);
