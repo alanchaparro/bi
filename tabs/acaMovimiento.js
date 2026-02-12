@@ -290,10 +290,90 @@
         return result;
     }
 
+    function prepareViewModel(movement, deps) {
+        const monthToSerial = deps && deps.monthToSerial ? deps.monthToSerial : (() => -1);
+        const formatNumber = deps && deps.formatNumber ? deps.formatNumber : (n) => String(n);
+        const available = movement && movement.available === true;
+        const vm = {
+            available,
+            labels: [],
+            values: [],
+            avgCuotaValues: [],
+            vigenteValues: [],
+            percentValues: [],
+            movementStatus: 'Movimiento de cartera no disponible.',
+            culVigAvailable: movement && movement.culVigAvailable === true,
+            culVigLabels: [],
+            culVigData: [],
+            culMorData: [],
+            culUnknownData: [],
+            culVigStatus: 'Culminados por estado no disponible.'
+        };
+        if (!available) {
+            if (movement && movement.reason) vm.movementStatus = movement.reason;
+            if (movement && movement.culVigReason) vm.culVigStatus = movement.culVigReason;
+            return vm;
+        }
+
+        const byGestion = (movement && movement.byGestion) || {};
+        const byGestionVigente = (movement && movement.byGestionVigente) || {};
+        const baseLabels = Array.isArray(movement.availableGestiones) && movement.availableGestiones.length > 0
+            ? movement.availableGestiones
+            : [...new Set([...Object.keys(byGestion), ...Object.keys(byGestionVigente)])];
+        const labels = baseLabels.sort((a, b) => monthToSerial(a) - monthToSerial(b));
+        const values = labels.map((m) => byGestion[m] || 0);
+        const byGestionAvgCuota = (movement && movement.byGestionAvgCuota) || {};
+        const avgCuotaValues = labels.map((m) => byGestionAvgCuota[m] || 0);
+        const vigenteValues = labels.map((m) => byGestionVigente[m] || 0);
+        const percentValues = labels.map((m, i) => {
+            const denom = Number(vigenteValues[i] || 0);
+            const num = Number(values[i] || 0);
+            return denom > 0 ? (num / denom) * 100 : 0;
+        });
+        vm.labels = labels;
+        vm.values = values;
+        vm.avgCuotaValues = avgCuotaValues;
+        vm.vigenteValues = vigenteValues;
+        vm.percentValues = percentValues;
+        const totalContracts = values.reduce((acc, v) => acc + (Number(v) || 0), 0);
+        vm.movementStatus = totalContracts > 0
+            ? `Total contratos que pasaron a moroso: ${formatNumber(totalContracts)}.`
+            : (movement.reason || 'No se encontraron contratos que pasaron a moroso con los filtros actuales.');
+
+        if (!vm.culVigAvailable) {
+            vm.culVigStatus = movement && movement.culVigReason
+                ? movement.culVigReason
+                : 'Culminados por estado no disponible.';
+            return vm;
+        }
+
+        const culStatusByGestion = movement.culStatusByGestion || {};
+        const culUnknownByGestion = movement.culUnknownByGestion || {};
+        const culVigLabels = Object.keys(culStatusByGestion).sort((a, b) => monthToSerial(a) - monthToSerial(b));
+        const culVigData = culVigLabels.map((m) => (culStatusByGestion[m] && culStatusByGestion[m].vigente) ? culStatusByGestion[m].vigente : 0);
+        const culMorData = culVigLabels.map((m) => (culStatusByGestion[m] && culStatusByGestion[m].moroso) ? culStatusByGestion[m].moroso : 0);
+        const culUnknownData = culVigLabels.map((m) => Number(culUnknownByGestion[m] || 0));
+        vm.culVigLabels = culVigLabels;
+        vm.culVigData = culVigData;
+        vm.culMorData = culMorData;
+        vm.culUnknownData = culUnknownData;
+        if (culVigLabels.length === 0) {
+            vm.culVigStatus = movement.culVigReason || 'No se encontraron culminados por estado para los filtros actuales.';
+        } else {
+            const totalCulVig = culVigData.reduce((acc, v) => acc + (Number(v) || 0), 0);
+            const totalCulMor = culMorData.reduce((acc, v) => acc + (Number(v) || 0), 0);
+            const totalCulUnknown = culUnknownData.reduce((acc, v) => acc + (Number(v) || 0), 0);
+            const totalAll = totalCulVig + totalCulMor + totalCulUnknown;
+            vm.culVigStatus = `Total culminados: ${formatNumber(totalAll)} | Vigentes: ${formatNumber(totalCulVig)} | Morosos: ${formatNumber(totalCulMor)} | Sin tramo: ${formatNumber(totalCulUnknown)}.`;
+        }
+        return vm;
+    }
+
     global.TabModules.acaMovimiento = {
         id: 'acaMovimiento',
         mapApiPayloadToUi,
         buildSelectionSummary,
-        computeLocalMovement
+        computeLocalMovement,
+        prepareViewModel
     };
 })(window);

@@ -3884,28 +3884,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
 
         const available = movement && movement.available === true;
+        const movementVm = (tabModules.acaMovimiento && typeof tabModules.acaMovimiento.prepareViewModel === 'function')
+            ? tabModules.acaMovimiento.prepareViewModel(movement, { monthToSerial, formatNumber })
+            : null;
         if (!available) {
             destroyMovementChart();
-            statusEl.textContent = movement && movement.reason
-                ? movement.reason
-                : 'Movimiento de cartera no disponible.';
+            statusEl.textContent = movementVm
+                ? movementVm.movementStatus
+                : (movement && movement.reason ? movement.reason : 'Movimiento de cartera no disponible.');
             if (chartWrap) chartWrap.classList.add('hidden');
         } else {
-            const byGestion = movement.byGestion || {};
-            const byGestionVigente = movement.byGestionVigente || {};
-            const baseLabels = Array.isArray(movement.availableGestiones) && movement.availableGestiones.length > 0
-                ? movement.availableGestiones
-                : [...new Set([...Object.keys(byGestion), ...Object.keys(byGestionVigente)])];
-            const labels = baseLabels.sort((a, b) => monthToSerial(a) - monthToSerial(b));
-            const values = labels.map((m) => byGestion[m] || 0);
-            const byGestionAvgCuota = movement.byGestionAvgCuota || {};
-            const avgCuotaValues = labels.map((m) => byGestionAvgCuota[m] || 0);
-            const vigenteValues = labels.map((m) => byGestionVigente[m] || 0);
-            const percentValues = labels.map((m, i) => {
-                const denom = Number(vigenteValues[i] || 0);
-                const num = Number(values[i] || 0);
-                return denom > 0 ? (num / denom) * 100 : 0;
-            });
+            const labels = movementVm ? movementVm.labels : [];
+            const values = movementVm ? movementVm.values : [];
+            const avgCuotaValues = movementVm ? movementVm.avgCuotaValues : [];
+            const percentValues = movementVm ? movementVm.percentValues : [];
 
             destroyMovementChart();
             if (labels.length > 0) {
@@ -4269,28 +4261,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                 chartWrap.classList.add('hidden');
             }
 
-            const totalContracts = values.reduce((acc, v) => acc + (Number(v) || 0), 0);
-            if (totalContracts > 0) {
-                statusEl.textContent = `Total contratos que pasaron a moroso: ${formatNumber(totalContracts)}.`;
-            } else {
-                statusEl.textContent = movement.reason || 'No se encontraron contratos que pasaron a moroso con los filtros actuales.';
-            }
+            statusEl.textContent = movementVm
+                ? movementVm.movementStatus
+                : (movement.reason || 'No se encontraron contratos que pasaron a moroso con los filtros actuales.');
         }
 
         const culVigAvailable = movement && movement.culVigAvailable === true;
         if (!culVigAvailable) {
             destroyCulVigChart();
-            culVigStatusEl.textContent = movement && movement.culVigReason
-                ? movement.culVigReason
-                : 'Culminados por estado no disponible.';
+            culVigStatusEl.textContent = movementVm
+                ? movementVm.culVigStatus
+                : (movement && movement.culVigReason ? movement.culVigReason : 'Culminados por estado no disponible.');
             if (culVigWrap) culVigWrap.classList.remove('hidden');
         } else {
-            const culStatusByGestion = movement.culStatusByGestion || {};
-            const culUnknownByGestion = movement.culUnknownByGestion || {};
-            const culVigLabels = Object.keys(culStatusByGestion).sort((a, b) => monthToSerial(a) - monthToSerial(b));
-            const culVigData = culVigLabels.map((m) => (culStatusByGestion[m] && culStatusByGestion[m].vigente) ? culStatusByGestion[m].vigente : 0);
-            const culMorData = culVigLabels.map((m) => (culStatusByGestion[m] && culStatusByGestion[m].moroso) ? culStatusByGestion[m].moroso : 0);
-            const culUnknownData = culVigLabels.map((m) => Number(culUnknownByGestion[m] || 0));
+            const culVigLabels = movementVm ? movementVm.culVigLabels : [];
+            const culVigData = movementVm ? movementVm.culVigData : [];
+            const culMorData = movementVm ? movementVm.culMorData : [];
+            const culUnknownData = movementVm ? movementVm.culUnknownData : [];
 
             const culVigLabelsPlugin = {
                 id: 'acaCulVigBarLabels',
@@ -4369,11 +4356,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                     datasets,
                     [culVigLabelsPlugin]
                 );
-                const totalAll = totalCulVig + totalCulMor + totalCulUnknown;
-                culVigStatusEl.textContent = `Total culminados: ${formatNumber(totalAll)} | Vigentes: ${formatNumber(totalCulVig)} | Morosos: ${formatNumber(totalCulMor)} | Sin tramo: ${formatNumber(totalCulUnknown)}.`;
+                culVigStatusEl.textContent = movementVm
+                    ? movementVm.culVigStatus
+                    : `Total culminados: ${formatNumber(totalCulVig + totalCulMor + totalCulUnknown)} | Vigentes: ${formatNumber(totalCulVig)} | Morosos: ${formatNumber(totalCulMor)} | Sin tramo: ${formatNumber(totalCulUnknown)}.`;
             } else {
                 if (culVigWrap) culVigWrap.classList.remove('hidden');
-                culVigStatusEl.textContent = movement.culVigReason || 'No se encontraron culminados por estado para los filtros actuales.';
+                culVigStatusEl.textContent = movementVm
+                    ? movementVm.culVigStatus
+                    : (movement.culVigReason || 'No se encontraron culminados por estado para los filtros actuales.');
             }
         }
     }
