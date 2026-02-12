@@ -27,3 +27,4 @@
 - [x] Movimiento moroso: `avg_cuota` solo de contratos que transicionan.
 - [x] Movimiento moroso: meses filtrados sin datos se devuelven con cero para mantener continuidad visual.
 - [x] Anuales: paridad de filtros combinados (`UN + anio + contract_month`) con referencia de negocio en `tkpPago`.
+- [x] Tolerancias de paridad formalizadas en tests: `±1 contrato` y `±0.5%` para KPIs clave.
