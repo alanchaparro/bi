@@ -776,6 +776,131 @@
         };
     }
 
+    function renderMovementUI(ctx) {
+        const movement = ctx && ctx.movement;
+        const movementVm = ctx && ctx.movementVm;
+        const state = (ctx && ctx.state) || {};
+        const elements = (ctx && ctx.elements) || {};
+        const chartWrap = elements.chartWrap;
+        const statusEl = elements.statusEl;
+        const culVigWrap = elements.culVigWrap;
+        const culVigStatusEl = elements.culVigStatusEl;
+        const chartId = (ctx && ctx.chartId) || 'acaMovementMorosoChart';
+        const culVigChartId = (ctx && ctx.culVigChartId) || 'acaMovementCulVigChart';
+        const renderMixedChart = ctx && ctx.renderMixedChart;
+        const renderGroupedChart = ctx && ctx.renderGroupedChart;
+        const enableLineLabelSmartLayout = !!(ctx && ctx.enableLineLabelSmartLayout);
+        const formatNumber = (ctx && ctx.formatNumber) || ((n) => String(n));
+        const rectsOverlap = (ctx && ctx.rectsOverlap) || (() => false);
+        const overlapArea = (ctx && ctx.overlapArea) || (() => 0);
+
+        if (!statusEl || !culVigStatusEl || typeof renderMixedChart !== 'function' || typeof renderGroupedChart !== 'function') {
+            return false;
+        }
+
+        const destroyMovementChart = () => {
+            if (state.acaMovimiento && state.acaMovimiento.charts && state.acaMovimiento.charts[chartId]) {
+                state.acaMovimiento.charts[chartId].destroy();
+                delete state.acaMovimiento.charts[chartId];
+            }
+        };
+        const destroyCulVigChart = () => {
+            if (state.acaMovimiento && state.acaMovimiento.charts && state.acaMovimiento.charts[culVigChartId]) {
+                state.acaMovimiento.charts[culVigChartId].destroy();
+                delete state.acaMovimiento.charts[culVigChartId];
+            }
+        };
+
+        const available = movement && movement.available === true;
+        if (!available) {
+            destroyMovementChart();
+            statusEl.textContent = movementVm
+                ? movementVm.movementStatus
+                : (movement && movement.reason ? movement.reason : 'Movimiento de cartera no disponible.');
+            if (chartWrap) chartWrap.classList.add('hidden');
+        } else {
+            const labels = movementVm ? movementVm.labels : [];
+            const values = movementVm ? movementVm.values : [];
+            const avgCuotaValues = movementVm ? movementVm.avgCuotaValues : [];
+            const percentValues = movementVm ? movementVm.percentValues : [];
+
+            destroyMovementChart();
+            if (labels.length > 0) {
+                const movementBarLabelsPlugin = createMovementBarLabelsPlugin({ values, avgCuotaValues, formatNumber });
+                const movementLineLabelsPlugin = createMovementLineLabelsPlugin({
+                    values,
+                    avgCuotaValues,
+                    percentValues,
+                    formatNumber,
+                    rectsOverlap,
+                    overlapArea
+                });
+                if (chartWrap) chartWrap.classList.remove('hidden');
+
+                renderMixedChart(
+                    chartId,
+                    'acaMovimiento',
+                    labels,
+                    buildMovementDatasets(movementVm || { values, percentValues }),
+                    {
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: (tooltipCtx) => {
+                                        if (tooltipCtx.dataset && tooltipCtx.dataset.type === 'line') {
+                                            return `${tooltipCtx.dataset.label}: ${Number(tooltipCtx.parsed.y || 0).toFixed(1)}%`;
+                                        }
+                                        return `${tooltipCtx.dataset.label}: ${formatNumber(tooltipCtx.parsed.y || 0)}`;
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    enableLineLabelSmartLayout
+                        ? [movementBarLabelsPlugin, movementLineLabelsPlugin]
+                        : [movementBarLabelsPlugin]
+                );
+            } else if (chartWrap) {
+                chartWrap.classList.add('hidden');
+            }
+
+            statusEl.textContent = movementVm
+                ? movementVm.movementStatus
+                : (movement.reason || 'No se encontraron contratos que pasaron a moroso con los filtros actuales.');
+        }
+
+        const culVigAvailable = movement && movement.culVigAvailable === true;
+        if (!culVigAvailable) {
+            destroyCulVigChart();
+            culVigStatusEl.textContent = movementVm
+                ? movementVm.culVigStatus
+                : (movement && movement.culVigReason ? movement.culVigReason : 'Culminados por estado no disponible.');
+            if (culVigWrap) culVigWrap.classList.remove('hidden');
+        } else {
+            const culVigLabels = movementVm ? movementVm.culVigLabels : [];
+            destroyCulVigChart();
+            if (culVigLabels.length > 0) {
+                if (culVigWrap) culVigWrap.classList.remove('hidden');
+                renderGroupedChart(
+                    culVigChartId,
+                    'acaMovimiento',
+                    culVigLabels,
+                    buildCulVigDatasets(movementVm || {}),
+                    [createCulVigLabelsPlugin(formatNumber)]
+                );
+                culVigStatusEl.textContent = movementVm
+                    ? movementVm.culVigStatus
+                    : 'Totales de culminados no disponibles.';
+            } else {
+                if (culVigWrap) culVigWrap.classList.remove('hidden');
+                culVigStatusEl.textContent = movementVm
+                    ? movementVm.culVigStatus
+                    : (movement.culVigReason || 'No se encontraron culminados por estado para los filtros actuales.');
+            }
+        }
+        return true;
+    }
+
     global.TabModules.acaMovimiento = {
         id: 'acaMovimiento',
         mapApiPayloadToUi,
@@ -786,6 +911,7 @@
         buildCulVigDatasets,
         createMovementBarLabelsPlugin,
         createCulVigLabelsPlugin,
-        createMovementLineLabelsPlugin
+        createMovementLineLabelsPlugin,
+        renderMovementUI
     };
 })(window);

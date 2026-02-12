@@ -3887,6 +3887,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         const movementVm = (tabModules.acaMovimiento && typeof tabModules.acaMovimiento.prepareViewModel === 'function')
             ? tabModules.acaMovimiento.prepareViewModel(movement, { monthToSerial, formatNumber })
             : null;
+        if (tabModules.acaMovimiento && typeof tabModules.acaMovimiento.renderMovementUI === 'function') {
+            const delegated = tabModules.acaMovimiento.renderMovementUI({
+                movement,
+                movementVm,
+                state,
+                elements: { chartWrap, statusEl, culVigWrap, culVigStatusEl },
+                chartId,
+                culVigChartId,
+                renderMixedChart,
+                renderGroupedChart,
+                enableLineLabelSmartLayout,
+                formatNumber,
+                rectsOverlap: (window.ChartLabelLayoutCore && window.ChartLabelLayoutCore.rectsOverlap)
+                    ? window.ChartLabelLayoutCore.rectsOverlap
+                    : ((a, b, pad = 2) => (
+                        a.left < b.right + pad &&
+                        a.right > b.left - pad &&
+                        a.top < b.bottom + pad &&
+                        a.bottom > b.top - pad
+                    )),
+                overlapArea: (a, b) => {
+                    const w = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+                    const h = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+                    return w * h;
+                }
+            });
+            if (delegated) return;
+        }
         if (!available) {
             destroyMovementChart();
             statusEl.textContent = movementVm
