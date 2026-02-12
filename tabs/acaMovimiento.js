@@ -533,7 +533,8 @@
                     const minY = chartArea.top + box.h / 2 + 2;
                     const maxY = chartArea.bottom - box.h / 2 - 2;
                     const sideOrder = index % 2 === 0 ? ['right', 'left', 'center'] : ['left', 'right', 'center'];
-                    const yOffsets = [-14, -26, 14, 26, -38, 38, 0, 50, -50];
+                    // Prioritize offsets above the point to keep labels away from bars.
+                    const yOffsets = [-14, -26, -38, -50, -62, 14, 26, 38, 50, 0];
                     let best = null;
                     let bestScore = Number.POSITIVE_INFINITY;
 
@@ -560,7 +561,7 @@
                                 const barTop = Math.min(bar.y, bar.base);
                                 const barBottom = Math.max(bar.y, bar.base);
                                 if (rect.bottom >= barTop - 2 && rect.top <= barBottom + 2) {
-                                    score += (rect.bottom - rect.top) * 10;
+                                    score += (rect.bottom - rect.top) * 80;
                                 }
                             }
 
@@ -575,7 +576,16 @@
                         }
                     }
 
-                    if (!best || bestScore > (box.w * box.h * 0.35)) return null;
+                    if (!best) {
+                        const fallbackY = Math.max(minY, Math.min(maxY, pt.y - 18));
+                        const fallbackRect = getBubbleRect(
+                            Math.max(minX, Math.min(maxX, pt.x - box.w / 2)),
+                            fallbackY,
+                            text
+                        );
+                        occupied.push(fallbackRect);
+                        return { x: fallbackRect.left, y: fallbackY };
+                    }
                     occupied.push(best.rect);
                     return { x: best.x, y: best.y };
                 };
@@ -655,12 +665,17 @@
                     }
                 }
                 if (validIndices.length) {
-                    const avgSpacing = chartArea.width / Math.max(1, validIndices.length - 1);
-                    const step = avgSpacing < 34 ? Math.ceil(34 / Math.max(1, avgSpacing)) : 1;
-                    for (let k = 0; k < validIndices.length; k++) {
-                        const idx = validIndices[k];
-                        if (k % step === 0 || idx === validIndices[0] || idx === validIndices[validIndices.length - 1] || idx === maxIdx) {
-                            labelsToDraw.add(idx);
+                    const drawAllThreshold = 48;
+                    if (validIndices.length <= drawAllThreshold) {
+                        for (let k = 0; k < validIndices.length; k++) labelsToDraw.add(validIndices[k]);
+                    } else {
+                        const avgSpacing = chartArea.width / Math.max(1, validIndices.length - 1);
+                        const step = avgSpacing < 34 ? Math.ceil(34 / Math.max(1, avgSpacing)) : 1;
+                        for (let k = 0; k < validIndices.length; k++) {
+                            const idx = validIndices[k];
+                            if (k % step === 0 || idx === validIndices[0] || idx === validIndices[validIndices.length - 1] || idx === maxIdx) {
+                                labelsToDraw.add(idx);
+                            }
                         }
                     }
                 }

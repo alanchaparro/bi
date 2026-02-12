@@ -3883,7 +3883,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         };
 
-        const available = movement && movement.available === true;
         const movementVm = (tabModules.acaMovimiento && typeof tabModules.acaMovimiento.prepareViewModel === 'function')
             ? tabModules.acaMovimiento.prepareViewModel(movement, { monthToSerial, formatNumber })
             : null;
@@ -3915,133 +3914,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             if (delegated) return;
         }
-        if (!available) {
-            destroyMovementChart();
-            statusEl.textContent = movementVm
-                ? movementVm.movementStatus
-                : (movement && movement.reason ? movement.reason : 'Movimiento de cartera no disponible.');
-            if (chartWrap) chartWrap.classList.add('hidden');
-        } else {
-            const labels = movementVm ? movementVm.labels : [];
-            const values = movementVm ? movementVm.values : [];
-            const avgCuotaValues = movementVm ? movementVm.avgCuotaValues : [];
-            const percentValues = movementVm ? movementVm.percentValues : [];
 
-            destroyMovementChart();
-            if (labels.length > 0) {
-                const movementBarLabelsPlugin = (tabModules.acaMovimiento && typeof tabModules.acaMovimiento.createMovementBarLabelsPlugin === 'function')
-                    ? tabModules.acaMovimiento.createMovementBarLabelsPlugin({ values, avgCuotaValues, formatNumber })
-                    : { id: 'acaMovementBarLabels', afterDatasetsDraw() {} };
-
-                if (chartWrap) chartWrap.classList.remove('hidden');
-                const movementLineLabelsPlugin = (tabModules.acaMovimiento && typeof tabModules.acaMovimiento.createMovementLineLabelsPlugin === 'function')
-                    ? tabModules.acaMovimiento.createMovementLineLabelsPlugin({
-                        values,
-                        avgCuotaValues,
-                        percentValues,
-                        formatNumber,
-                        rectsOverlap,
-                        overlapArea
-                    })
-                    : { id: 'acaMovementLineLabels', afterDatasetsDraw() {} };
-
-                renderMixedChart(
-                    chartId,
-                    'acaMovimiento',
-                    labels,
-                    (tabModules.acaMovimiento && typeof tabModules.acaMovimiento.buildMovementDatasets === 'function')
-                        ? tabModules.acaMovimiento.buildMovementDatasets(movementVm || { values, percentValues })
-                        : [
-                            {
-                                type: 'bar',
-                                label: 'Contratos que pasaron a moroso',
-                                data: values,
-                                backgroundColor: '#f97316',
-                                borderRadius: 6,
-                                yAxisID: 'y'
-                            },
-                            {
-                                type: 'line',
-                                label: '% sobre Vigentes',
-                                data: percentValues,
-                                borderColor: 'rgba(0,0,0,0)',
-                                backgroundColor: 'rgba(0,0,0,0)',
-                                tension: 0.35,
-                                pointRadius: 0,
-                                yAxisID: 'y1'
-                            }
-                        ],
-                    {
-                        plugins: {
-                            tooltip: {
-                                callbacks: {
-                                    label: (ctx) => {
-                                        if (ctx.dataset && ctx.dataset.type === 'line') {
-                                            return `${ctx.dataset.label}: ${Number(ctx.parsed.y || 0).toFixed(1)}%`;
-                                        }
-                                        return `${ctx.dataset.label}: ${formatNumber(ctx.parsed.y || 0)}`;
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    enableLineLabelSmartLayout
-                        ? [movementBarLabelsPlugin, movementLineLabelsPlugin]
-                        : [movementBarLabelsPlugin]
-                );
-            } else if (chartWrap) {
-                chartWrap.classList.add('hidden');
-            }
-
-            statusEl.textContent = movementVm
-                ? movementVm.movementStatus
-                : (movement.reason || 'No se encontraron contratos que pasaron a moroso con los filtros actuales.');
-        }
-
-        const culVigAvailable = movement && movement.culVigAvailable === true;
-        if (!culVigAvailable) {
-            destroyCulVigChart();
-            culVigStatusEl.textContent = movementVm
-                ? movementVm.culVigStatus
-                : (movement && movement.culVigReason ? movement.culVigReason : 'Culminados por estado no disponible.');
-            if (culVigWrap) culVigWrap.classList.remove('hidden');
-        } else {
-            const culVigLabels = movementVm ? movementVm.culVigLabels : [];
-            const culVigData = movementVm ? movementVm.culVigData : [];
-            const culMorData = movementVm ? movementVm.culMorData : [];
-            const culUnknownData = movementVm ? movementVm.culUnknownData : [];
-
-            const culVigLabelsPlugin = (tabModules.acaMovimiento && typeof tabModules.acaMovimiento.createCulVigLabelsPlugin === 'function')
-                ? tabModules.acaMovimiento.createCulVigLabelsPlugin(formatNumber)
-                : { id: 'acaCulVigBarLabels', afterDatasetsDraw() {} };
-
-            destroyCulVigChart();
-            if (culVigLabels.length > 0) {
-                if (culVigWrap) culVigWrap.classList.remove('hidden');
-                const datasets = (tabModules.acaMovimiento && typeof tabModules.acaMovimiento.buildCulVigDatasets === 'function')
-                    ? tabModules.acaMovimiento.buildCulVigDatasets(movementVm || { culVigData, culMorData, culUnknownData })
-                    : [
-                        { label: 'Culminados vigentes', data: culVigData, backgroundColor: '#22c55e', borderRadius: 6 },
-                        { label: 'Culminados morosos', data: culMorData, backgroundColor: '#ef4444', borderRadius: 6 }
-                    ];
-
-                renderGroupedChart(
-                    culVigChartId,
-                    'acaMovimiento',
-                    culVigLabels,
-                    datasets,
-                    [culVigLabelsPlugin]
-                );
-                culVigStatusEl.textContent = movementVm
-                    ? movementVm.culVigStatus
-                    : `Total culminados: ${formatNumber(totalCulVig + totalCulMor + totalCulUnknown)} | Vigentes: ${formatNumber(totalCulVig)} | Morosos: ${formatNumber(totalCulMor)} | Sin tramo: ${formatNumber(totalCulUnknown)}.`;
-            } else {
-                if (culVigWrap) culVigWrap.classList.remove('hidden');
-                culVigStatusEl.textContent = movementVm
-                    ? movementVm.culVigStatus
-                    : (movement.culVigReason || 'No se encontraron culminados por estado para los filtros actuales.');
-            }
-        }
+        // Minimal defensive fallback if module loading fails.
+        destroyMovementChart();
+        destroyCulVigChart();
+        if (chartWrap) chartWrap.classList.add('hidden');
+        if (culVigWrap) culVigWrap.classList.remove('hidden');
+        statusEl.textContent = movementVm
+            ? movementVm.movementStatus
+            : (movement && movement.reason ? movement.reason : 'Movimiento de cartera no disponible.');
+        culVigStatusEl.textContent = movementVm
+            ? movementVm.culVigStatus
+            : (movement && movement.culVigReason ? movement.culVigReason : 'Culminados por estado no disponible.');
     }
 
     function updateCulminadosUI(stats) {
