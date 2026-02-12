@@ -1,0 +1,14 @@
+
+services:
+  dashboard:
+    build: .
+    container_name: cobranzas-dashboard
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped

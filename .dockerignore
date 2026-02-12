@@ -1,0 +1,25 @@
+# Keep image context minimal and avoid shipping local sensitive files
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+
+# Local data dumps
+*.csv
+*.xlsx
+analytics_meta.json
+
+# Cache/artifacts
+.cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# CI/docs/dev files not needed at runtime
+docs
+tests
+scripts
+.github

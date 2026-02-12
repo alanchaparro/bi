@@ -1,0 +1,28 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Data extracts and local datasets
+*.csv
+*.xlsx
+analytics_meta.json
+
+# Caches and local runtime artifacts
+.cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build/test output
+htmlcov/
+.pytest_cache/
+coverage.xml

@@ -1,0 +1,39 @@
+import re
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class DashboardStaticTests(unittest.TestCase):
+    def test_show_tabs_nav_has_no_recursion(self):
+        content = (ROOT / 'dashboard.js').read_text(encoding='utf-8')
+        m = re.search(r"const showTabsNav = \(\) => \{([\s\S]*?)\n\s*\};", content)
+        self.assertIsNotNone(m, 'showTabsNav helper not found')
+        body = m.group(1)
+        self.assertNotIn('showTabsNav();', body, 'showTabsNav contains recursive call')
+        self.assertIn("tabsNav.classList.remove('hidden')", body)
+
+    def test_html_loads_support_modules(self):
+        html = (ROOT / 'dashboard.html').read_text(encoding='utf-8')
+        self.assertIn('ui/notifications.js', html)
+        self.assertIn('data/normalize.js', html)
+        self.assertIn('data/feature-flags.js', html)
+        self.assertIn('tabs/acaMovimiento-api.js', html)
+        self.assertIn('charts/renderers.js', html)
+
+    def test_docs_contracts_exist(self):
+        expected = [
+            'docs/data-contracts.md',
+            'docs/ui-state-model.md',
+            'docs/data-validation-rules.md',
+            'docs/runbook-local.md',
+            'docs/performance-notes.md',
+            'docs/api-draft.md',
+        ]
+        for rel in expected:
+            self.assertTrue((ROOT / rel).exists(), f'missing {rel}')
+
+
+if __name__ == '__main__':
+    unittest.main()

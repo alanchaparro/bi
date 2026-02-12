@@ -1,0 +1,1867 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estadísticas de Cobranza | Cartera</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="dashboard.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- PapaParse -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <!-- PDF Export -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+</head>
+
+<body>
+    <header>
+        <button class="menu-toggle hidden" id="menu-toggle" aria-label="Abrir menú" aria-expanded="false">☰</button>
+        <h1>EPEM - Cartera de Cobranzas</h1>
+        <div id="file-info" class="hidden">
+            <span id="filename-display"></span>
+            <button onclick="location.reload()">Cambiar archivo</button>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Drop Zone -->
+        <div id="drop-zone" class="drop-zone hidden">
+            <h2>Carga de Datos Requerida</h2>
+            <p>Para proceder, es necesario cargar ambos archivos:</p>
+
+            <div class="file-status-container">
+                <div class="file-status" id="status-cartera">
+                    <span class="status-icon">⚪</span>
+                    <span class="file-name">cartera.csv</span>
+                    <span class="status-text">Pendiente</span>
+                </div>
+                <div class="file-status" id="status-cobranzas">
+                    <span class="status-icon">⚪</span>
+                    <span class="file-name">cobranzas_prepagas.csv</span>
+                    <span class="status-text">Pendiente</span>
+                </div>
+                <div class="file-status" id="status-gestores">
+                    <span class="status-icon">⚪</span>
+                    <span class="file-name">gestores.csv</span>
+                    <span class="status-text">Pendiente</span>
+                </div>
+            </div>
+
+            <input type="file" id="file-input" accept=".csv" class="hidden" multiple>
+            <div class="upload-actions">
+                <button onclick="document.getElementById('file-input').click()" class="btn-primary">Seleccionar
+                    Archivos</button>
+                <button id="btn-proceed" class="btn-proceed" disabled>Proceder al Dashboard</button>
+            </div>
+            <p class="drop-hint">O arrastra los archivos aquí</p>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="sidebar-overlay hidden" id="sidebar-overlay"></div>
+        <nav class="tabs-nav hidden" id="tabs-nav">
+            <button class="tab-btn active" onclick="switchTab('cartera')">📊 Cartera</button>
+            <button class="tab-btn" onclick="switchTab('cobranzas')">💰 Cobranzas</button>
+            <button class="tab-btn" onclick="switchTab('analisisCartera')">🗂️ Análisis Cartera</button>
+            <button class="tab-btn tab-sub-btn" onclick="switchTab('acaMovimiento')">↳ Movimiento Cartera</button>
+            <button class="tab-btn tab-sub-btn" onclick="switchTab('acaAnuales')">↳ Análisis Anuales</button>
+            <button class="tab-btn" onclick="switchTab('rendimiento')">📈 Rendimiento</button>
+            <button class="tab-btn" onclick="switchTab('cosecha')">🌾 Cosecha</button>
+            <button class="tab-btn" onclick="switchTab('ltv')">🧮 LTV</button>
+            <button class="tab-btn" onclick="switchTab('ltvAge')">⏳ LTV-Antigüedad</button>
+            <button class="tab-btn" onclick="switchTab('analisisCobranza')">🧾 Análisis Cobranzas</button>
+            <button class="tab-btn" onclick="switchTab('culminados')">✅ Culminados</button>
+            <button class="tab-btn" onclick="switchTab('gestores')">💼 Gestores</button>
+            <button class="tab-btn" onclick="switchTab('config')">⚙️ Configuración</button>
+        </nav>
+
+        <!-- Loading Indicator -->
+        <div id="loading" class="loading-overlay hidden">
+            <div class="spinner"></div>
+            <p id="progress-text">Procesando datos...</p>
+        </div>
+
+
+        <!-- Config Tab Content -->
+        <div id="config-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>Configuración y Sincronización</h2>
+            </div>
+
+            <div class="config-grid">
+                <div class="config-card">
+                    <div class="config-info">
+                        <h3>Gestión de Datos MySQL</h3>
+                        <p>Genera los archivos CSV directamente desde la base de datos.</p>
+                    </div>
+                    <div class="config-actions">
+                        <button class="btn-secondary" onclick="runExport('cartera')" id="btn-gen-cartera">Generar
+                            Cartera (SQL)</button>
+                        <button class="btn-secondary" onclick="runExport('cobranzas')" id="btn-gen-cob">Generar
+                            Cobranzas (SQL)</button>
+                        <button class="btn-secondary" onclick="runExport('gestores')" id="btn-gen-gestores">Generar
+                            Gestores (SQL)</button>
+                        <button class="btn-secondary" onclick="runExport('contratos')" id="btn-gen-contratos">Generar
+                            Contratos (SQL)</button>
+                        <button class="btn-secondary" onclick="runExport('analytics')" id="btn-gen-analytics">Generar
+                            Analytics Mensual (SQL)</button>
+                    </div>
+                </div>
+
+                <div class="config-card">
+                    <div class="config-info">
+                        <h3>Sincronización Local</h3>
+                        <p>Lee los archivos CSV guardados localmente sin arrastrarlos.</p>
+                    </div>
+                    <div class="config-actions" style="gap: 0.75rem;">
+                        <label style="display:flex; align-items:center; gap:0.5rem; color:#cbd5e1;">
+                            Modo:
+                            <select id="sync-mode-select" style="background:#0f172a; color:#e2e8f0; border:1px solid #334155; border-radius:8px; padding:0.35rem 0.5rem;">
+                                <option value="fast">Rápida (Analytics)</option>
+                                <option value="full">Completa (Raw + Analytics)</option>
+                            </select>
+                        </label>
+                        <div id="sync-mode-status" style="font-size:0.85rem; color:#93c5fd;">
+                            Estado: sincronización rápida
+                        </div>
+                        <button class="btn-primary" onclick="syncLocalFiles()" id="btn-sync">Sincronizar Todo</button>
+                    </div>
+                </div>
+
+                <div class="config-card">
+                    <div class="config-info">
+                        <h3>Modo Analítico</h3>
+                        <p>Define si las tabs críticas usan API backend o cálculo local.</p>
+                    </div>
+                    <div class="config-actions" style="gap: 0.75rem;">
+                        <label style="display:flex; align-items:center; gap:0.5rem; color:#cbd5e1;">
+                            <input type="checkbox" id="analytics-api-toggle" checked>
+                            Usar API Analytics (recomendado)
+                        </label>
+                        <div id="analytics-mode-status" style="font-size:0.85rem; color:#93c5fd;">
+                            Estado: API habilitada
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="config-actions"
+                style="margin-top: 2rem; display: flex; gap: 1rem; border-top: 1px solid #334155; padding-top: 1.5rem;">
+                <button class="btn-reset" onclick="clearAllData()" style="background: #e11d48">🧹 Borrar Memoria y
+                    Reiniciar</button>
+                <div style="font-size: 0.8rem; color: #94a3b8; align-self: center;">Usa esto si los datos parecen estar
+                    desactualizados.</div>
+            </div>
+
+            <div class="log-container" style="margin-top: 2rem;">
+                <h3>Registro de Actividad</h3>
+                <div id="config-logs" class="logs">
+                    <div class="log-entry system">Listo para operar.</div>
+                </div>
+            </div>
+        </div>
+        </div>
+
+        <!-- Cartera Tab Content -->
+        <div id="cartera-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>Análisis de Cartera</h2>
+                <div style="display:flex; gap:0.5rem;">
+                    <button class="btn-apply" id="apply-cartera">Aplicar Filtros</button>
+                    <button class="btn-reset" id="reset-cartera">🔄 Resetear Filtros</button>
+                </div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Unidad de Negocio:</label>
+                    <div class="multi-select" id="un-filter">
+                        <div class="select-box" onclick="toggleDropdown('un-dropdown')">
+                            <span id="un-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="un-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="un-all" checked> Todas</label>
+                            <hr>
+                            <div id="un-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Tramo:</label>
+                    <div class="multi-select" id="tramo-filter">
+                        <div class="select-box" onclick="toggleDropdown('tramo-dropdown')">
+                            <span id="tramo-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="tramo-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="tramo-all" checked> Todos</label>
+                            <hr>
+                            <div id="tramo-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Categoría:</label>
+                    <div class="multi-select" id="cat-filter">
+                        <div class="select-box" onclick="toggleDropdown('cat-dropdown')">
+                            <span id="cat-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="cat-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="cat-all" checked> Todas</label>
+                            <hr>
+                            <div id="cat-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Fecha de Gestión:</label>
+                    <div class="multi-select" id="fecha-filter">
+                        <div class="select-box" onclick="toggleDropdown('fecha-dropdown')">
+                            <span id="fecha-count">Toda la historia</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="fecha-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="fecha-all" checked> Toda la historia</label>
+                            <hr>
+                            <div id="fecha-options"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card platinum">
+                    <div class="stat-icon">📄</div>
+                    <div class="stat-info">
+                        <span class="stat-label">TOTAL CONTRATOS</span>
+                        <h2 id="total-contracts">0</h2>
+                    </div>
+                </div>
+                <div class="stat-card gold">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-info">
+                        <span class="stat-label">MONTO TOTAL (CUOTA + VENCIDO)</span>
+                        <h2 id="total-amount">Gs. 0</h2>
+                    </div>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3>Contratos por Unidad de Negocio</h3>
+                    <canvas id="unChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Contratos por Tramo</h3>
+                    <canvas id="tramoChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cobranzas Tab Content -->
+        <div id="cobranzas-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>Análisis de Cobranzas</h2>
+                <div style="display:flex; gap:0.5rem;">
+                    <button class="btn-apply" id="apply-cobranzas">Aplicar Filtros</button>
+                    <button class="btn-reset" id="reset-cobranzas">🔄 Resetear Filtros</button>
+                </div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Vía de Pago:</label>
+                    <div class="multi-select" id="vp-filter">
+                        <div class="select-box" onclick="toggleDropdown('vp-dropdown')">
+                            <span id="vp-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="vp-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="vp-all" checked> Todas</label>
+                            <hr>
+                            <div id="vp-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Año:</label>
+                    <div class="multi-select" id="anio-filter">
+                        <div class="select-box" onclick="toggleDropdown('anio-dropdown')">
+                            <span id="anio-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="anio-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="anio-all" checked> Todos</label>
+                            <hr>
+                            <div id="anio-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Mes:</label>
+                    <div class="multi-select" id="mes-filter">
+                        <div class="select-box" onclick="toggleDropdown('mes-dropdown')">
+                            <span id="mes-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="mes-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="mes-all" checked> Todos</label>
+                            <hr>
+                            <div id="mes-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Día:</label>
+                    <div class="multi-select" id="dia-filter">
+                        <div class="select-box" onclick="toggleDropdown('dia-dropdown')">
+                            <span id="dia-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="dia-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="dia-all" checked> Todos</label>
+                            <hr>
+                            <div id="dia-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Sucursal:</label>
+                    <div class="multi-select" id="suc-filter">
+                        <div class="select-box" onclick="toggleDropdown('suc-dropdown')">
+                            <span id="suc-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="suc-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="suc-all" checked> Todas</label>
+                            <hr>
+                            <div id="suc-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Supervisor:</label>
+                    <div class="multi-select" id="cob-super-filter">
+                        <div class="select-box" onclick="toggleDropdown('cob-super-dropdown')">
+                            <span id="cob-super-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="cob-super-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="cob-super-all" checked> Todos</label>
+                            <hr>
+                            <div id="cob-super-options"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card emerald">
+                    <div class="stat-icon">💸</div>
+                    <div class="stat-info">
+                        <span class="stat-label">TOTAL COBRADO</span>
+                        <h2 id="total-cobrado">Gs. 0</h2>
+                    </div>
+                </div>
+                <div class="stat-card sapphire">
+                    <div class="stat-icon">💳</div>
+                    <div class="stat-info">
+                        <span class="stat-label">COBRADO DÉBITO</span>
+                        <h2 id="cobrado-debito">Gs. 0</h2>
+                    </div>
+                </div>
+                <div class="stat-card amber">
+                    <div class="stat-icon">👤</div>
+                    <div class="stat-info">
+                        <span class="stat-label">COBRADO COBRADOR</span>
+                        <h2 id="cobrado-cobrador">Gs. 0</h2>
+                    </div>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-container full-width">
+                    <h3>Evolución de Cobranzas</h3>
+                    <canvas id="cobranzaTrendChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Cobros por Vía de Pago</h3>
+                    <canvas id="vpChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Cobros por Sucursal</h3>
+                    <canvas id="sucChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Distribución por Mes (Acumulado)</h3>
+                    <canvas id="mesDistribChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Distribución por Día (Acumulado)</h3>
+                    <canvas id="diaDistribChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div id="rendimiento-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>Rendimiento de Cartera (Eficacia)</h2>
+                <div class="header-hint">Cruce de Cartera vs Cobranzas por contrato y mes.</div>
+            </div>
+
+            <!-- Filters Bar (Performance) -->
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Unidad de Negocio:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('perf-un-dropdown')">
+                            <span id="perf-un-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="perf-un-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="perf-un-all" checked> Todas</label>
+                            <hr>
+                            <div id="perf-un-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Tramo:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('perf-tramo-dropdown')">
+                            <span id="perf-tramo-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="perf-tramo-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="perf-tramo-all" checked> Todos</label>
+                            <hr>
+                            <div id="perf-tramo-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Fecha Gestión:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('perf-fecha-dropdown')">
+                            <span id="perf-fecha-count">Historia</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="perf-fecha-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="perf-fecha-all" checked> Historia</label>
+                            <hr>
+                            <div id="perf-fecha-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Vía Cobro (Intención):</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('perf-via-cobro-dropdown')">
+                            <span id="perf-via-cobro-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="perf-via-cobro-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="perf-via-cobro-all" checked> Todas</label>
+                            <hr>
+                            <div id="perf-via-cobro-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Vía Pago (Real):</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('perf-via-pago-dropdown')">
+                            <span id="perf-via-pago-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="perf-via-pago-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="perf-via-pago-all" checked> Todas</label>
+                            <hr>
+                            <div id="perf-via-pago-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Categoría Cobranzas:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('perf-cat-dropdown')">
+                            <span id="perf-cat-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="perf-cat-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="perf-cat-all" checked> Todas</label>
+                            <hr>
+                            <div id="perf-cat-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Supervisor:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('perf-super-dropdown')">
+                            <span id="perf-super-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="perf-super-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="perf-super-all" checked> Todos</label>
+                            <hr>
+                            <div id="perf-super-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group" style="min-width: 240px;">
+                    <label>Etiquetas en gráficos:</label>
+                    <label style="display:flex; align-items:center; gap:0.5rem; color:#cbd5e1;">
+                        <input type="checkbox" id="perf-labels-toggle" checked>
+                        Mostrar números en gráficos
+                    </label>
+                    <div id="perf-labels-status" style="font-size:0.8rem; color:#93c5fd;">
+                        Estado: visibles
+                    </div>
+                </div>
+
+                <button class="btn-apply" id="apply-perf" style="margin-left: auto;">Aplicar Filtros</button>
+                <button class="btn-reset" id="reset-perf">🔄 Resetear Filtros</button>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card platinum">
+                    <div class="stat-info"><span class="stat-label">RECUPERACIÓN GLOBAL</span>
+                        <h2 id="perf-recovery-rate">0%</h2>
+                    </div>
+                </div>
+                <div class="stat-card sapphire">
+                    <div class="stat-info"><span class="stat-label">CONTRATOS ASIGNADOS</span>
+                        <h2 id="perf-total-contracts">0</h2>
+                    </div>
+                </div>
+                <div class="stat-card gold">
+                    <div class="stat-info"><span class="stat-label">DEUDA ASIGNADA</span>
+                        <h2 id="perf-total-debt">Gs. 0</h2>
+                    </div>
+                </div>
+                <div class="stat-card amber">
+                    <div class="stat-info"><span class="stat-label">CONTRATOS CON COBRO</span>
+                        <h2 id="perf-total-contracts-paid">0</h2>
+                    </div>
+                </div>
+                <div class="stat-card emerald">
+                    <div class="stat-info"><span class="stat-label">TOTAL COBRADO</span>
+                        <h2 id="perf-total-paid">Gs. 0</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-container full-width">
+                    <h3>Evolución de Rendimiento (Tendencia)</h3>
+                    <canvas id="perfTrendChart"></canvas>
+                </div>
+                <div class="chart-container full-width">
+                    <h3>% Eficacia por Cantidad (Tendencia)</h3>
+                    <canvas id="perfTrendCountChart"></canvas>
+                </div>
+                <div class="chart-container full-width">
+                    <h3>% Eficacia por Tramo</h3><canvas id="perfTramoChart"></canvas>
+                </div>
+                <div class="chart-container full-width">
+                    <h3>% Eficacia por UN</h3><canvas id="perfUnChart"></canvas>
+                </div>
+                <div class="chart-container full-width">
+                    <h3>% Eficacia por Vía de Cobro (Intención)</h3><canvas id="perfViaCobroChart"></canvas>
+                </div>
+            </div>
+        </div>
+        </div>
+
+        <div id="cosecha-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>Cosecha de Ventas</h2>
+                <div class="header-hint">Cohortes por mes de venta vs cobranzas del mes siguiente.</div>
+            </div>
+
+            <!-- Filters Bar (Cosecha) -->
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Unidad de Negocio:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('co-un-dropdown')">
+                            <span id="co-un-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="co-un-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="co-un-all" checked> Todas</label>
+                            <hr>
+                            <div id="co-un-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Tramo:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('co-tramo-dropdown')">
+                            <span id="co-tramo-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="co-tramo-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="co-tramo-all" checked> Todos</label>
+                            <hr>
+                            <div id="co-tramo-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Año de Contrato:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('co-anio-dropdown')">
+                            <span id="co-anio-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="co-anio-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="co-anio-all" checked> Todos</label>
+                            <hr>
+                            <div id="co-anio-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Mes de Contrato:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('co-mes-dropdown')">
+                            <span id="co-mes-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="co-mes-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="co-mes-all" checked> Todos</label>
+                            <hr>
+                            <div id="co-mes-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Fecha de Gestión:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('co-fecha-gest-dropdown')">
+                            <span id="co-fecha-gest-count">Historia</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="co-fecha-gest-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="co-fecha-gest-all" checked> Historia</label>
+                            <hr>
+                            <div id="co-fecha-gest-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Vía Cobro (Intención):</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('co-via-cobro-dropdown')">
+                            <span id="co-via-cobro-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="co-via-cobro-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="co-via-cobro-all" checked> Todas</label>
+                            <hr>
+                            <div id="co-via-cobro-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Vía Pago (Real):</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('co-via-pago-dropdown')">
+                            <span id="co-via-pago-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="co-via-pago-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="co-via-pago-all" checked> Todas</label>
+                            <hr>
+                            <div id="co-via-pago-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Categoría Cobranzas:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('co-cat-dropdown')">
+                            <span id="co-cat-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="co-cat-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="co-cat-all" checked> Todas</label>
+                            <hr>
+                            <div id="co-cat-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn-apply" id="apply-co" style="margin-left: auto;">Aplicar Filtros</button>
+                <button class="btn-reset" id="reset-co">🔄 Resetear Filtros</button>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card platinum">
+                    <div class="stat-info"><span class="stat-label">RECUPERACIÓN COSECHA</span>
+                        <h2 id="co-recovery-rate">0%</h2>
+                    </div>
+                </div>
+                <div class="stat-card sapphire">
+                    <div class="stat-info"><span class="stat-label">CONTRATOS BASE</span>
+                        <h2 id="co-total-base-count">0</h2>
+                    </div>
+                </div>
+                <div class="stat-card gold">
+                    <div class="stat-info"><span class="stat-label">BASE (VENCIDO + CUOTA)</span>
+                        <h2 id="co-total-base">Gs. 0</h2>
+                    </div>
+                </div>
+                <div class="stat-card amber">
+                    <div class="stat-info"><span class="stat-label">CONTRATOS CON COBRO</span>
+                        <h2 id="co-total-paid-count">0</h2>
+                    </div>
+                </div>
+                <div class="stat-card emerald">
+                    <div class="stat-info"><span class="stat-label">COBRADO MES SIGUIENTE</span>
+                        <h2 id="co-total-paid">Gs. 0</h2>
+                    </div>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-container full-width">
+                    <h3>% Recuperación por Mes de Venta</h3>
+                    <canvas id="coRecoveryChart"></canvas>
+                </div>
+                <div class="chart-container full-width">
+                    <h3>% Recuperación por Cantidad (Mes de Venta)</h3>
+                    <canvas id="coRecoveryCountChart"></canvas>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mes Venta</th>
+                            <th>Contratos Base</th>
+                            <th>Base</th>
+                            <th>Contratos con Cobro</th>
+                            <th>Cobrado</th>
+                            <th>% Recuperación</th>
+                        </tr>
+                    </thead>
+                    <tbody id="co-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="analisis-cartera-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>Análisis de Cartera por Corte</h2>
+                <div class="header-hint">Cantidad de cartera por mes de gestión: Vigente/Moroso y Cobrador/Débito.</div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Unidad de Negocio:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('aca-un-dropdown')">
+                            <span id="aca-un-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="aca-un-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="aca-un-all" checked> Todas</label>
+                            <hr>
+                            <div id="aca-un-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Año de Contrato:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('aca-anio-dropdown')">
+                            <span id="aca-anio-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="aca-anio-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="aca-anio-all" checked> Todos</label>
+                            <hr>
+                            <div id="aca-anio-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Fecha de Gestión:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('aca-fecha-dropdown')">
+                            <span id="aca-fecha-count">Historia</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="aca-fecha-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="aca-fecha-all" checked> Historia</label>
+                            <hr>
+                            <div id="aca-fecha-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Vía de Cobro:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('aca-via-cobro-dropdown')">
+                            <span id="aca-via-cobro-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="aca-via-cobro-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="aca-via-cobro-all" checked> Todas</label>
+                            <hr>
+                            <div id="aca-via-cobro-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Supervisor:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('aca-super-dropdown')">
+                            <span id="aca-super-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="aca-super-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="aca-super-all" checked> Todos</label>
+                            <hr>
+                            <div id="aca-super-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Categoría:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('aca-cat-dropdown')">
+                            <span id="aca-cat-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="aca-cat-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="aca-cat-all" checked> Todas</label>
+                            <hr>
+                            <div id="aca-cat-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group" style="min-width: 240px;">
+                    <label>Etiquetas en gráficos:</label>
+                    <label style="display:flex; align-items:center; gap:0.5rem; color:#cbd5e1;">
+                        <input type="checkbox" id="aca-labels-toggle" checked>
+                        Mostrar números dentro del gráfico
+                    </label>
+                    <div id="aca-labels-status" style="font-size:0.8rem; color:#93c5fd;">
+                        Estado: visibles
+                    </div>
+                </div>
+
+                <button class="btn-secondary" id="export-aca-pdf" style="margin-left: auto;">📄 Exportar PDF</button>
+                <button class="btn-apply" id="apply-aca">Aplicar Filtros</button>
+                <button class="btn-reset" id="reset-aca">🔄 Resetear Filtros</button>
+            </div>
+
+            <div id="aca-selection-summary" class="table-container" style="margin-top: -1rem; margin-bottom: 1.5rem; padding: 0.75rem 1rem; color: #cbd5e1; font-size: 0.9rem;">
+                <strong>Seleccion actual:</strong> UN: Todas | Año Gestion: Todos | Gestion: Historia | Via Cobro: Todas | Categoria: Todas
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card platinum">
+                    <div class="stat-info"><span class="stat-label">TOTAL CARTERA (REGISTROS)</span>
+                        <h2 id="aca-total">0</h2>
+                    </div>
+                </div>
+                <div class="stat-card jade">
+                    <div class="stat-info"><span class="stat-label">VIGENTES (TRAMO 0-3)</span>
+                        <h2 id="aca-vigente">0</h2>
+                    </div>
+                </div>
+                <div class="stat-card emerald">
+                    <div class="stat-info"><span class="stat-label">MOROSOS (TRAMO >= 4)</span>
+                        <h2 id="aca-moroso">0</h2>
+                    </div>
+                </div>
+                <div class="stat-card sapphire">
+                    <div class="stat-info"><span class="stat-label">VÍA COBRADOR</span>
+                        <h2 id="aca-cobrador">0</h2>
+                    </div>
+                </div>
+                <div class="stat-card gold">
+                    <div class="stat-info"><span class="stat-label">VÍA DÉBITO</span>
+                        <h2 id="aca-debito">0</h2>
+                    </div>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-container full-width">
+                    <h3>Cartera por Gestión: Vigente vs Moroso</h3>
+                    <canvas id="acaCatChart"></canvas>
+                </div>
+                <div class="chart-container full-width">
+                    <h3>Cartera por Gestión: Cobrador vs Débito</h3>
+                    <canvas id="acaViaChart"></canvas>
+                </div>
+                <div class="chart-container full-width">
+                    <h3>Monto a Cobrar vs Cobrado (por Gestión)</h3>
+                    <canvas id="acaMoneyChart"></canvas>
+                </div>
+                <div class="chart-container full-width">
+                    <h3>Contratos a Cobrar vs Cobrados (por Gestión)</h3>
+                    <canvas id="acaContractsChart"></canvas>
+                </div>
+                <div class="chart-container full-width">
+                    <h3>Cumplimiento por Monto (Tramos 0-3 por Gestión)</h3>
+                    <canvas id="acaMoneyByTramoChart"></canvas>
+                </div>
+                <div class="chart-container full-width">
+                    <h3>Cumplimiento por Cantidad (Tramos 0-3 por Gestión)</h3>
+                    <canvas id="acaContractsByTramoChart"></canvas>
+                </div>
+            </div>
+
+        </div>
+
+        <div id="aca-mov-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>Movimiento de Cartera por Fecha de Gestión</h2>
+                <div class="header-hint">Contratos que en el mes anterior estaban en tramo <= 3 y en el mes actual pasan a tramo > 3.</div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Unidad de Negocio:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('acam-un-dropdown')">
+                            <span id="acam-un-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="acam-un-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="acam-un-all" checked> Todas</label>
+                            <hr>
+                            <div id="acam-un-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Año de Contrato:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('acam-anio-dropdown')">
+                            <span id="acam-anio-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="acam-anio-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="acam-anio-all" checked> Todos</label>
+                            <hr>
+                            <div id="acam-anio-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Fecha de Gestión:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('acam-fecha-dropdown')">
+                            <span id="acam-fecha-count">Historia</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="acam-fecha-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="acam-fecha-all" checked> Historia</label>
+                            <hr>
+                            <div id="acam-fecha-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Vía de Cobro:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('acam-via-cobro-dropdown')">
+                            <span id="acam-via-cobro-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="acam-via-cobro-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="acam-via-cobro-all" checked> Todas</label>
+                            <hr>
+                            <div id="acam-via-cobro-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Categoría:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('acam-cat-dropdown')">
+                            <span id="acam-cat-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="acam-cat-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="acam-cat-all" checked> Todas</label>
+                            <hr>
+                            <div id="acam-cat-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn-apply" id="apply-acam" style="margin-left:auto;">Aplicar Filtros</button>
+                <button class="btn-reset" id="reset-acam">🔄 Resetear Filtros</button>
+            </div>
+
+            <div id="acam-selection-summary" class="table-container" style="margin-top: -1rem; margin-bottom: 1.5rem; padding: 0.75rem 1rem; color: #cbd5e1; font-size: 0.9rem;">
+                <strong>Seleccion actual:</strong> UN: Todas | Año Gestion: Todos | Gestion: Historia | Via Cobro: Todas | Categoria: Todas
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-container full-width" id="aca-movement-chart-wrap">
+                    <h3>Contratos que pasaron a Moroso por Fecha de Gestión</h3>
+                    <div id="aca-movement-status" style="margin-bottom: 0.75rem; color: #cbd5e1; font-size: 0.9rem;">
+                        Sin datos de movimiento.
+                    </div>
+                    <canvas id="acaMovementMorosoChart"></canvas>
+                </div>
+                <div class="chart-container full-width" id="aca-cul-vig-chart-wrap">
+                    <h3>Culminados por Fecha de Gestión (Vigentes vs Morosos)</h3>
+                    <div id="aca-cul-vig-status" style="margin-bottom: 0.75rem; color: #cbd5e1; font-size: 0.9rem;">
+                        Sin datos de culminados vigentes.
+                    </div>
+                    <canvas id="acaMovementCulVigChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div id="aca-anuales-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>Análisis Anuales</h2>
+                <div class="header-hint">Resumen anual por cierre de gestión con TKP y culminados.</div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Unidad de Negocio:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('acaa-un-dropdown')">
+                            <span id="acaa-un-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="acaa-un-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="acaa-un-all" checked> Todas</label>
+                            <hr>
+                            <div id="acaa-un-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Año de Contrato:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('acaa-anio-dropdown')">
+                            <span id="acaa-anio-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="acaa-anio-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="acaa-anio-all" checked> Todos</label>
+                            <hr>
+                            <div id="acaa-anio-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Mes/Año de Contrato:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('acaa-mes-contrato-dropdown')">
+                            <span id="acaa-mes-contrato-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="acaa-mes-contrato-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="acaa-mes-contrato-all" checked> Todos</label>
+                            <hr>
+                            <div id="acaa-mes-contrato-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn-apply" id="apply-acaa" style="margin-left:auto;">Aplicar Filtros</button>
+                <button class="btn-reset" id="reset-acaa">🔄 Resetear Filtros</button>
+            </div>
+
+            <div id="acaa-selection-summary" class="table-container" style="margin-top: -1rem; margin-bottom: 1.5rem; padding: 0.75rem 1rem; color: #cbd5e1; font-size: 0.9rem;">
+                <strong>Selección actual:</strong> UN: Todas | Año: Todos | Mes/Año Contrato: Todos | Corte: último mes cargado
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Año</th>
+                            <th>Contratos</th>
+                            <th>Contratos Vigentes (Corte)</th>
+                            <th>TKP Contrato</th>
+                            <th>TKP Transaccional</th>
+                            <th>TKP Pago</th>
+                            <th>Culminados</th>
+                            <th>Culminados Vigentes</th>
+                            <th>TKP del Contrato Culminado</th>
+                            <th>TKP del Pago Culminado</th>
+                            <th>TKP Contrato Culminado Vigente</th>
+                            <th>TKP Pago Culminado Vigente</th>
+                            <th>LTV Culminado Vigente</th>
+                        </tr>
+                    </thead>
+                    <tbody id="acaa-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="ltv-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>LTV de Contratos</h2>
+                <div class="header-hint">Contratos por fecha de alta, monto de cuota y estado.</div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Unidad de Negocio:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ltv-un-dropdown')">
+                            <span id="ltv-un-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ltv-un-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ltv-un-all" checked> Todas</label>
+                            <hr>
+                            <div id="ltv-un-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Año de Contrato:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ltv-anio-dropdown')">
+                            <span id="ltv-anio-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ltv-anio-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ltv-anio-all" checked> Todos</label>
+                            <hr>
+                            <div id="ltv-anio-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Mes/Año de Contrato:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ltv-fecha-dropdown')">
+                            <span id="ltv-fecha-count">Historia</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ltv-fecha-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ltv-fecha-all" checked> Historia</label>
+                            <hr>
+                            <div id="ltv-fecha-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Fecha de Gestión:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ltv-gestion-dropdown')">
+                            <span id="ltv-gestion-count">Historia</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ltv-gestion-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ltv-gestion-all" checked> Historia</label>
+                            <hr>
+                            <div id="ltv-gestion-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Vía de Cobro:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ltv-via-cobro-dropdown')">
+                            <span id="ltv-via-cobro-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ltv-via-cobro-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ltv-via-cobro-all" checked> Todas</label>
+                            <hr>
+                            <div id="ltv-via-cobro-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Supervisor:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ltv-super-dropdown')">
+                            <span id="ltv-super-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ltv-super-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ltv-super-all" checked> Todos</label>
+                            <hr>
+                            <div id="ltv-super-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn-apply" id="apply-ltv" style="margin-left: auto;">Aplicar Filtros</button>
+                <button class="btn-reset" id="reset-ltv">🔄 Resetear Filtros</button>
+            </div>
+
+            <div id="ltv-selection-summary" class="table-container" style="margin-top: -1rem; margin-bottom: 1.5rem; padding: 0.75rem 1rem; color: #cbd5e1; font-size: 0.9rem;">
+                <strong>Selección actual:</strong> UN: Todas | Año: Todos | Mes/Año: Historia | Gestión: Historia | Vía Cobro: Todas | Supervisor: Todos
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card platinum">
+                    <div class="stat-info"><span class="stat-label">TOTAL CONTRATOS</span>
+                        <h2 id="ltv-total-contracts">0</h2>
+                    </div>
+                </div>
+                <div class="stat-card gold">
+                    <div class="stat-info"><span class="stat-label">TOTAL A COBRAR TEORICO (CUOTA x ANTIGUEDAD)</span>
+                        <h2 id="ltv-total-cobrar">Gs. 0</h2>
+                    </div>
+                </div>
+                <div class="stat-card emerald">
+                    <div class="stat-info"><span class="stat-label">CONTRATOS EN MORA</span>
+                        <h2 id="ltv-mora">0</h2>
+                    </div>
+                </div>
+                <div class="stat-card jade">
+                    <div class="stat-info"><span class="stat-label">% ACTIVOS (VIGENTE 0-3)</span>
+                        <h2 id="ltv-vigente-rate">0.0%</h2>
+                    </div>
+                </div>
+                <div class="stat-card emerald">
+                    <div class="stat-info"><span class="stat-label">% MOROSOS (TRAMO >= 4)</span>
+                        <h2 id="ltv-moroso-rate">0.0%</h2>
+                    </div>
+                </div>
+                <div class="stat-card sapphire">
+                    <div class="stat-info"><span class="stat-label">TOTAL COBRADO (GESTIÓN)</span>
+                        <h2 id="ltv-total-cobrado">Gs. 0</h2>
+                    </div>
+                </div>
+                <div class="stat-card amber">
+                    <div class="stat-info"><span class="stat-label">LTV FINANCIERO</span>
+                        <h2 id="ltv-financial-value">0.00</h2>
+                        <small id="ltv-financial-detail" style="color:#94a3b8;">%Pago: 0.0% | Cobrado: Gs. 0 | Debería: Gs. 0 | Meses: 0.00</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mes Gestión</th>
+                            <th>Activos</th>
+                            <th>Vigente (0-3)</th>
+                            <th>Mora</th>
+                            <th>Culminados</th>
+                            <th>% Activos</th>
+                            <th>% Vigente (0-3)</th>
+                            <th>Monto a Cobrar</th>
+                            <th>Cobrado</th>
+                            <th>LTV</th>
+                            <th>% Mora</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ltv-status-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="ltv-age-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>LTV por Antigüedad</h2>
+                <div class="header-hint">Corte fijo por meses de vida del contrato (venta + N).</div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Unidad de Negocio:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ltva-un-dropdown')">
+                            <span id="ltva-un-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ltva-un-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ltva-un-all" checked> Todas</label>
+                            <hr>
+                            <div id="ltva-un-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Año de Contrato:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ltva-anio-dropdown')">
+                            <span id="ltva-anio-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ltva-anio-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ltva-anio-all" checked> Todos</label>
+                            <hr>
+                            <div id="ltva-anio-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Mes/Año de Contrato:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ltva-fecha-dropdown')">
+                            <span id="ltva-fecha-count">Historia</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ltva-fecha-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ltva-fecha-all" checked> Historia</label>
+                            <hr>
+                            <div id="ltva-fecha-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Vía de Cobro:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ltva-via-cobro-dropdown')">
+                            <span id="ltva-via-cobro-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ltva-via-cobro-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ltva-via-cobro-all" checked> Todas</label>
+                            <hr>
+                            <div id="ltva-via-cobro-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Supervisor:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ltva-super-dropdown')">
+                            <span id="ltva-super-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ltva-super-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ltva-super-all" checked> Todos</label>
+                            <hr>
+                            <div id="ltva-super-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Antigüedad (meses):</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ltva-antiguedad-dropdown')">
+                            <span id="ltva-antiguedad-count">12 meses</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ltva-antiguedad-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ltva-antiguedad-all"> Todos</label>
+                            <hr>
+                            <div id="ltva-antiguedad-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn-apply" id="apply-ltva" style="margin-left: auto;">Aplicar Filtros</button>
+                <button class="btn-reset" id="reset-ltva">🔄 Resetear Filtros</button>
+            </div>
+
+            <div id="ltva-selection-summary" class="table-container" style="margin-top: -1rem; margin-bottom: 1.5rem; padding: 0.75rem 1rem; color: #cbd5e1; font-size: 0.9rem;">
+                <strong>Selección actual:</strong> UN: Todas | Año: Todos | Mes/Año: Historia | Vía Cobro: Todas | Supervisor: Todos | Antigüedad: 12 meses
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card platinum">
+                    <div class="stat-info"><span class="stat-label">CONTRATOS EN CORTE N</span>
+                        <h2 id="ltva-total-contracts">0</h2>
+                    </div>
+                </div>
+                <div class="stat-card gold">
+                    <div class="stat-info"><span class="stat-label">DEBERÍA TOTAL (CUOTA x N)</span>
+                        <h2 id="ltva-total-deberia">Gs. 0</h2>
+                    </div>
+                </div>
+                <div class="stat-card sapphire">
+                    <div class="stat-info"><span class="stat-label">COBRADO ACUMULADO (HASTA CORTE)</span>
+                        <h2 id="ltva-total-cobrado">Gs. 0</h2>
+                    </div>
+                </div>
+                <div class="stat-card jade">
+                    <div class="stat-info"><span class="stat-label">% PAGO</span>
+                        <h2 id="ltva-pay-rate">0.0%</h2>
+                    </div>
+                </div>
+                <div class="stat-card amber">
+                    <div class="stat-info"><span class="stat-label">LTV (N MESES)</span>
+                        <h2 id="ltva-ltv-value">0.00</h2>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mes/Año Contrato</th>
+                            <th>Contratos</th>
+                            <th>Debería</th>
+                            <th>Cobrado</th>
+                            <th>% Pago</th>
+                            <th>LTV (N)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ltva-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="analisis-cobranza-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>Análisis de Cobranzas por Cohorte</h2>
+                <div class="header-hint">Cobro del corte seleccionado, segmentado por mes/año de venta.</div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Mes/Año de Cobro:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ac-cutoff-dropdown')">
+                            <span id="ac-cutoff-count">S/D</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ac-cutoff-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ac-cutoff-all"> Todos</label>
+                            <hr>
+                            <div id="ac-cutoff-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Unidad de Negocio:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ac-un-dropdown')">
+                            <span id="ac-un-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ac-un-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ac-un-all" checked> Todas</label>
+                            <hr>
+                            <div id="ac-un-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Vía de Cobro:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ac-via-cobro-dropdown')">
+                            <span id="ac-via-cobro-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ac-via-cobro-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ac-via-cobro-all" checked> Todas</label>
+                            <hr>
+                            <div id="ac-via-cobro-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Categoría:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ac-cat-dropdown')">
+                            <span id="ac-cat-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ac-cat-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ac-cat-all" checked> Todas</label>
+                            <hr>
+                            <div id="ac-cat-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Supervisor:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('ac-super-dropdown')">
+                            <span id="ac-super-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="ac-super-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="ac-super-all" checked> Todos</label>
+                            <hr>
+                            <div id="ac-super-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn-apply" id="apply-ac" style="margin-left: auto;">Aplicar Filtros</button>
+                <button class="btn-reset" id="reset-ac">🔄 Resetear Filtros</button>
+            </div>
+
+            <div id="ac-selection-summary" class="table-container" style="margin-top: -1rem; margin-bottom: 1.5rem; padding: 0.75rem 1rem; color: #cbd5e1; font-size: 0.9rem;">
+                <strong>Seleccion actual:</strong> Corte: S/D | UN: Todas | Via Cobro: Todas | Categoria: Todas | Supervisor: Todos
+            </div>
+
+            <div class="table-container" style="margin-top:-0.75rem; margin-bottom:1rem; padding:0.75rem 1rem; color:#cbd5e1; font-size:0.85rem;">
+                <strong>Cómo leer el honeycomb:</strong> el <strong>% grande</strong> es <strong>Cobertura de Monto</strong> (= Cobrado / Deberia) y <strong>ctr</strong> significa <strong>contratos</strong> (porcentaje de contratos que pagaron = Pagaron / Activos).
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card sapphire">
+                    <div class="stat-info"><span class="stat-label">TOTAL COBRADO (MONTO)</span>
+                        <h2 id="ac-total-cobrado-monto">Gs. 0</h2>
+                        <small id="ac-total-cobrado-cant" style="color:#94a3b8;">0 contratos pagaron</small>
+                    </div>
+                </div>
+                <div class="stat-card gold">
+                    <div class="stat-info"><span class="stat-label">DEBERIA COBRAR (MONTO)</span>
+                        <h2 id="ac-total-deberia-monto">Gs. 0</h2>
+                        <small id="ac-total-deberia-cant" style="color:#94a3b8;">0 contratos activos</small>
+                    </div>
+                </div>
+            </div>
+
+            <div id="ac-cards-grid" class="stats-grid"></div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mes/Año Contrato</th>
+                            <th>Activos</th>
+                            <th>Pagaron</th>
+                            <th>% Pago Contratos</th>
+                            <th>Debería</th>
+                            <th>Cobrado</th>
+                            <th>% Cobertura Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ac-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="culminados-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>Análisis de Culminados</h2>
+                <div class="header-hint">Performance final de contratos culminados por cohorte de venta.</div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Fecha de Corte:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('cu-cutoff-dropdown')">
+                            <span id="cu-cutoff-count">S/D</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="cu-cutoff-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="cu-cutoff-all"> Todos</label>
+                            <hr>
+                            <div id="cu-cutoff-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Unidad de Negocio:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('cu-un-dropdown')">
+                            <span id="cu-un-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="cu-un-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="cu-un-all" checked> Todas</label>
+                            <hr>
+                            <div id="cu-un-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Mes/Año de Venta:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('cu-fecha-dropdown')">
+                            <span id="cu-fecha-count">Historia</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="cu-fecha-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="cu-fecha-all" checked> Historia</label>
+                            <hr>
+                            <div id="cu-fecha-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Categoría Cobranzas:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('cu-cat-dropdown')">
+                            <span id="cu-cat-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="cu-cat-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="cu-cat-all" checked> Todas</label>
+                            <hr>
+                            <div id="cu-cat-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Vía de Cobro:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('cu-via-cobro-dropdown')">
+                            <span id="cu-via-cobro-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="cu-via-cobro-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="cu-via-cobro-all" checked> Todas</label>
+                            <hr>
+                            <div id="cu-via-cobro-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn-apply" id="apply-cu" style="margin-left: auto;">Aplicar Filtros</button>
+                <button class="btn-reset" id="reset-cu">🔄 Resetear Filtros</button>
+            </div>
+
+            <div id="cu-selection-summary" class="table-container" style="margin-top: -1rem; margin-bottom: 1.5rem; padding: 0.75rem 1rem; color: #cbd5e1; font-size: 0.9rem;">
+                <strong>Selección actual:</strong> Corte: S/D | UN: Todas | Mes/Año Venta: Historia | Categoría: Todas | Vía Cobro: Todas
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card platinum">
+                    <div class="stat-info"><span class="stat-label">CONTRATOS CULMINADOS (MES CORTE)</span>
+                        <h2 id="cu-total-contracts">0</h2>
+                    </div>
+                </div>
+                <div class="stat-card sapphire">
+                    <div class="stat-info"><span class="stat-label">COBRADO ACUMULADO</span>
+                        <h2 id="cu-total-cobrado">Gs. 0</h2>
+                    </div>
+                </div>
+                <div class="stat-card gold">
+                    <div class="stat-info"><span class="stat-label">TOTAL PROMEDIO COBRO MES (COHORTES)</span>
+                        <h2 id="cu-total-deberia">Gs. 0</h2>
+                    </div>
+                </div>
+                <div class="stat-card jade">
+                    <div class="stat-info"><span class="stat-label">% COBRANZA NORMAL</span>
+                        <h2 id="cu-pay-rate">0.0%</h2>
+                    </div>
+                </div>
+                <div class="stat-card amber">
+                    <div class="stat-info"><span class="stat-label">LTV PROMEDIO</span>
+                        <h2 id="cu-ltv">0.00</h2>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mes/Año Venta</th>
+                            <th>UN</th>
+                            <th>Categoría</th>
+                            <th>Culminados</th>
+                            <th>Cobrado</th>
+                            <th>Promedio Cobro Mes</th>
+                            <th>LTV</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cu-table-body"></tbody>
+                </table>
+            </div>
+
+            <div class="chart-container full-width" style="margin-top: 1rem;">
+                <h3>Culminados Vigentes vs Morosos por Fecha de Gestión</h3>
+                <div id="cu-gestion-status" style="margin-bottom: 0.75rem; color:#cbd5e1; font-size:0.9rem;">
+                    Sin datos de culminados por gestión.
+                </div>
+                <canvas id="cuByGestionChart"></canvas>
+            </div>
+        </div>
+
+        <div id="gestores-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>Gestión de Gestores (Productividad)</h2>
+                <div class="header-hint">Análisis de contratos asignados vs cobrados por gestor.</div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Gestor:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('gs-gestor-dropdown')">
+                            <span id="gs-gestor-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="gs-gestor-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="gs-gestor-all" checked> Todos</label>
+                            <hr>
+                            <div id="gs-gestor-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Unidad de Negocio:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('gs-un-dropdown')">
+                            <span id="gs-un-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="gs-un-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="gs-un-all" checked> Todas</label>
+                            <hr>
+                            <div id="gs-un-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Fecha Gestión:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('gs-fecha-dropdown')">
+                            <span id="gs-fecha-count">Historia</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="gs-fecha-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="gs-fecha-all" checked> Historia</label>
+                            <hr>
+                            <div id="gs-fecha-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn-apply" id="apply-gs" style="margin-left: auto;">Aplicar Filtros</button>
+                <button class="btn-reset" id="reset-gs">🔄 Resetear Filtros</button>
+            </div>
+
+            <div class="summary-cards">
+                <div class="card">
+                    <h3>Contratos Asignados</h3>
+                    <p id="gs-total-contracts">-</p>
+                </div>
+                <div class="card">
+                    <h3>Cobertura (Hits)</h3>
+                    <p id="gs-coverage-rate" class="highlight">-</p>
+                    <small id="gs-coverage-detail">0 de 0 contratos</small>
+                </div>
+                <div class="card">
+                    <h3>Eficacia (Monto)</h3>
+                    <p id="gs-recovery-rate" class="highlight">-</p>
+                </div>
+                <div class="card primary">
+                    <h3>Monto Asignado</h3>
+                    <p id="gs-total-debt">-</p>
+                </div>
+                <div class="card success">
+                    <h3>Monto Cobrado</h3>
+                    <p id="gs-total-paid">-</p>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3>Distribución de Tramos (Asignado)</h3>
+                    <canvas id="gsTramoChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Distribución por Vía (Asignado)</h3>
+                    <canvas id="gsViaChart"></canvas>
+                </div>
+                <div class="chart-container full-width">
+                    <h3>Cobertura por Gestor (Contratos Cobrados vs Asignados)</h3>
+                    <canvas id="gsCoverageChart"></canvas>
+                </div>
+                <div class="chart-container full-width">
+                    <h3>Monto Cobrado vs Asignado por Gestor</h3>
+                    <canvas id="gsEfficiencyChart"></canvas>
+                </div>
+            </div>
+        </div>
+        </div>
+
+    </main>
+
+    <script src="ui/notifications.js?v=20260210_sprint3_1"></script>
+    <script src="ui/navigation.js?v=20260210_sprint3_1"></script>
+    <script src="ui/filters.js?v=20260210_sprint3_1"></script>
+    <script src="data/normalize.js?v=20260210_sprint3_1"></script>
+    <script src="data/validator.js?v=20260210_sprint3_1"></script>
+    <script src="data/feature-flags.js?v=20260212_plan_1"></script>
+    <script src="data/api-client.js?v=20260212_plan_1"></script>
+    <script src="charts/renderers.js?v=20260210_sprint3_1"></script>
+    <script src="core/filter-state.js?v=20260212_plan_1"></script>
+    <script src="core/selection-summary.js?v=20260212_plan_1"></script>
+    <script src="core/chart-label-layout.js?v=20260212_plan_1"></script>
+    <script src="tabs/state.js?v=20260210_sprint3_1"></script>
+    <script src="tabs/analisisCartera.js?v=20260210_sprint3_1"></script>
+    <script src="tabs/analisisCartera-api.js?v=20260210_api_1"></script>
+    <script src="tabs/rendimiento.js?v=20260210_sprint3_1"></script>
+    <script src="tabs/rendimiento-api.js?v=20260210_api_1"></script>
+    <script src="tabs/acaMovimiento-api.js?v=20260212_plan_1"></script>
+    <script src="dashboard.js?v=20260212_plan_1"></script>
+</body>
+
+</html>
+
+
+
+

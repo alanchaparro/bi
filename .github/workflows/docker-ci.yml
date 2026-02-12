@@ -1,0 +1,51 @@
+name: Docker CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+      - 'feature/**'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  docker-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Docker Compose Version
+        run: docker compose version
+
+      - name: Build Image
+        run: docker compose build --no-cache
+
+      - name: Start Dashboard
+        run: docker compose up -d
+
+      - name: Compile Check
+        run: docker compose run --rm dashboard python -m py_compile start_dashboard.py
+
+      - name: Unit Tests
+        run: docker compose run --rm dashboard python -m unittest discover -s tests -p "test_*.py"
+
+      - name: Smoke - Health Endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS "http://localhost:5000/api/check-files" > /tmp/check-files.json
+          curl -fsS "http://localhost:5000/" > /tmp/index.html
+          grep -q "dashboard.js" /tmp/index.html
+
+      - name: Logs on Failure
+        if: failure()
+        run: docker compose logs dashboard --tail=400
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v

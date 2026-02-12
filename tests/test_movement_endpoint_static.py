@@ -1,0 +1,19 @@
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class MovementEndpointStaticTests(unittest.TestCase):
+    def test_backend_has_movement_endpoint(self):
+        content = (ROOT / 'start_dashboard.py').read_text(encoding='utf-8')
+        self.assertIn('/analytics/movement/moroso-trend', content)
+        self.assertIn('compute_movement_moroso_trend', content)
+
+    def test_api_client_has_movement_method(self):
+        content = (ROOT / 'data' / 'api-client.js').read_text(encoding='utf-8')
+        self.assertIn('getMovementMorosoTrend', content)
+
+
+if __name__ == '__main__':
+    unittest.main()
