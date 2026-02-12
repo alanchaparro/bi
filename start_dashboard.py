@@ -308,6 +308,13 @@ def validate_month_set(month_set):
     return True
 
 
+def validate_year_set(year_set):
+    for y in year_set:
+        if not re.match(r"^\d{4}$", str(y)):
+            return False
+    return True
+
+
 def analytics_cache_key(endpoint, params):
     parts = []
     for k in sorted(params.keys()):
@@ -1457,6 +1464,8 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             if parsed_path.path == '/analytics/performance/by-management-month':
                 if not validate_month_set(parse_filter_set(params, 'gestion_month')):
                     return self._send_error_json('INVALID_FILTER', 'gestion_month debe ser MM/YYYY')
+                if not validate_year_set(parse_filter_set(params, 'anio')):
+                    return self._send_error_json('INVALID_FILTER', 'anio debe ser YYYY')
                 key = analytics_cache_key(parsed_path.path, params)
                 if key in ANALYTICS_CACHE:
                     self._send_json(ANALYTICS_CACHE[key])
@@ -1473,6 +1482,8 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             if parsed_path.path == '/analytics/movement/moroso-trend':
                 if not validate_month_set(parse_filter_set(params, 'gestion_month')):
                     return self._send_error_json('INVALID_FILTER', 'gestion_month debe ser MM/YYYY')
+                if not validate_year_set(parse_filter_set(params, 'anio')):
+                    return self._send_error_json('INVALID_FILTER', 'anio debe ser YYYY')
                 key = analytics_cache_key(parsed_path.path, params)
                 if key in ANALYTICS_CACHE:
                     self._send_json(ANALYTICS_CACHE[key])
@@ -1493,6 +1504,8 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             if parsed_path.path == '/analytics/anuales/summary':
                 if not validate_month_set(parse_filter_set(params, 'contract_month')):
                     return self._send_error_json('INVALID_FILTER', 'contract_month debe ser MM/YYYY')
+                if not validate_year_set(parse_filter_set(params, 'anio')):
+                    return self._send_error_json('INVALID_FILTER', 'anio debe ser YYYY')
                 key = analytics_cache_key(parsed_path.path, params)
                 if key in ANALYTICS_CACHE:
                     self._send_json(ANALYTICS_CACHE[key])

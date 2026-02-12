@@ -2841,7 +2841,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     contractMonth: selMesContrato,
                     debug: debugMode ? '1' : ''
                 });
-                const apiRows = Array.isArray(payload && payload.rows) ? payload.rows : [];
+                const rawApiRows = Array.isArray(payload && payload.rows) ? payload.rows : [];
+                const apiRows = (tabModules.acaAnuales && typeof tabModules.acaAnuales.normalizeRows === 'function')
+                    ? tabModules.acaAnuales.normalizeRows(rawApiRows)
+                    : rawApiRows;
                 const apiCutoff = String((payload && payload.cutoff) || cutoffMonth || '');
                 if (summary) {
                     const unLabel = getSelectionLabel('acaa-un', selUn, 'Todas');

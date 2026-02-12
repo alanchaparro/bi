@@ -44,6 +44,29 @@
         }
     }
 
+    function normalizeRows(rawRows) {
+        const rows = Array.isArray(rawRows) ? rawRows : [];
+        const toNumber = (v) => {
+            const n = Number(v);
+            return Number.isFinite(n) ? n : 0;
+        };
+        return rows.map((r) => ({
+            year: String((r && r.year) || ''),
+            contracts: toNumber(r && r.contracts),
+            contractsVigentes: toNumber(r && r.contractsVigentes),
+            tkpContrato: toNumber(r && r.tkpContrato),
+            tkpTransaccional: toNumber(r && r.tkpTransaccional),
+            tkpPago: toNumber(r && r.tkpPago),
+            culminados: toNumber(r && r.culminados),
+            culminadosVigentes: toNumber(r && r.culminadosVigentes),
+            tkpContratoCulminado: toNumber(r && r.tkpContratoCulminado),
+            tkpPagoCulminado: toNumber(r && r.tkpPagoCulminado),
+            tkpContratoCulminadoVigente: toNumber(r && r.tkpContratoCulminadoVigente),
+            tkpPagoCulminadoVigente: toNumber(r && r.tkpPagoCulminadoVigente),
+            ltvCulminadoVigente: toNumber(r && r.ltvCulminadoVigente)
+        }));
+    }
+
     function computeLocalRows(ctx) {
         const carteraData = Array.isArray(ctx && ctx.carteraData) ? ctx.carteraData : [];
         const cobranzasData = Array.isArray(ctx && ctx.cobranzasData) ? ctx.cobranzasData : [];
@@ -342,6 +365,7 @@
         id: 'acaAnuales',
         buildSelectionSummary,
         renderTable,
+        normalizeRows,
         computeLocalRows
     };
 })(window);
