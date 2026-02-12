@@ -3901,51 +3901,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             destroyMovementChart();
             if (labels.length > 0) {
-                const movementBarLabelsPlugin = {
-                    id: 'acaMovementBarLabels',
-                    afterDatasetsDraw(chart) {
-                        const meta = chart.getDatasetMeta(0);
-                        if (!meta || meta.hidden || !meta.data) return;
-                        const ctx = chart.ctx;
-                        ctx.save();
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'middle';
-                        ctx.lineJoin = 'round';
-                        for (let i = 0; i < meta.data.length; i++) {
-                            const bar = meta.data[i];
-                            if (!bar) continue;
-                            const countVal = Number(values[i] || 0);
-                            const avgVal = Number(avgCuotaValues[i] || 0);
-                            const barHeight = Math.abs((bar.base || 0) - (bar.y || 0));
-                            if (barHeight < 18) continue;
-
-                            const countText = formatNumber(countVal);
-                            const avgText = `Prom: ${formatNumber(avgVal)}`;
-                            const countY = bar.y + 12;
-                            ctx.font = '700 13px Outfit';
-                            ctx.strokeStyle = 'rgba(2,6,23,0.75)';
-                            ctx.lineWidth = 3;
-                            ctx.strokeText(countText, bar.x, countY);
-                            ctx.fillStyle = '#f8fafc';
-                            ctx.fillText(countText, bar.x, countY);
-
-                            if (barHeight >= 64) {
-                                const yMid = bar.y + (bar.base - bar.y) / 2;
-                                ctx.save();
-                                ctx.translate(bar.x, yMid + 6);
-                                ctx.rotate(-Math.PI / 2);
-                                ctx.font = '600 12px Outfit';
-                                ctx.strokeStyle = 'rgba(2,6,23,0.75)';
-                                ctx.lineWidth = 3;
-                                ctx.strokeText(avgText, 0, 0);
-                                ctx.fillStyle = '#fde68a';
-                                ctx.fillText(avgText, 0, 0);
-                                ctx.restore();
-                            }
-                        }
-                        ctx.restore();
-                    }
-                };
+                const movementBarLabelsPlugin = (tabModules.acaMovimiento && typeof tabModules.acaMovimiento.createMovementBarLabelsPlugin === 'function')
+                    ? tabModules.acaMovimiento.createMovementBarLabelsPlugin({ values, avgCuotaValues, formatNumber })
+                    : { id: 'acaMovementBarLabels', afterDatasetsDraw() {} };
 
                 if (chartWrap) chartWrap.classList.remove('hidden');
                 const movementLineLabelsPlugin = {
@@ -4281,35 +4239,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const culMorData = movementVm ? movementVm.culMorData : [];
             const culUnknownData = movementVm ? movementVm.culUnknownData : [];
 
-            const culVigLabelsPlugin = {
-                id: 'acaCulVigBarLabels',
-                afterDatasetsDraw(chart) {
-                    const ctx = chart.ctx;
-                    ctx.save();
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    for (let di = 0; di < chart.data.datasets.length; di++) {
-                        const meta = chart.getDatasetMeta(di);
-                        if (!meta || meta.hidden || !meta.data) continue;
-                        const ds = chart.data.datasets[di];
-                        const vals = Array.isArray(ds.data) ? ds.data : [];
-                        for (let i = 0; i < meta.data.length; i++) {
-                            const bar = meta.data[i];
-                            const val = Number(vals[i] || 0);
-                            if (!bar || !Number.isFinite(val) || val <= 0) continue;
-                            const text = formatNumber(val);
-                            const y = bar.y + 12;
-                            ctx.font = '700 13px Outfit';
-                            ctx.strokeStyle = 'rgba(2,6,23,0.75)';
-                            ctx.lineWidth = 3;
-                            ctx.strokeText(text, bar.x, y);
-                            ctx.fillStyle = '#f8fafc';
-                            ctx.fillText(text, bar.x, y);
-                        }
-                    }
-                    ctx.restore();
-                }
-            };
+            const culVigLabelsPlugin = (tabModules.acaMovimiento && typeof tabModules.acaMovimiento.createCulVigLabelsPlugin === 'function')
+                ? tabModules.acaMovimiento.createCulVigLabelsPlugin(formatNumber)
+                : { id: 'acaCulVigBarLabels', afterDatasetsDraw() {} };
 
             destroyCulVigChart();
             if (culVigLabels.length > 0) {
