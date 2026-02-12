@@ -2583,6 +2583,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function mapMovementApiPayloadToUi(payload) {
+        if (tabModules.acaMovimiento && typeof tabModules.acaMovimiento.mapApiPayloadToUi === 'function') {
+            return tabModules.acaMovimiento.mapApiPayloadToUi(payload);
+        }
         const p = payload || {};
         const labels = Array.isArray(p.labels) ? p.labels : [];
         const transitions = Array.isArray(p.moroso_transition_count) ? p.moroso_transition_count : [];
@@ -2661,7 +2664,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             const fechaLabel = getSelectionLabel('acam-fecha', selFecha, 'Historia');
             const viaLabel = getSelectionLabel('acam-via-cobro', selViaCobro, 'Todas');
             const catLabel = getSelectionLabel('acam-cat', selCat, 'Todas');
-            summary.innerHTML = `<strong>Selección actual:</strong> UN: ${unLabel} | Año Gestión: ${anioLabel} | Gestión: ${fechaLabel} | Vía Cobro: ${viaLabel} | Categoría: ${catLabel}`;
+            if (tabModules.acaMovimiento && typeof tabModules.acaMovimiento.buildSelectionSummary === 'function') {
+                summary.innerHTML = tabModules.acaMovimiento.buildSelectionSummary({
+                    un: unLabel,
+                    anio: anioLabel,
+                    fecha: fechaLabel,
+                    via: viaLabel,
+                    cat: catLabel
+                });
+            } else {
+                summary.innerHTML = `<strong>Selección actual:</strong> UN: ${unLabel} | Año Gestión: ${anioLabel} | Gestión: ${fechaLabel} | Vía Cobro: ${viaLabel} | Categoría: ${catLabel}`;
+            }
         }
 
         let movement = null;
@@ -2712,15 +2725,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     function updateAcaAnualesUI(rows) {
         const tbody = document.getElementById('acaa-table-body');
         if (!tbody) return;
+        if (tabModules.acaAnuales && typeof tabModules.acaAnuales.renderTable === 'function') {
+            tabModules.acaAnuales.renderTable(tbody, rows, { number: formatNumber, pyg: formatPYG });
+            return;
+        }
         tbody.innerHTML = '';
-
         if (!rows || rows.length === 0) {
             const tr = document.createElement('tr');
             tr.innerHTML = `<td colspan="13" style="text-align:center; color:#94a3b8;">Sin datos para filtros seleccionados.</td>`;
             tbody.appendChild(tr);
             return;
         }
-
         for (let i = 0; i < rows.length; i++) {
             const r = rows[i];
             const tr = document.createElement('tr');
@@ -2792,7 +2807,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             const unLabel = getSelectionLabel('acaa-un', selUn, 'Todas');
             const anioLabel = getSelectionLabel('acaa-anio', selAnio, 'Todos');
             const mesContratoLabel = getSelectionLabel('acaa-mes-contrato', selMesContrato, 'Todos');
-            summary.innerHTML = `<strong>Selección actual:</strong> UN: ${unLabel} | Año: ${anioLabel} | Mes/Año Contrato: ${mesContratoLabel} | Corte: ${cutoffMonth}`;
+            if (tabModules.acaAnuales && typeof tabModules.acaAnuales.buildSelectionSummary === 'function') {
+                summary.innerHTML = tabModules.acaAnuales.buildSelectionSummary({
+                    un: unLabel,
+                    anio: anioLabel,
+                    mesContrato: mesContratoLabel,
+                    corte: cutoffMonth
+                });
+            } else {
+                summary.innerHTML = `<strong>Selección actual:</strong> UN: ${unLabel} | Año: ${anioLabel} | Mes/Año Contrato: ${mesContratoLabel} | Corte: ${cutoffMonth}`;
+            }
         }
 
         if (useAnalyticsApi && analyticsApi && useApiAnuales && tabModules.acaAnualesApi) {
@@ -2809,7 +2833,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const unLabel = getSelectionLabel('acaa-un', selUn, 'Todas');
                     const anioLabel = getSelectionLabel('acaa-anio', selAnio, 'Todos');
                     const mesContratoLabel = getSelectionLabel('acaa-mes-contrato', selMesContrato, 'Todos');
-                    summary.innerHTML = `<strong>Selección actual:</strong> UN: ${unLabel} | Año: ${anioLabel} | Mes/Año Contrato: ${mesContratoLabel} | Corte: ${apiCutoff}`;
+                    if (tabModules.acaAnuales && typeof tabModules.acaAnuales.buildSelectionSummary === 'function') {
+                        summary.innerHTML = tabModules.acaAnuales.buildSelectionSummary({
+                            un: unLabel,
+                            anio: anioLabel,
+                            mesContrato: mesContratoLabel,
+                            corte: apiCutoff
+                        });
+                    } else {
+                        summary.innerHTML = `<strong>Selección actual:</strong> UN: ${unLabel} | Año: ${anioLabel} | Mes/Año Contrato: ${mesContratoLabel} | Corte: ${apiCutoff}`;
+                    }
                 }
                 debugLog('acaAnuales.api', {
                     filters: {

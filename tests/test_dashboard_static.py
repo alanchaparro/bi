@@ -21,6 +21,8 @@ class DashboardStaticTests(unittest.TestCase):
         self.assertIn('data/feature-flags.js', html)
         self.assertIn('tabs/acaMovimiento-api.js', html)
         self.assertIn('tabs/acaAnuales-api.js', html)
+        self.assertIn('tabs/acaMovimiento.js', html)
+        self.assertIn('tabs/acaAnuales.js', html)
         self.assertIn('charts/renderers.js', html)
 
     def test_docs_contracts_exist(self):
