@@ -1038,7 +1038,14 @@ def compute_movement_moroso_trend(params):
         by_gestion_avg_cuota_total[gestion] += cuota_avg
         by_gestion_avg_cuota_count[gestion] += 1
 
-    labels = sorted(list(available_gestiones), key=month_to_serial)
+    label_set = set(available_gestiones)
+    # If specific management months are requested, keep them visible even with zero rows,
+    # so charts can render a continuous user-selected slice.
+    if sel_fecha:
+        for m in sel_fecha:
+            if re.match(r"^\d{2}/\d{4}$", str(m)):
+                label_set.add(str(m))
+    labels = sorted(list(label_set), key=month_to_serial)
     transitions = [by_gestion_counts.get(m, 0) for m in labels]
     vigente_base = [by_gestion_vigente_base.get(m, 0) for m in labels]
     pct = []

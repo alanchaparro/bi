@@ -54,6 +54,27 @@ class MovementBusinessRulesTests(unittest.TestCase):
         # 01/2025 has no transitions => 0; 02/2025 transitioned contract 2 => 200; 03/2025 contract 1 => 100.
         self.assertEqual(payload.get("avg_cuota"), [0.0, 200.0, 100.0])
 
+    def test_selected_month_gap_is_returned_with_zero_values(self):
+        app.ANALYTICS_INDEX["cartera_entries"] = [
+            {"c_id": "1", "fe": "01/2025", "un": "MEDICINA ESTETICA", "via_c": "COBRADOR", "sup": "SUP A", "tramo_num": 2},
+            {"c_id": "1", "fe": "03/2025", "un": "MEDICINA ESTETICA", "via_c": "COBRADOR", "sup": "SUP A", "tramo_num": 5},
+        ]
+        app.DATA_CACHE["rows"]["cartera"] = [
+            {"_cId": "1", "_feNorm": "01/2025", "monto_cuota": "100"},
+            {"_cId": "1", "_feNorm": "03/2025", "monto_cuota": "100"},
+        ]
+        payload = app.compute_movement_moroso_trend(
+            {
+                "un": ["MEDICINA ESTETICA"],
+                "anio": ["2025"],
+                "gestion_month": ["01/2025", "02/2025", "03/2025"],
+            }
+        )
+        self.assertEqual(payload.get("labels"), ["01/2025", "02/2025", "03/2025"])
+        self.assertEqual(payload.get("moroso_transition_count"), [0, 0, 1])
+        self.assertEqual(payload.get("vigente_base_count"), [1, 0, 0])
+        self.assertEqual(payload.get("moroso_transition_pct"), [0.0, 0.0, 0.0])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -25,3 +25,5 @@
 - [x] LTV culminado vigente: validado sobre dataset controlado en tests.
 - [x] Movimiento moroso: meses completos en serie y `% = transiciones / vigentes`.
 - [x] Movimiento moroso: `avg_cuota` solo de contratos que transicionan.
+- [x] Movimiento moroso: meses filtrados sin datos se devuelven con cero para mantener continuidad visual.
+- [x] Anuales: paridad de filtros combinados (`UN + anio + contract_month`) con referencia de negocio en `tkpPago`.
