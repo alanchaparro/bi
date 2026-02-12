@@ -15,6 +15,17 @@ For analytics requests it also includes cache signature key and debug mode flag.
 - Frontend: use `?debug=1` in URL to enable controlled console debug traces.
 - Backend: pass `debug=1` query param to include debug marker in logs.
 
+## Fallback-rate (frontend)
+- Local metric key: `analytics_api_metrics_v1` (stored in browser `localStorage`).
+- Tracks per tab:
+  - `api_success`
+  - `fallback_local`
+- Tabs instrumented:
+  - `analisisCartera`
+  - `acaMovimiento`
+  - `acaAnuales`
+  - `rendimiento`
+
 ## Recommended checks
 - `docker compose logs dashboard --tail=200`
 - Validate analytics endpoint latency under repeated requests (cache hit).

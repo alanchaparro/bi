@@ -235,6 +235,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.debug(`[debug:${event}]`, payload || {});
     }
 
+    function trackApiOutcome(tab, outcome) {
+        const key = 'analytics_api_metrics_v1';
+        try {
+            const raw = localStorage.getItem(key);
+            const metrics = raw ? JSON.parse(raw) : {};
+            if (!metrics[tab]) metrics[tab] = { api_success: 0, fallback_local: 0 };
+            if (outcome === 'api_success') metrics[tab].api_success += 1;
+            if (outcome === 'fallback_local') metrics[tab].fallback_local += 1;
+            localStorage.setItem(key, JSON.stringify(metrics));
+            debugLog('api.outcome', { tab, outcome, counters: metrics[tab] });
+        } catch (e) {
+            // Keep app behavior resilient if localStorage is not available.
+        }
+    }
+
     async function exportAnalisisCarteraPdf() {
         const section = document.getElementById('analisis-cartera-content');
         if (!section || section.classList.contains('hidden')) {
@@ -2672,7 +2687,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     },
                     months: Object.keys(movement.byGestion || {}).length
                 });
+                trackApiOutcome('acaMovimiento', 'api_success');
             } catch (e) {
+                trackApiOutcome('acaMovimiento', 'fallback_local');
                 showWarning(`API analitica no disponible para Movimiento de Cartera. Fallback local: ${e.message || e}`);
             }
         }
@@ -2803,9 +2820,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     rows: apiRows.length,
                     cutoff: apiCutoff
                 });
+                trackApiOutcome('acaAnuales', 'api_success');
                 updateAcaAnualesUI(apiRows);
                 return;
             } catch (e) {
+                trackApiOutcome('acaAnuales', 'fallback_local');
                 showWarning(`API analitica no disponible para Analisis Anuales. Fallback local: ${e.message || e}`);
             }
         }
@@ -3343,8 +3362,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     debito: summaryApi.debito || 0,
                     byGestionTramo: hasAnalytics ? byGestionTramoFromAnalytics : byGestionTramoFromRaw
                 });
+                trackApiOutcome('analisisCartera', 'api_success');
                 return;
             } catch (e) {
+                trackApiOutcome('analisisCartera', 'fallback_local');
                 showWarning(`API analitica no disponible para Analisis Cartera. Fallback local: ${e.message || e}`);
             }
         }
@@ -4780,8 +4801,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ? await apiAdapter.fetch(filters)
                     : await analyticsApi.getPerformanceByManagementMonth(filters);
                 updatePerformanceUI(apiStats);
+                trackApiOutcome('rendimiento', 'api_success');
                 return;
             } catch (e) {
+                trackApiOutcome('rendimiento', 'fallback_local');
                 showWarning(`API analitica no disponible para Rendimiento. Fallback local: ${e.message || e}`);
             }
         }

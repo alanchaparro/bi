@@ -22,5 +22,13 @@ docker-compile:
 
 docker-smoke:
 	docker compose run --rm dashboard python -c "import urllib.request,sys;u='http://dashboard:5000/api/check-files';print(urllib.request.urlopen(u,timeout=10).read().decode('utf-8')[:300])"
+	docker compose run --rm dashboard python -c "import urllib.request,urllib.error,json;u='http://dashboard:5000/analytics/movement/moroso-trend';\
+try: urllib.request.urlopen(u,timeout=10)\
+except urllib.error.HTTPError as e:\
+ body=e.read().decode('utf-8');print(body[:300]);obj=json.loads(body);assert obj.get('error_code')=='FILTER_REQUIRED'"
+	docker compose run --rm dashboard python -c "import urllib.request,urllib.error,json;u='http://dashboard:5000/analytics/anuales/summary';\
+try: urllib.request.urlopen(u,timeout=10)\
+except urllib.error.HTTPError as e:\
+ body=e.read().decode('utf-8');print(body[:300]);obj=json.loads(body);assert obj.get('error_code')=='FILTER_REQUIRED'"
 
 docker-validate: docker-up docker-compile docker-test docker-smoke
