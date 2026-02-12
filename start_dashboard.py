@@ -1431,6 +1431,8 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             if parsed_path.path == '/analytics/portfolio/summary':
                 if not validate_month_set(parse_filter_set(params, 'gestion_month')):
                     return self._send_error_json('INVALID_FILTER', 'gestion_month debe ser MM/YYYY')
+                if not validate_year_set(parse_filter_set(params, 'anio')):
+                    return self._send_error_json('INVALID_FILTER', 'anio debe ser YYYY')
                 key = analytics_cache_key(parsed_path.path, params)
                 if key in ANALYTICS_CACHE:
                     self._send_json(ANALYTICS_CACHE[key])
@@ -1447,6 +1449,8 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             if parsed_path.path == '/analytics/portfolio/trend':
                 if not validate_month_set(parse_filter_set(params, 'gestion_month')):
                     return self._send_error_json('INVALID_FILTER', 'gestion_month debe ser MM/YYYY')
+                if not validate_year_set(parse_filter_set(params, 'anio')):
+                    return self._send_error_json('INVALID_FILTER', 'anio debe ser YYYY')
                 key = analytics_cache_key(parsed_path.path, params)
                 if key in ANALYTICS_CACHE:
                     self._send_json(ANALYTICS_CACHE[key])
