@@ -40,7 +40,7 @@ python start_dashboard.py
 - `FF_LINE_LABELS_SMART_LAYOUT` (default `true`)
 - `FF_API_ANALISIS_CARTERA` (default `true`)
 - `FF_API_MOVIMIENTO` (default `true`)
-- `FF_API_ANUALES` (default `false`, reserved)
+- `FF_API_ANUALES` (default `true`)
 - `FF_API_RENDIMIENTO` (default `true`)
 
 ## Smoke Checklist

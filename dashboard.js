@@ -2778,6 +2778,38 @@ document.addEventListener('DOMContentLoaded', async () => {
             summary.innerHTML = `<strong>Selección actual:</strong> UN: ${unLabel} | Año: ${anioLabel} | Mes/Año Contrato: ${mesContratoLabel} | Corte: ${cutoffMonth}`;
         }
 
+        if (useAnalyticsApi && analyticsApi && useApiAnuales && tabModules.acaAnualesApi) {
+            try {
+                const payload = await tabModules.acaAnualesApi.fetch({
+                    un: selUn,
+                    anio: selAnio,
+                    contractMonth: selMesContrato,
+                    debug: debugMode ? '1' : ''
+                });
+                const apiRows = Array.isArray(payload && payload.rows) ? payload.rows : [];
+                const apiCutoff = String((payload && payload.cutoff) || cutoffMonth || '');
+                if (summary) {
+                    const unLabel = getSelectionLabel('acaa-un', selUn, 'Todas');
+                    const anioLabel = getSelectionLabel('acaa-anio', selAnio, 'Todos');
+                    const mesContratoLabel = getSelectionLabel('acaa-mes-contrato', selMesContrato, 'Todos');
+                    summary.innerHTML = `<strong>Selección actual:</strong> UN: ${unLabel} | Año: ${anioLabel} | Mes/Año Contrato: ${mesContratoLabel} | Corte: ${apiCutoff}`;
+                }
+                debugLog('acaAnuales.api', {
+                    filters: {
+                        un: [...selUn],
+                        anio: [...selAnio],
+                        contractMonth: [...selMesContrato]
+                    },
+                    rows: apiRows.length,
+                    cutoff: apiCutoff
+                });
+                updateAcaAnualesUI(apiRows);
+                return;
+            } catch (e) {
+                showWarning(`API analitica no disponible para Analisis Anuales. Fallback local: ${e.message || e}`);
+            }
+        }
+
         const byContractMonth = {};
         for (let i = 0; i < state.cartera.data.length; i++) {
             const r = state.cartera.data[i];

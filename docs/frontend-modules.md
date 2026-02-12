@@ -18,6 +18,7 @@
 - `tabs/analisisCartera-api.js`: API adapter for Analisis Cartera.
 - `tabs/rendimiento-api.js`: API adapter for Rendimiento.
 - `tabs/acaMovimiento-api.js`: API adapter for movimiento de cartera.
+- `tabs/acaAnuales-api.js`: API adapter for Analisis Anuales.
 
 ## Charts
 - `charts/renderers.js`: shared chart destruction helper.

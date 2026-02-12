@@ -71,9 +71,41 @@ Response:
 }
 ```
 
+## GET /analytics/anuales/summary
+Returns annual summary rows used by `Análisis Anuales`.
+
+Response:
+```json
+{
+  "rows": [
+    {
+      "year": "2025",
+      "contracts": 0,
+      "contractsVigentes": 0,
+      "tkpContrato": 0,
+      "tkpTransaccional": 0,
+      "tkpPago": 0,
+      "culminados": 0,
+      "culminadosVigentes": 0,
+      "tkpContratoCulminado": 0,
+      "tkpPagoCulminado": 0,
+      "tkpContratoCulminadoVigente": 0,
+      "tkpPagoCulminadoVigente": 0,
+      "ltvCulminadoVigente": 0
+    }
+  ],
+  "cutoff": "02/2026",
+  "meta": {
+    "source": "api",
+    "signature": "endpoint|stamp|filters"
+  }
+}
+```
+
 ## Filters (query params)
 - `un` (repeatable)
 - `gestion_month` (repeatable)
+- `contract_month` (repeatable, anuales endpoint)
 - `via_cobro` (repeatable)
 - `categoria` (repeatable)
 - `supervisor` (repeatable)

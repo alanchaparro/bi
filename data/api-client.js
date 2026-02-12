@@ -30,6 +30,7 @@
         addSetParams(params, 'supervisor', filters.supervisor);
         addSetParams(params, 'tramo', filters.tramo);
         addSetParams(params, 'via_pago', filters.viaPago);
+        addSetParams(params, 'contract_month', filters.contractMonth);
         addScalarParam(params, 'debug', filters.debug);
         return params.toString();
     }
@@ -50,6 +51,10 @@
         async getMovementMorosoTrend(filters) {
             const q = buildQuery(filters || {});
             return getJson(`/analytics/movement/moroso-trend${q ? `?${q}` : ''}`);
+        },
+        async getAnualesSummary(filters) {
+            const q = buildQuery(filters || {});
+            return getJson(`/analytics/anuales/summary${q ? `?${q}` : ''}`);
         }
     };
 

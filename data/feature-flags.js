@@ -28,7 +28,7 @@
         FF_LINE_LABELS_SMART_LAYOUT: readFlag('FF_LINE_LABELS_SMART_LAYOUT', true),
         FF_API_ANALISIS_CARTERA: readFlag('FF_API_ANALISIS_CARTERA', true),
         FF_API_MOVIMIENTO: readFlag('FF_API_MOVIMIENTO', true),
-        FF_API_ANUALES: readFlag('FF_API_ANUALES', false),
+        FF_API_ANUALES: readFlag('FF_API_ANUALES', true),
         FF_API_RENDIMIENTO: readFlag('FF_API_RENDIMIENTO', true),
         DEBUG_MODE: readDebugMode(),
     };

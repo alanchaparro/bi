@@ -92,6 +92,28 @@ def month_to_serial(mm_yyyy):
     return year * 12 + month
 
 
+def year_from_mm_yyyy(mm_yyyy):
+    m = re.match(r"^\d{1,2}/(\d{4})$", str(mm_yyyy or "").strip())
+    return m.group(1) if m else ""
+
+
+def months_between_date_and_month(date_yyyy_mm_dd, mm_yyyy):
+    date_val = str(date_yyyy_mm_dd or "").strip()
+    month_val = str(mm_yyyy or "").strip()
+    d = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", date_val)
+    m = re.match(r"^(\d{1,2})/(\d{4})$", month_val)
+    if not d or not m:
+        return 0
+    contract_year = int(d.group(1))
+    contract_month = int(d.group(2))
+    gestion_month = int(m.group(1))
+    gestion_year = int(m.group(2))
+    diff = (gestion_year - contract_year) * 12 + (gestion_month - contract_month)
+    if diff < 0:
+        diff = 0
+    return 1 if diff == 0 else diff
+
+
 def normalize_via_cobro(via):
     raw = str(via or "").strip().upper()
     return "COBRADOR" if raw in {"COBRADOR", "COB"} else "DEBITO"
@@ -682,7 +704,7 @@ def ensure_analytics_index():
 
 
 def has_any_filter(params):
-    keys = {"un", "anio", "gestion_month", "via_cobro", "categoria", "supervisor", "tramo", "via_pago"}
+    keys = {"un", "anio", "gestion_month", "contract_month", "via_cobro", "categoria", "supervisor", "tramo", "via_pago"}
     for k in keys:
         if parse_filter_set(params, k):
             return True
@@ -1049,6 +1071,328 @@ def compute_movement_moroso_trend(params):
     }
 
 
+def compute_anuales_summary(params):
+    refresh_data_cache()
+    cartera_rows = DATA_CACHE["rows"]["cartera"]
+    cobranzas_rows = DATA_CACHE["rows"]["cobranzas"]
+    contratos_rows = DATA_CACHE["rows"]["contratos"]
+    if not cartera_rows or not cobranzas_rows or not contratos_rows:
+        return {"rows": [], "cutoff": "", "meta": {"source": "api"}}
+
+    sel_un = parse_filter_set(params, "un")
+    sel_anio = parse_filter_set(params, "anio")
+    sel_contract_month = parse_filter_set(params, "contract_month")
+
+    all_gestion = sorted(
+        list({str(r.get("_feNorm", "")) for r in cartera_rows if re.match(r"^\d{2}/\d{4}$", str(r.get("_feNorm", "")))}),
+        key=month_to_serial
+    )
+    cutoff_month = all_gestion[-1] if all_gestion else ""
+    cutoff_serial = month_to_serial(cutoff_month)
+    if cutoff_serial <= 0:
+        return {"rows": [], "cutoff": "", "meta": {"source": "api"}}
+
+    by_contract_month = {}
+    for r in cartera_rows:
+        c_id = str(r.get("_cId", ""))
+        fe = str(r.get("_feNorm", ""))
+        if not c_id or not re.match(r"^\d{2}/\d{4}$", fe):
+            continue
+        key = f"{c_id}_{fe}"
+        cuota_raw = r.get("monto_cuota")
+        cuota_num = to_float(cuota_raw, 0.0)
+        if key not in by_contract_month:
+            by_contract_month[key] = {"c_id": c_id, "month": fe, "cuota_sum": cuota_num, "cuota_count": 1 if str(cuota_raw or "").strip() else 0}
+        else:
+            by_contract_month[key]["cuota_sum"] += cuota_num
+            if str(cuota_raw or "").strip():
+                by_contract_month[key]["cuota_count"] += 1
+
+    by_contract_timeline = defaultdict(list)
+    for item in by_contract_month.values():
+        count = item["cuota_count"]
+        item["cuota_avg"] = (item["cuota_sum"] / count) if count > 0 else 0.0
+        by_contract_timeline[item["c_id"]].append(item)
+    for c_id in by_contract_timeline.keys():
+        by_contract_timeline[c_id].sort(key=lambda x: month_to_serial(x["month"]))
+
+    def find_snapshot_at_or_before(c_id, month):
+        timeline = by_contract_timeline.get(c_id, [])
+        if not timeline:
+            return None
+        target = month_to_serial(month)
+        prev = None
+        for row in timeline:
+            serial = month_to_serial(row["month"])
+            if serial > target:
+                break
+            prev = row
+            if serial == target:
+                break
+        return prev
+
+    def find_snapshot_at_or_after(c_id, month):
+        timeline = by_contract_timeline.get(c_id, [])
+        if not timeline:
+            return None
+        target = month_to_serial(month)
+        for row in timeline:
+            if month_to_serial(row["month"]) >= target:
+                return row
+        return None
+
+    payment_by_contract_month = defaultdict(dict)
+    for r in cobranzas_rows:
+        c_id = str(r.get("_cId", ""))
+        month = str(r.get("_feNorm", ""))
+        if not c_id or not re.match(r"^\d{2}/\d{4}$", month):
+            continue
+        monto = to_float(r.get("monto"), 0.0)
+        serial = month_to_serial(month)
+        if serial <= 0:
+            continue
+        bucket = payment_by_contract_month[c_id].setdefault(serial, {"amount": 0.0, "tx": 0})
+        bucket["amount"] += monto
+        bucket["tx"] += 1
+
+    payment_cum_by_contract = {}
+    for c_id, month_map in payment_by_contract_month.items():
+        serials = sorted(list(month_map.keys()))
+        cum_amounts = []
+        cum_txs = []
+        amt = 0.0
+        txs = 0
+        for serial in serials:
+            amt += month_map[serial].get("amount", 0.0)
+            txs += month_map[serial].get("tx", 0)
+            cum_amounts.append(amt)
+            cum_txs.append(txs)
+        payment_cum_by_contract[c_id] = {"serials": serials, "cum_amounts": cum_amounts, "cum_txs": cum_txs}
+
+    def get_cum_paid_up_to(c_id, max_serial):
+        entry = payment_cum_by_contract.get(c_id)
+        if not entry or not entry["serials"]:
+            return {"amount": 0.0, "tx": 0}
+        idx = -1
+        for i, serial in enumerate(entry["serials"]):
+            if serial <= max_serial:
+                idx = i
+            else:
+                break
+        if idx < 0:
+            return {"amount": 0.0, "tx": 0}
+        return {"amount": entry["cum_amounts"][idx], "tx": entry["cum_txs"][idx]}
+
+    cutoff_year = int(year_from_mm_yyyy(cutoff_month)) if year_from_mm_yyyy(cutoff_month) else None
+
+    def year_from_serial(serial):
+        if serial <= 0:
+            return None
+        return (serial - 1) // 12
+
+    def is_payment_year_allowed(serial):
+        if cutoff_year is None:
+            return True
+        y = year_from_serial(serial)
+        return (y is not None) and (y <= cutoff_year)
+
+    contract_start_serial_by_id = {}
+    for c in contratos_rows:
+        c_id = str(c.get("_cId", ""))
+        month = str(c.get("_contractMonth", ""))
+        serial = month_to_serial(month)
+        if not c_id or serial <= 0:
+            continue
+        prev = contract_start_serial_by_id.get(c_id)
+        if prev is None or serial < prev:
+            contract_start_serial_by_id[c_id] = serial
+    for c_id, timeline in by_contract_timeline.items():
+        if not timeline:
+            continue
+        first_serial = month_to_serial(timeline[0]["month"])
+        prev = contract_start_serial_by_id.get(c_id)
+        if prev is None or first_serial < prev:
+            contract_start_serial_by_id[c_id] = first_serial
+
+    def months_active_between(start_serial, end_serial):
+        if start_serial is None or end_serial is None or end_serial < start_serial:
+            return 0
+        diff = end_serial - start_serial
+        return 1 if diff == 0 else diff
+
+    cartera_by_contract_month = defaultdict(dict)
+    for r in cartera_rows:
+        c_id = str(r.get("_cId", ""))
+        mm = str(r.get("_feNorm", ""))
+        if c_id and mm:
+            cartera_by_contract_month[c_id][mm] = r
+
+    contracts_by_sale_year = defaultdict(list)
+    for c in contratos_rows:
+        c_id = str(c.get("_cId", ""))
+        un = str(c.get("UN", "S/D"))
+        sale_month = str(c.get("_contractMonth", ""))
+        sale_year = str(c.get("_contractYear", ""))
+        if not c_id or not re.match(r"^\d{4}$", sale_year) or not re.match(r"^\d{2}/\d{4}$", sale_month):
+            continue
+        if sel_un and un not in sel_un:
+            continue
+        if sel_anio and sale_year not in sel_anio:
+            continue
+        if sel_contract_month and sale_month not in sel_contract_month:
+            continue
+        contracts_by_sale_year[sale_year].append(c)
+
+    years = sorted(list(contracts_by_sale_year.keys()), key=lambda x: int(x))
+    rows = []
+    cob_by_contract_month = DATA_CACHE["aggr"].get("cob_by_contract_month", {})
+
+    for year in years:
+        year_contracts = contracts_by_sale_year.get(year, [])
+        contract_ids = set()
+        contract_ids_vigentes = set()
+        cuota_total = 0.0
+
+        for c in year_contracts:
+            c_id = str(c.get("_cId", ""))
+            if not c_id or c_id in contract_ids:
+                continue
+            snap = find_snapshot_at_or_before(c_id, cutoff_month) or find_snapshot_at_or_after(c_id, cutoff_month)
+            contract_ids.add(c_id)
+            cutoff_row = cartera_by_contract_month.get(c_id, {}).get(cutoff_month)
+            tramo_cutoff = to_int((cutoff_row or {}).get("tramo"), -999)
+            if tramo_cutoff <= 3:
+                contract_ids_vigentes.add(c_id)
+            cuota_contrato = to_float(c.get("_montoCuota") or c.get("monto_cuota") or c.get("amount"), 0.0)
+            if cuota_contrato <= 0:
+                cuota_contrato = to_float((snap or {}).get("cuota_avg"), 0.0)
+            cuota_total += cuota_contrato
+
+        contracts = len(contract_ids)
+        contracts_vigentes = len(contract_ids_vigentes)
+        tkp_contrato = (cuota_total / contracts) if contracts > 0 else 0.0
+
+        paid_to_cutoff_total = 0.0
+        tx_to_cutoff_total = 0
+        paid_by_contract_month_total = 0.0
+        paid_by_contract_month_count = 0
+
+        for c_id in contract_ids:
+            paid = get_cum_paid_up_to(c_id, cutoff_serial)
+            paid_to_cutoff_total += paid["amount"]
+            tx_to_cutoff_total += paid["tx"]
+            by_month = payment_by_contract_month.get(c_id, {})
+            for serial, bucket in by_month.items():
+                if serial <= 0 or (not is_payment_year_allowed(serial)):
+                    continue
+                paid_by_contract_month_total += bucket.get("amount", 0.0)
+                paid_by_contract_month_count += 1
+
+        tkp_transaccional = (paid_to_cutoff_total / tx_to_cutoff_total) if tx_to_cutoff_total > 0 else 0.0
+        tkp_pago = (paid_by_contract_month_total / paid_by_contract_month_count) if paid_by_contract_month_count > 0 else 0.0
+
+        culminados = 0
+        culminados_vigentes = 0
+        cuota_cul_total = 0.0
+        cuota_cul_total_vigente = 0.0
+        paid_by_contract_month_cul_total = 0.0
+        paid_by_contract_month_cul_count = 0
+        paid_by_contract_month_cul_total_vigente = 0.0
+        paid_by_contract_month_cul_count_vigente = 0
+        total_cobrado_cul_vigente = 0.0
+        total_deberia_cul_vigente = 0.0
+        months_weighted_numerator_cul_vigente = 0.0
+
+        for c in year_contracts:
+            c_id = str(c.get("_cId", ""))
+            culm_month = str(c.get("_culminacionMonth", ""))
+            culm_serial = month_to_serial(culm_month)
+            if not c_id or culm_serial <= 0 or culm_serial > cutoff_serial:
+                continue
+            snap = find_snapshot_at_or_before(c_id, culm_month) or find_snapshot_at_or_after(c_id, culm_month)
+            culminados += 1
+            culm_row = cartera_by_contract_month.get(c_id, {}).get(culm_month)
+            tramo_culm = to_int((culm_row or {}).get("tramo"), -999)
+            es_vigente = tramo_culm <= 3
+            if es_vigente:
+                culminados_vigentes += 1
+            cuota_cul = to_float((snap or {}).get("cuota_avg"), 0.0)
+            if cuota_cul <= 0:
+                cuota_cul = to_float(c.get("_montoCuota") or c.get("monto_cuota") or c.get("amount"), 0.0)
+            cuota_cul_total += cuota_cul
+            if es_vigente:
+                cuota_cul_total_vigente += cuota_cul
+            by_month = payment_by_contract_month.get(c_id, {})
+            for serial, bucket in by_month.items():
+                if serial <= 0 or serial > culm_serial or (not is_payment_year_allowed(serial)):
+                    continue
+                amount = bucket.get("amount", 0.0)
+                paid_by_contract_month_cul_total += amount
+                paid_by_contract_month_cul_count += 1
+                if es_vigente:
+                    paid_by_contract_month_cul_total_vigente += amount
+                    paid_by_contract_month_cul_count_vigente += 1
+
+            if es_vigente:
+                sale_month = str(c.get("_contractMonth") or month_from_date(c.get("date")))
+                months = months_between_date_and_month(str(c.get("date", "")), culm_month)
+                if months > 0 and sale_month and re.match(r"^\d{2}/\d{4}$", culm_month):
+                    deberia = cuota_cul * months
+                    contract_month_map = cob_by_contract_month.get(c_id, {})
+                    cobrado = 0.0
+                    start_serial = month_to_serial(sale_month)
+                    end_serial = month_to_serial(culm_month)
+                    for mm, amount in contract_month_map.items():
+                        s = month_to_serial(mm)
+                        if s >= start_serial and s <= end_serial:
+                            cobrado += to_float(amount, 0.0)
+                    total_cobrado_cul_vigente += cobrado
+                    total_deberia_cul_vigente += deberia
+                    months_weighted_numerator_cul_vigente += (months * deberia)
+
+        tkp_contrato_culminado = (cuota_cul_total / culminados) if culminados > 0 else 0.0
+        tkp_pago_culminado = (paid_by_contract_month_cul_total / paid_by_contract_month_cul_count) if paid_by_contract_month_cul_count > 0 else 0.0
+        tkp_contrato_culminado_vigente = (cuota_cul_total_vigente / culminados_vigentes) if culminados_vigentes > 0 else 0.0
+        tkp_pago_culminado_vigente = (
+            paid_by_contract_month_cul_total_vigente / paid_by_contract_month_cul_count_vigente
+        ) if paid_by_contract_month_cul_count_vigente > 0 else 0.0
+        ltv_culminado_vigente = (
+            (total_cobrado_cul_vigente / total_deberia_cul_vigente) *
+            (months_weighted_numerator_cul_vigente / total_deberia_cul_vigente)
+        ) if total_deberia_cul_vigente > 0 else 0.0
+
+        rows.append({
+            "year": year,
+            "contracts": contracts,
+            "contractsVigentes": contracts_vigentes,
+            "tkpContrato": tkp_contrato,
+            "tkpTransaccional": tkp_transaccional,
+            "tkpPago": tkp_pago,
+            "culminados": culminados,
+            "culminadosVigentes": culminados_vigentes,
+            "tkpContratoCulminado": tkp_contrato_culminado,
+            "tkpPagoCulminado": tkp_pago_culminado,
+            "tkpContratoCulminadoVigente": tkp_contrato_culminado_vigente,
+            "tkpPagoCulminadoVigente": tkp_pago_culminado_vigente,
+            "ltvCulminadoVigente": ltv_culminado_vigente,
+        })
+
+    rows.sort(key=lambda x: int(x["year"]))
+    return {
+        "rows": rows,
+        "cutoff": cutoff_month,
+        "meta": {
+            "source": "api",
+            "signature": analytics_cache_key("/analytics/anuales/summary", params),
+            "filters": {
+                "un": sorted(list(sel_un)),
+                "anio": sorted(list(sel_anio)),
+                "contract_month": sorted(list(sel_contract_month)),
+            }
+        }
+    }
+
+
 class DashboardHandler(http.server.SimpleHTTPRequestHandler):
     def _send_json(self, payload, code=200):
         self.send_response(code)
@@ -1133,6 +1477,25 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     ms=round((time.time()-start)*1000, 2),
                     months=len(payload.get("labels", [])),
                     transitions=sum(payload.get("moroso_transition_count", [])),
+                    key=key,
+                    debug=debug_mode,
+                )
+                self._send_json(payload)
+                return
+
+            if parsed_path.path == '/analytics/anuales/summary':
+                if not validate_month_set(parse_filter_set(params, 'contract_month')):
+                    return self._send_error_json('INVALID_FILTER', 'contract_month debe ser MM/YYYY')
+                key = analytics_cache_key(parsed_path.path, params)
+                if key in ANALYTICS_CACHE:
+                    self._send_json(ANALYTICS_CACHE[key])
+                    return
+                payload = compute_anuales_summary(params)
+                ANALYTICS_CACHE[key] = payload
+                log_event(
+                    'analytics_anuales_summary',
+                    ms=round((time.time()-start)*1000, 2),
+                    years=len(payload.get("rows", [])),
                     key=key,
                     debug=debug_mode,
                 )

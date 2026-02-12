@@ -5,6 +5,7 @@
 - [ ] `/analytics/portfolio/trend` returns grouped months.
 - [ ] `/analytics/performance/by-management-month` returns performance payload.
 - [ ] `/analytics/movement/moroso-trend` returns labels, transitions, vigente base and percent.
+- [ ] `/analytics/anuales/summary` returns yearly rows + cutoff.
 - [ ] Invalid `gestion_month` returns `INVALID_FILTER`.
 
 ## Frontend

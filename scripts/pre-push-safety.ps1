@@ -16,6 +16,7 @@ $tracked = git ls-files
 $violations = @()
 
 foreach ($file in $tracked) {
+    if ($file -ieq ".env.example") { continue }
     foreach ($pattern in $blockedPatterns) {
         if ($file -match $pattern) {
             $violations += $file
