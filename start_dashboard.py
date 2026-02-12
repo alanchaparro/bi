@@ -315,6 +315,34 @@ def validate_year_set(year_set):
     return True
 
 
+def infer_cutoff_month(month_values):
+    valid = [str(m) for m in month_values if re.match(r"^\d{2}/\d{4}$", str(m))]
+    if not valid:
+        return ""
+    valid.sort(key=month_to_serial)
+    return valid[-1]
+
+
+def build_response_meta(endpoint, params, cutoff=""):
+    filter_keys = ["un", "anio", "gestion_month", "contract_month", "via_cobro", "via_pago", "categoria", "supervisor", "tramo"]
+    filters = {}
+    for key in filter_keys:
+        values = sorted(list(parse_filter_set(params, key)))
+        if values:
+            filters[key] = values
+    return {
+        "source": "api",
+        "signature": analytics_cache_key(endpoint, params),
+        "cutoff": cutoff,
+        "filters": filters,
+    }
+
+
+def filter_count_snapshot(params):
+    keys = ["un", "anio", "gestion_month", "contract_month", "via_cobro", "via_pago", "categoria", "supervisor", "tramo"]
+    return {k: len(parse_filter_set(params, k)) for k in keys}
+
+
 def analytics_cache_key(endpoint, params):
     parts = []
     for k in sorted(params.keys()):
@@ -1438,12 +1466,22 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     self._send_json(ANALYTICS_CACHE[key])
                     return
                 if use_monthly:
-                    totals, _ = compute_portfolio_summary_and_trend_from_monthly(params)
+                    totals, by_gestion = compute_portfolio_summary_and_trend_from_monthly(params)
                 else:
-                    totals, _ = compute_portfolio_summary_and_trend(params)
-                ANALYTICS_CACHE[key] = totals
-                log_event('analytics_summary', ms=round((time.time()-start)*1000, 2), key=key, debug=debug_mode)
-                self._send_json(totals)
+                    totals, by_gestion = compute_portfolio_summary_and_trend(params)
+                payload = dict(totals)
+                payload["meta"] = build_response_meta(parsed_path.path, params, infer_cutoff_month(by_gestion.keys()))
+                ANALYTICS_CACHE[key] = payload
+                log_event(
+                    'analytics_summary',
+                    ms=round((time.time()-start)*1000, 2),
+                    key=key,
+                    debug=debug_mode,
+                    filters=filter_count_snapshot(params),
+                    months=len(by_gestion),
+                    total_contracts=payload.get("total", 0),
+                )
+                self._send_json(payload)
                 return
 
             if parsed_path.path == '/analytics/portfolio/trend':
@@ -1459,9 +1497,19 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     _, by_gestion = compute_portfolio_summary_and_trend_from_monthly(params)
                 else:
                     _, by_gestion = compute_portfolio_summary_and_trend(params)
-                payload = {"byGestion": by_gestion}
+                payload = {
+                    "byGestion": by_gestion,
+                    "meta": build_response_meta(parsed_path.path, params, infer_cutoff_month(by_gestion.keys()))
+                }
                 ANALYTICS_CACHE[key] = payload
-                log_event('analytics_trend', ms=round((time.time()-start)*1000, 2), months=len(by_gestion), key=key, debug=debug_mode)
+                log_event(
+                    'analytics_trend',
+                    ms=round((time.time()-start)*1000, 2),
+                    months=len(by_gestion),
+                    key=key,
+                    debug=debug_mode,
+                    filters=filter_count_snapshot(params),
+                )
                 self._send_json(payload)
                 return
 
@@ -1478,9 +1526,19 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     stats = compute_performance_from_monthly(params)
                 else:
                     stats = compute_performance(params)
-                ANALYTICS_CACHE[key] = stats
-                log_event('analytics_performance', ms=round((time.time()-start)*1000, 2), contracts=stats.get('totalContracts', 0), key=key, debug=debug_mode)
-                self._send_json(stats)
+                payload = dict(stats)
+                payload["meta"] = build_response_meta(parsed_path.path, params, infer_cutoff_month((stats.get("trendStats") or {}).keys()))
+                ANALYTICS_CACHE[key] = payload
+                log_event(
+                    'analytics_performance',
+                    ms=round((time.time()-start)*1000, 2),
+                    contracts=payload.get('totalContracts', 0),
+                    key=key,
+                    debug=debug_mode,
+                    filters=filter_count_snapshot(params),
+                    months=len((payload.get("trendStats") or {}).keys()),
+                )
+                self._send_json(payload)
                 return
 
             if parsed_path.path == '/analytics/movement/moroso-trend':
@@ -1493,6 +1551,10 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     self._send_json(ANALYTICS_CACHE[key])
                     return
                 payload = compute_movement_moroso_trend(params)
+                movement_cutoff = infer_cutoff_month(payload.get("labels", []))
+                payload_meta = payload.get("meta", {}) if isinstance(payload.get("meta", {}), dict) else {}
+                payload_meta["cutoff"] = movement_cutoff
+                payload["meta"] = payload_meta
                 ANALYTICS_CACHE[key] = payload
                 log_event(
                     'analytics_movement_moroso',
@@ -1501,6 +1563,8 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     transitions=sum(payload.get("moroso_transition_count", [])),
                     key=key,
                     debug=debug_mode,
+                    filters=filter_count_snapshot(params),
+                    cutoff=movement_cutoff,
                 )
                 self._send_json(payload)
                 return
@@ -1515,6 +1579,9 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     self._send_json(ANALYTICS_CACHE[key])
                     return
                 payload = compute_anuales_summary(params)
+                payload_meta = payload.get("meta", {}) if isinstance(payload.get("meta", {}), dict) else {}
+                payload_meta["cutoff"] = payload.get("cutoff", "")
+                payload["meta"] = payload_meta
                 ANALYTICS_CACHE[key] = payload
                 log_event(
                     'analytics_anuales_summary',
@@ -1522,6 +1589,8 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     years=len(payload.get("rows", [])),
                     key=key,
                     debug=debug_mode,
+                    filters=filter_count_snapshot(params),
+                    cutoff=payload.get("cutoff", ""),
                 )
                 self._send_json(payload)
                 return

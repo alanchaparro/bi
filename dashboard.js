@@ -4166,6 +4166,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const apiStats = (apiAdapter && apiAdapter.fetch)
                     ? await apiAdapter.fetch(filters)
                     : await analyticsApi.getPerformanceByManagementMonth(filters);
+                debugLog('rendimiento.api', {
+                    filters: {
+                        un: [...selUn],
+                        tramo: [...selTramo],
+                        gestion: [...selFecha],
+                        viaCobro: [...selViaCobroInt],
+                        viaPago: [...selViaPagoReal],
+                        categoria: [...selCat],
+                        supervisor: [...selSuper]
+                    },
+                    source: (apiStats && apiStats.meta && apiStats.meta.source) || 'api',
+                    cutoff: (apiStats && apiStats.meta && apiStats.meta.cutoff) || '',
+                    signature: (apiStats && apiStats.meta && apiStats.meta.signature) || '',
+                    contracts: Number((apiStats && apiStats.totalContracts) || 0),
+                    months: Object.keys((apiStats && apiStats.trendStats) || {}).length
+                });
                 updatePerformanceUI(apiStats);
                 trackApiOutcome('rendimiento', 'api_success');
                 return;
@@ -4250,6 +4266,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
 
+            debugLog('rendimiento.local.analytics', {
+                filters: {
+                    un: [...selUn],
+                    tramo: [...selTramo],
+                    gestion: [...selFecha],
+                    viaCobro: [...selViaCobroInt],
+                    viaPago: [...selViaPagoReal],
+                    categoria: [...selCat],
+                    supervisor: [...selSuper]
+                },
+                contracts: Number(stats.totalContracts || 0),
+                months: Object.keys(stats.trendStats || {}).length
+            });
             updatePerformanceUI(stats);
             return;
         }
@@ -4381,7 +4410,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         console.log(`Rendimiento Diagnostic: UNIQUE Portfolio Keys: ${pLen}, Total Debt: ${stats.totalDebt}, Total Paid: ${stats.totalPaid}`);
-
+        debugLog('rendimiento.local.raw', {
+            filters: {
+                un: [...selUn],
+                tramo: [...selTramo],
+                gestion: [...selFecha],
+                viaCobro: [...selViaCobroInt],
+                viaPago: [...selViaPagoReal],
+                categoria: [...selCat],
+                supervisor: [...selSuper]
+            },
+            contracts: Number(stats.totalContracts || 0),
+            months: Object.keys(stats.trendStats || {}).length,
+            matches,
+            nonMatches
+        });
         updatePerformanceUI(stats);
     }
 
