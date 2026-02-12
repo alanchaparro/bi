@@ -18,3 +18,8 @@
 ## Data quality
 - [ ] Missing required columns trigger fatal validation.
 - [ ] Invalid dates/amounts trigger warnings.
+
+## Automated business rules (implemented)
+- [x] TKP pago en anuales: promedio por contrato-mes con pago.
+- [x] Culminados vigentes: cuenta por tramo en mes de culminacion hasta corte.
+- [x] LTV culminado vigente: validado sobre dataset controlado en tests.
