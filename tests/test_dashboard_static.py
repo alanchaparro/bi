@@ -42,6 +42,7 @@ class DashboardStaticTests(unittest.TestCase):
         content = (ROOT / 'tabs' / 'rendimiento.js').read_text(encoding='utf-8')
         self.assertIn('prepareViewModel', content)
         self.assertIn('getHeaderValues', content)
+        self.assertIn('renderPerformanceUI', content)
 
     def test_docs_contracts_exist(self):
         expected = [

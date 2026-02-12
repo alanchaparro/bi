@@ -4705,177 +4705,38 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function updatePerformanceUI(stats) {
-        const { totalDebt, totalPaid, totalContracts, totalContractsPaid, tramoStats, unStats, viaCStats, gestorStats, matrixStats, trendStats } = stats;
-        const headerValues = (tabModules.rendimiento && typeof tabModules.rendimiento.getHeaderValues === 'function')
+        if (tabModules.rendimiento && typeof tabModules.rendimiento.renderPerformanceUI === 'function') {
+            const delegated = tabModules.rendimiento.renderPerformanceUI({
+                stats,
+                renderChart,
+                formatPYG,
+                monthToSerial,
+                formatNumber,
+                showPerfChartLabels,
+                state,
+                Chart
+            });
+            if (delegated) return;
+        }
+
+        const fallbackHeader = (tabModules.rendimiento && typeof tabModules.rendimiento.getHeaderValues === 'function')
             ? tabModules.rendimiento.getHeaderValues(stats)
             : {
-                totalDebt: Number(totalDebt || 0),
-                totalPaid: Number(totalPaid || 0),
-                totalContracts: Number(totalContracts || 0),
-                totalContractsPaid: Number(totalContractsPaid || 0),
-                globalRate: Number(totalDebt || 0) > 0 ? (Number(totalPaid || 0) / Number(totalDebt || 0)) : 0,
-                globalCountRate: Number(totalContracts || 0) > 0 ? (Number(totalContractsPaid || 0) / Number(totalContracts || 0)) : 0
+                totalDebt: Number(stats.totalDebt || 0),
+                totalPaid: Number(stats.totalPaid || 0),
+                totalContracts: Number(stats.totalContracts || 0),
+                totalContractsPaid: Number(stats.totalContractsPaid || 0),
+                globalRate: Number(stats.totalDebt || 0) > 0 ? (Number(stats.totalPaid || 0) / Number(stats.totalDebt || 0)) : 0
             };
-
-        document.getElementById('perf-recovery-rate').textContent = (headerValues.globalRate * 100).toFixed(1) + '%';
-        document.getElementById('perf-total-contracts').textContent = headerValues.totalContracts.toLocaleString();
-        document.getElementById('perf-total-debt').textContent = formatPYG(headerValues.totalDebt);
-        document.getElementById('perf-total-contracts-paid').textContent = headerValues.totalContractsPaid.toLocaleString();
-        document.getElementById('perf-total-paid').textContent = formatPYG(headerValues.totalPaid);
-
-        const drawPerfPercentBubble = (ctx, text, x, y) => {
-            const padX = 6;
-            const padY = 3;
-            const radius = 6;
-            const font = '700 12px Outfit';
-            ctx.save();
-            ctx.font = font;
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'middle';
-            const textW = ctx.measureText(text).width;
-            const boxW = textW + padX * 2;
-            const boxH = 12 + padY * 2;
-            const left = x;
-            const top = y - boxH / 2;
-
-            ctx.beginPath();
-            ctx.moveTo(left + radius, top);
-            ctx.lineTo(left + boxW - radius, top);
-            ctx.quadraticCurveTo(left + boxW, top, left + boxW, top + radius);
-            ctx.lineTo(left + boxW, top + boxH - radius);
-            ctx.quadraticCurveTo(left + boxW, top + boxH, left + boxW - radius, top + boxH);
-            ctx.lineTo(left + radius, top + boxH);
-            ctx.quadraticCurveTo(left, top + boxH, left, top + boxH - radius);
-            ctx.lineTo(left, top + radius);
-            ctx.quadraticCurveTo(left, top, left + radius, top);
-            ctx.closePath();
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
-            ctx.fill();
-            ctx.lineWidth = 1;
-            ctx.strokeStyle = 'rgba(14, 165, 233, 0.9)';
-            ctx.stroke();
-
-            ctx.fillStyle = '#e2e8f0';
-            ctx.fillText(text, left + padX, y);
-            ctx.restore();
+        const setTxt = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
         };
-
-        const perfLineValueLabelsPlugin = {
-            id: 'perfLineValueLabels',
-            afterDatasetsDraw(chart) {
-                const meta = chart.getDatasetMeta(0);
-                if (!meta || meta.hidden) return;
-                const data = chart.data.datasets && chart.data.datasets[0] ? chart.data.datasets[0].data : [];
-                const ctx = chart.ctx;
-                ctx.save();
-                ctx.font = '11px Outfit';
-                ctx.fillStyle = '#e2e8f0';
-                ctx.textAlign = 'left';
-                ctx.textBaseline = 'middle';
-                for (let i = 0; i < meta.data.length; i++) {
-                    const pt = meta.data[i];
-                    const val = parseFloat(data[i]) || 0;
-                    if (!pt) continue;
-                    ctx.beginPath();
-                    ctx.fillStyle = '#f59e0b';
-                    ctx.arc(pt.x, pt.y, 2.5, 0, Math.PI * 2);
-                    ctx.fill();
-                    drawPerfPercentBubble(ctx, `${val.toFixed(1)}%`, pt.x + 7, pt.y - 12);
-                }
-                ctx.restore();
-            }
-        };
-
-        const perfBarValueLabelsPlugin = {
-            id: 'perfBarValueLabels',
-            afterDatasetsDraw(chart) {
-                const meta = chart.getDatasetMeta(0);
-                if (!meta || meta.hidden) return;
-                const data = chart.data.datasets && chart.data.datasets[0] ? chart.data.datasets[0].data : [];
-                const ctx = chart.ctx;
-                ctx.save();
-                ctx.font = '11px Outfit';
-                ctx.fillStyle = '#e2e8f0';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                for (let i = 0; i < meta.data.length; i++) {
-                    const bar = meta.data[i];
-                    const val = parseFloat(data[i]) || 0;
-                    if (!bar) continue;
-                    const y = bar.y + (bar.base - bar.y) / 2;
-                    ctx.save();
-                    ctx.translate(bar.x, y);
-                    ctx.rotate(-Math.PI / 2);
-                    ctx.fillText(`${val.toFixed(1)}%`, 0, 0);
-                    ctx.restore();
-                }
-                ctx.restore();
-            }
-        };
-
-        const perfLinePlugins = showPerfChartLabels ? [perfLineValueLabelsPlugin] : [];
-        const perfBarPlugins = showPerfChartLabels ? [perfBarValueLabelsPlugin] : [];
-
-        // Performance Trend Chart
-        const perfVm = (tabModules.rendimiento && typeof tabModules.rendimiento.prepareViewModel === 'function')
-            ? tabModules.rendimiento.prepareViewModel(stats, { monthToSerial })
-            : null;
-        const sortedMonths = perfVm ? perfVm.sortedMonths : Object.keys(trendStats).sort((a, b) => {
-            const [m1, y1] = a.split('/'); const [m2, y2] = b.split('/');
-            return new Date(y1, m1 - 1) - new Date(y2, m2 - 1);
-        });
-        const trendData = perfVm ? perfVm.trendData : sortedMonths.map(m => (trendStats[m].d > 0 ? (trendStats[m].p / trendStats[m].d) * 100 : 0));
-        renderChart('perfTrendChart', 'rendimiento', 'line', sortedMonths, trendData, '% Eficacia', '#38bdf8', perfLinePlugins);
-
-        // Performance Trend by Count
-        const trendCountData = perfVm ? perfVm.trendCountData : sortedMonths.map(m => (trendStats[m].c > 0 ? (trendStats[m].cp / trendStats[m].c) * 100 : 0));
-        renderChart('perfTrendCountChart', 'rendimiento', 'line', sortedMonths, trendCountData, '% Eficacia (Cantidad)', '#f59e0b', perfLinePlugins);
-
-        // Charts per Tramo
-        const tramoLabels = perfVm ? perfVm.tramoLabels : Object.keys(tramoStats).sort((a, b) => a - b);
-        const tramoEff = perfVm ? perfVm.tramoEff : tramoLabels.map(t => (tramoStats[t].d > 0 ? (tramoStats[t].p / tramoStats[t].d) * 100 : 0));
-        renderChart('perfTramoChart', 'rendimiento', 'bar', tramoLabels.map(t => 'Tramo ' + t), tramoEff, '% Eficacia', '#818cf8', perfBarPlugins);
-
-        // Charts per UN
-        const unLabels = perfVm ? perfVm.unLabels : Object.keys(unStats).sort();
-        const unEff = perfVm ? perfVm.unEff : unLabels.map(u => (unStats[u].d > 0 ? (unStats[u].p / unStats[u].d) * 100 : 0));
-        renderChart('perfUnChart', 'rendimiento', 'bar', unLabels, unEff, '% Eficacia', '#6366f1', perfBarPlugins);
-
-        // NEW: Charts per Via de Cobro (Intencion)
-        const vcLabels = perfVm ? perfVm.vcLabels : Object.keys(viaCStats).sort();
-        const vcEff = perfVm ? perfVm.vcEff : vcLabels.map(v => (viaCStats[v].d > 0 ? (viaCStats[v].p / viaCStats[v].d) * 100 : 0));
-        renderChart('perfViaCobroChart', 'rendimiento', 'bar', vcLabels, vcEff, '% Eficacia (Intencion)', '#10b981', perfBarPlugins);
-
-        // NEW: Matrix Chart (Stacked Bar)
-        const matrixDatasets = perfVm
-            ? perfVm.matrixDatasets
-            : [...new Set(Object.values(matrixStats).flatMap(o => Object.keys(o || {})))].sort().map((vAct, idx) => {
-                const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-                return {
-                    label: vAct,
-                    data: vcLabels.map(vc => (matrixStats[vc] && matrixStats[vc][vAct]) || 0),
-                    backgroundColor: colors[idx % colors.length]
-                };
-            });
-
-        const matrixEl = document.getElementById('perfViaMatrixChart');
-        if (matrixEl) {
-            const matrixCtx = matrixEl.getContext('2d');
-            if (state.rendimiento.charts['perfViaMatrixChart']) state.rendimiento.charts['perfViaMatrixChart'].destroy();
-            state.rendimiento.charts['perfViaMatrixChart'] = new Chart(matrixCtx, {
-                type: 'bar',
-                data: { labels: vcLabels, datasets: matrixDatasets },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: { x: { stacked: true }, y: { stacked: true, ticks: { callback: v => formatPYG(v) } } },
-                    plugins: {
-                        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${formatPYG(c.raw)}` } },
-                        legend: { position: 'bottom', labels: { color: '#e2e8f0', font: { family: 'Outfit' } } }
-                    }
-                }
-            });
-        }
+        setTxt('perf-recovery-rate', (fallbackHeader.globalRate * 100).toFixed(1) + '%');
+        setTxt('perf-total-contracts', fallbackHeader.totalContracts.toLocaleString());
+        setTxt('perf-total-debt', formatPYG(fallbackHeader.totalDebt));
+        setTxt('perf-total-contracts-paid', fallbackHeader.totalContractsPaid.toLocaleString());
+        setTxt('perf-total-paid', formatPYG(fallbackHeader.totalPaid));
     }
 
     function updateCosechaUI(stats) {
