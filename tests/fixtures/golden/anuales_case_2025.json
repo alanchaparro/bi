@@ -1,0 +1,63 @@
+{
+  "params": {
+    "un": ["MEDICINA ESTETICA"],
+    "anio": ["2025"]
+  },
+  "rows": {
+    "cartera": [
+      {"_cId": "1", "_feNorm": "01/2025", "tramo": "2", "monto_cuota": "100"},
+      {"_cId": "1", "_feNorm": "02/2025", "tramo": "2", "monto_cuota": "100"},
+      {"_cId": "1", "_feNorm": "03/2025", "tramo": "2", "monto_cuota": "100"},
+      {"_cId": "1", "_feNorm": "04/2025", "tramo": "5", "monto_cuota": "100"},
+      {"_cId": "2", "_feNorm": "01/2025", "tramo": "2", "monto_cuota": "200"},
+      {"_cId": "2", "_feNorm": "02/2025", "tramo": "2", "monto_cuota": "200"},
+      {"_cId": "2", "_feNorm": "03/2025", "tramo": "2", "monto_cuota": "200"},
+      {"_cId": "2", "_feNorm": "04/2025", "tramo": "4", "monto_cuota": "200"}
+    ],
+    "cobranzas": [
+      {"_cId": "1", "_feNorm": "01/2025", "monto": "100"},
+      {"_cId": "1", "_feNorm": "02/2025", "monto": "100"},
+      {"_cId": "2", "_feNorm": "01/2025", "monto": "200"},
+      {"_cId": "2", "_feNorm": "03/2025", "monto": "200"}
+    ],
+    "contratos": [
+      {
+        "_cId": "1",
+        "UN": "MEDICINA ESTETICA",
+        "_contractMonth": "01/2025",
+        "_contractYear": "2025",
+        "_culminacionMonth": "03/2025",
+        "date": "2025-01-10",
+        "monto_cuota": "100"
+      },
+      {
+        "_cId": "2",
+        "UN": "MEDICINA ESTETICA",
+        "_contractMonth": "01/2025",
+        "_contractYear": "2025",
+        "_culminacionMonth": "04/2025",
+        "date": "2025-01-20",
+        "monto_cuota": "200"
+      }
+    ],
+    "aggr": {
+      "cob_by_contract_month": {
+        "1": {"01/2025": 100.0, "02/2025": 100.0},
+        "2": {"01/2025": 200.0, "03/2025": 200.0}
+      }
+    }
+  },
+  "expected": {
+    "cutoff": "04/2025",
+    "rows_count": 1,
+    "year": "2025",
+    "contracts": 2,
+    "contractsVigentes": 0,
+    "tkpContrato": 150.0,
+    "tkpPago": 150.0,
+    "culminados": 2,
+    "culminadosVigentes": 1,
+    "tkpPagoCulminadoVigente": 100.0,
+    "ltvCulminadoVigente": 2.0
+  }
+}

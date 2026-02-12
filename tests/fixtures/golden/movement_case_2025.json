@@ -1,0 +1,40 @@
+{
+  "params": {
+    "un": ["MEDICINA ESTETICA"],
+    "anio": ["2025"],
+    "gestion_month": ["01/2025", "02/2025", "03/2025"]
+  },
+  "analytics_index": {
+    "cartera_entries": [
+      {"c_id": "1", "fe": "01/2025", "un": "MEDICINA ESTETICA", "via_c": "COBRADOR", "sup": "SUP A", "tramo_num": 2},
+      {"c_id": "1", "fe": "02/2025", "un": "MEDICINA ESTETICA", "via_c": "COBRADOR", "sup": "SUP A", "tramo_num": 2},
+      {"c_id": "1", "fe": "03/2025", "un": "MEDICINA ESTETICA", "via_c": "COBRADOR", "sup": "SUP A", "tramo_num": 5},
+      {"c_id": "2", "fe": "01/2025", "un": "MEDICINA ESTETICA", "via_c": "DEBITO", "sup": "SUP B", "tramo_num": 2},
+      {"c_id": "2", "fe": "02/2025", "un": "MEDICINA ESTETICA", "via_c": "DEBITO", "sup": "SUP B", "tramo_num": 4},
+      {"c_id": "2", "fe": "03/2025", "un": "MEDICINA ESTETICA", "via_c": "DEBITO", "sup": "SUP B", "tramo_num": 4},
+      {"c_id": "3", "fe": "01/2025", "un": "MEDICINA ESTETICA", "via_c": "COBRADOR", "sup": "SUP A", "tramo_num": 2},
+      {"c_id": "3", "fe": "02/2025", "un": "MEDICINA ESTETICA", "via_c": "COBRADOR", "sup": "SUP A", "tramo_num": 2},
+      {"c_id": "3", "fe": "03/2025", "un": "MEDICINA ESTETICA", "via_c": "COBRADOR", "sup": "SUP A", "tramo_num": 2}
+    ]
+  },
+  "rows": {
+    "cartera": [
+      {"_cId": "1", "_feNorm": "01/2025", "monto_cuota": "100"},
+      {"_cId": "1", "_feNorm": "02/2025", "monto_cuota": "100"},
+      {"_cId": "1", "_feNorm": "03/2025", "monto_cuota": "100"},
+      {"_cId": "2", "_feNorm": "01/2025", "monto_cuota": "200"},
+      {"_cId": "2", "_feNorm": "02/2025", "monto_cuota": "200"},
+      {"_cId": "2", "_feNorm": "03/2025", "monto_cuota": "200"},
+      {"_cId": "3", "_feNorm": "01/2025", "monto_cuota": "150"},
+      {"_cId": "3", "_feNorm": "02/2025", "monto_cuota": "150"},
+      {"_cId": "3", "_feNorm": "03/2025", "monto_cuota": "150"}
+    ]
+  },
+  "expected": {
+    "labels": ["01/2025", "02/2025", "03/2025"],
+    "moroso_transition_count": [0, 1, 1],
+    "vigente_base_count": [3, 2, 1],
+    "moroso_transition_pct": [0.0, 50.0, 100.0],
+    "avg_cuota": [0.0, 200.0, 100.0]
+  }
+}
