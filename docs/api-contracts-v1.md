@@ -1,6 +1,8 @@
 # API Contracts v1
 
-Base path: `/analytics`
+Base paths:
+- Legacy analytics: `/analytics/*`
+- New config API: `/api/v1/*`
 
 ## Common filters (repeatable query params)
 - `un`
@@ -11,9 +13,39 @@ Base path: `/analytics`
 - `tramo`
 - `via_pago`
 
-## Error format
+## Error format (v1 estándar)
 ```json
-{ "code": "INVALID_FILTER", "message": "...", "details": null }
+{ "error_code": "INVALID_FILTER", "message": "...", "details": null, "trace_id": "..." }
+```
+
+## Auth
+### POST /api/v1/auth/login
+Request:
+```json
+{ "username": "admin", "password": "admin123" }
+```
+Response:
+```json
+{ "access_token": "...", "token_type": "bearer", "role": "admin", "permissions": ["brokers:read"] }
+```
+
+## Brokers config
+### GET /api/v1/brokers/supervisors-scope
+### POST /api/v1/brokers/supervisors-scope
+```json
+{ "supervisors": ["FVBROKEREAS", "FVBROKEREASCDE"] }
+```
+
+### GET /api/v1/brokers/commissions
+### POST /api/v1/brokers/commissions
+```json
+{ "rules": [] }
+```
+
+### GET /api/v1/brokers/prizes
+### POST /api/v1/brokers/prizes
+```json
+{ "rules": [] }
 ```
 
 ## GET /analytics/portfolio/summary

@@ -31,6 +31,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     let syncMode = 'fast';
     let showAcaChartLabels = true;
     let showPerfChartLabels = true;
+    let commissionRules = [];
+    let commissionRulesLoaded = false;
+    let prizeRules = [];
+    let prizeRulesLoaded = false;
+    let prizeScaleDraft = [];
+    let brokersEnabledSupervisors = [];
+    let brokersEnabledSupervisorsLoaded = false;
     const enableMovementSeriesV2 = featureFlags.FF_MOVEMENT_SERIES_V2 !== false;
     const enableLineLabelSmartLayout = featureFlags.FF_LINE_LABELS_SMART_LAYOUT !== false;
     const useApiAnalisisCartera = featureFlags.FF_API_ANALISIS_CARTERA !== false;
@@ -541,6 +548,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     function invalidateMemo(dataset) {
         if (dataset === 'cobranzas') memo.cobranzas = { stamp: '', value: null };
         if (dataset === 'contratos') memo.contratos = { stamp: '', value: null };
+        if (dataset === 'cartera') memo.viaById = { stamp: '', value: null };
+        if (dataset === 'cartera') memo.moraTransitions = { stamp: '', value: null };
+        if (dataset === 'cartera') memo.tramoById = { stamp: '', value: null };
+        if (dataset === 'cartera') memo.tramoByCierreId = { stamp: '', value: null };
     }
 
     function setToSortedArray(setObj) {
@@ -584,6 +595,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         analisisCobranza: document.getElementById('analisis-cobranza-content'),
         culminados: document.getElementById('culminados-content'),
         gestores: document.getElementById('gestores-content'),
+        brokers: document.getElementById('brokers-content'),
+        brokersCommissions: document.getElementById('brokers-comm-content'),
+        brokersPrizes: document.getElementById('brokers-prizes-content'),
+        brokersSupervisors: document.getElementById('brokers-super-content'),
+        brokersMora: document.getElementById('brokers-mora-content'),
         config: document.getElementById('config-content')
     };
 
@@ -602,12 +618,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         ltv: { filters: {}, filtersApplied: {}, charts: {}, dirty: false },
         ltvAge: { filters: {}, filtersApplied: {}, charts: {}, dirty: false },
         analisisCobranza: { filters: {}, filtersApplied: {}, charts: {}, dirty: false, defaultCutoff: '' },
-        culminados: { filters: {}, filtersApplied: {}, charts: {}, dirty: false, defaultCutoff: '' }
+        culminados: { filters: {}, filtersApplied: {}, charts: {}, dirty: false, defaultCutoff: '' },
+        brokers: { data: [], filters: {}, filtersApplied: {}, charts: {}, dirty: false },
+        brokersCommissions: { data: [], filters: {}, filtersApplied: {}, charts: {}, dirty: false },
+        brokersPrizes: { data: [], filters: {}, filtersApplied: {}, charts: {}, dirty: false },
+        brokersSupervisors: { data: [], filters: {}, filtersApplied: {}, charts: {}, dirty: false },
+        brokersMora: { data: [], filters: {}, filtersApplied: {}, charts: {}, dirty: false }
     };
 
     const memo = {
         cobranzas: { stamp: '', value: null },
-        contratos: { stamp: '', value: null }
+        contratos: { stamp: '', value: null },
+        viaById: { stamp: '', value: null },
+        moraTransitions: { stamp: '', value: null },
+        tramoById: { stamp: '', value: null },
+        tramoByCierreId: { stamp: '', value: null }
     };
 
     const tabFilterIds = {
@@ -622,7 +647,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         ltvAge: ['ltva-un', 'ltva-anio', 'ltva-fecha', 'ltva-via-cobro', 'ltva-super', 'ltva-antiguedad'],
         analisisCobranza: ['ac-cutoff', 'ac-un', 'ac-via-cobro', 'ac-cat', 'ac-super'],
         culminados: ['cu-cutoff', 'cu-un', 'cu-fecha', 'cu-cat', 'cu-via-cobro'],
-        gestores: ['gs-gestor', 'gs-un', 'gs-fecha']
+        gestores: ['gs-gestor', 'gs-un', 'gs-fecha'],
+        brokers: ['br-super', 'br-un', 'br-anio', 'br-fecha', 'br-via'],
+        brokersSupervisors: ['bs-super'],
+        brokersMora: ['bm-super', 'bm-un', 'bm-via', 'bm-venta', 'bm-cierre', 'bm-antig']
     };
 
     const applyButtonByTab = {
@@ -637,7 +665,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         ltvAge: 'apply-ltva',
         analisisCobranza: 'apply-ac',
         culminados: 'apply-cu',
-        gestores: 'apply-gs'
+        gestores: 'apply-gs',
+        brokers: 'apply-br',
+        brokersMora: 'apply-bm'
     };
 
     function switchTab(tabId) {
@@ -665,6 +695,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (tabId === 'acaAnuales' && (state.acaAnuales.dirty || !state.acaAnuales.filtersInitialized)) {
             applyTabFilters('acaAnuales').catch((e) => showError('No se pudo calcular Análisis Anuales.', e));
+        }
+        if (tabId === 'brokers' && (state.brokers.dirty || !state.brokers.filtersInitialized)) {
+            applyTabFilters('brokers').catch((e) => showError('No se pudo calcular Brokers.', e));
+        }
+        if (tabId === 'brokersCommissions') {
+            ensureCommissionConfigReady().catch((e) => showError('No se pudo cargar configuración de comisiones.', e));
+        }
+        if (tabId === 'brokersPrizes') {
+            ensurePrizeConfigReady().catch((e) => showError('No se pudo cargar configuración de premios.', e));
+        }
+        if (tabId === 'brokersSupervisors') {
+            ensureBrokersSupervisorsReady().catch((e) => showError('No se pudo cargar supervisores de brokers.', e));
+        }
+        if (tabId === 'brokersMora') {
+            calculateBrokersMora().catch((e) => showError('No se pudo calcular Mora Brokers.', e));
         }
     }
     window.switchTab = switchTab;
@@ -1040,6 +1085,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const skipAuto = options.skipAuto !== undefined ? !!options.skipAuto : true;
         state.cartera.data = data;
         setDataReady('cartera', true);
+        invalidateMemo('cartera');
 
         const uns = new Set(), tramos = new Set(), cats = new Set(), fechas = new Set();
 
@@ -1250,6 +1296,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             r._montoCuota = parseLooseNumber(r.monto_cuota || r.amount || 0);
             r._culminacionMonth = monthFromDate(r.fecha_de_culminacion || r.fecha_culminacion || '') || '';
             r._supervisor = String(r.Supervisor || r.supervisor || 'S/D').trim() || 'S/D';
+            r._supervisorNorm = normalizeSupervisorName(r._supervisor);
         }
         state.contratos.data = data;
         await persistDatasetSafe('contratos', data, 'Contratos');
@@ -2000,6 +2047,53 @@ document.addEventListener('DOMContentLoaded', async () => {
             : `${checkedVisibleCount} sel.`;
 
         if (markDirty) setTabDirty('analisisCartera', true);
+    }
+
+    function syncBrokersFechaByYear(opts = {}) {
+        const markDirty = opts.markDirty === true;
+        const ensureSelection = opts.ensureSelection !== false;
+        const selectedYears = getSelected('br-anio');
+        const fechaOptions = document.getElementById('br-fecha-options');
+        const fechaAll = document.getElementById('br-fecha-all');
+        const fechaCount = document.getElementById('br-fecha-count');
+        if (!fechaOptions || !fechaAll || !fechaCount) return;
+
+        const labels = [...fechaOptions.querySelectorAll('label')];
+        let visibleCount = 0;
+        let checkedVisibleCount = 0;
+
+        for (let i = 0; i < labels.length; i++) {
+            const label = labels[i];
+            const cb = label.querySelector('input.br-fecha-cb');
+            if (!cb) continue;
+            const year = getYearFromGestionMonth(cb.value);
+            const visible = selectedYears.size === 0 || selectedYears.has(year);
+            label.style.display = visible ? '' : 'none';
+            cb.disabled = !visible;
+            if (!visible && cb.checked) cb.checked = false;
+            if (visible) {
+                visibleCount += 1;
+                if (cb.checked) checkedVisibleCount += 1;
+            }
+        }
+
+        if (ensureSelection && visibleCount > 0 && checkedVisibleCount === 0) {
+            for (let i = 0; i < labels.length; i++) {
+                const label = labels[i];
+                if (label.style.display === 'none') continue;
+                const cb = label.querySelector('input.br-fecha-cb');
+                if (!cb) continue;
+                cb.checked = true;
+            }
+            checkedVisibleCount = visibleCount;
+        }
+
+        fechaAll.checked = visibleCount > 0 && checkedVisibleCount === visibleCount;
+        fechaCount.textContent = (visibleCount > 0 && checkedVisibleCount === visibleCount)
+            ? 'Historia'
+            : `${checkedVisibleCount} sel.`;
+
+        if (markDirty) setTabDirty('brokers', true);
     }
 
     function bindAcaYearToFechaSync() {
@@ -4718,6 +4812,1210 @@ document.addEventListener('DOMContentLoaded', async () => {
         loading.classList.add('hidden');
     }
 
+    // --- BROKERS DASHBOARD LOGIC ---
+    function updateBrokersSelectionSummary(selSuper, selUn, selAnio, selFecha, selVia) {
+        const el = document.getElementById('br-selection-summary');
+        if (!el) return;
+        const labels = {
+            super: getSelectionLabel('br-super', selSuper, 'Todos'),
+            un: getSelectionLabel('br-un', selUn, 'Todas'),
+            anio: getSelectionLabel('br-anio', selAnio, 'Todos'),
+            fecha: getSelectionLabel('br-fecha', selFecha, 'Historia'),
+            via: getSelectionLabel('br-via', selVia, 'Todas')
+        };
+        el.innerHTML = `<strong>Seleccion actual:</strong> Supervisor: ${labels.super} | UN: ${labels.un} | Año: ${labels.anio} | Mes/Año: ${labels.fecha} | Vía Cobro: ${labels.via}`;
+    }
+
+    function updateBrokersUI(summary) {
+        const setTxt = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
+        setTxt('br-total-contracts', (summary.totalContracts || 0).toLocaleString());
+        setTxt('br-total-supervisors', (summary.totalSupervisors || 0).toLocaleString());
+    }
+
+    function getEnabledBrokersSupervisorSet() {
+        return new Set((brokersEnabledSupervisors || []).map(v => normalizeSupervisorName(v)));
+    }
+
+    function applyBrokersSupervisorScope(supervisors) {
+        const enabledSet = getEnabledBrokersSupervisorSet();
+        const list = Array.isArray(supervisors) ? supervisors : [];
+        if (enabledSet.size === 0) return list;
+        return list.filter(s => enabledSet.has(normalizeSupervisorName(s)));
+    }
+
+    async function loadBrokersEnabledSupervisors() {
+        try {
+            const res = await fetch('/api/brokers-supervisors');
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const payload = await res.json();
+            const supervisors = Array.isArray(payload.supervisors) ? payload.supervisors : [];
+            brokersEnabledSupervisors = supervisors.map(v => normalizeSupervisorName(v));
+            brokersEnabledSupervisorsLoaded = true;
+        } catch (e) {
+            showWarning(`No se pudieron cargar supervisores habilitados: ${e.message || e}`);
+        }
+    }
+
+    async function saveBrokersEnabledSupervisors(supervisors) {
+        try {
+            const res = await fetch('/api/brokers-supervisors', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ supervisors })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            brokersEnabledSupervisors = supervisors.map(v => normalizeSupervisorName(v));
+            brokersEnabledSupervisorsLoaded = true;
+            return true;
+        } catch (e) {
+            showError('No se pudieron guardar supervisores habilitados.', e);
+            return false;
+        }
+    }
+
+    async function ensureBrokersSupervisorConfigLoaded() {
+        if (!brokersEnabledSupervisorsLoaded) {
+            await loadBrokersEnabledSupervisors();
+        }
+    }
+
+    function invalidateBrokersSupervisorScope() {
+        const tabs = ['brokers', 'brokersCommissions', 'brokersPrizes', 'brokersMora'];
+        for (let i = 0; i < tabs.length; i++) {
+            const t = tabs[i];
+            if (!state[t]) continue;
+            state[t].filtersInitialized = false;
+            state[t].lastComputeSignature = '';
+            state[t].dirty = true;
+        }
+    }
+
+    function setFilterSelectionByValues(id, values) {
+        const selected = new Set((values || []).map(v => String(v)));
+        const allCb = document.getElementById(`${id}-all`);
+        const checkboxes = [...document.querySelectorAll(`.${id}-cb`)];
+        let checkedCount = 0;
+        checkboxes.forEach((c) => {
+            c.checked = selected.size === 0 ? true : selected.has(String(c.value));
+            if (c.checked) checkedCount += 1;
+        });
+        if (allCb) allCb.checked = checkboxes.length > 0 && checkedCount === checkboxes.length;
+        const countSpan = document.getElementById(`${id}-count`);
+        if (countSpan) {
+            const labelAll = (id.includes('fecha') || id.includes('gestion')) ? 'Historia'
+                : ((id.includes('un') || id.includes('via') || id.includes('cat')) ? 'Todas' : 'Todos');
+            countSpan.textContent = (checkboxes.length > 0 && checkedCount === checkboxes.length) ? labelAll : `${checkedCount} sel.`;
+        }
+    }
+
+    function renderBrokersSupervisorsCurrent() {
+        const el = document.getElementById('bs-current');
+        if (!el) return;
+        if (!brokersEnabledSupervisors || !brokersEnabledSupervisors.length) {
+            el.textContent = 'Todos los supervisores están habilitados.';
+            return;
+        }
+        el.textContent = `Habilitados (${brokersEnabledSupervisors.length}): ${brokersEnabledSupervisors.join(', ')}`;
+    }
+
+    async function ensureBrokersSupervisorsReady() {
+        await ensureContratosLoaded();
+        if (!state.contratos.data.length) return;
+        await ensureBrokersSupervisorConfigLoaded();
+
+        const allSupervisors = [...new Set(state.contratos.data.map(c => normalizeSupervisorName(c._supervisorNorm || c._supervisor || c.Supervisor || 'S/D')))].sort();
+        if (!state.brokersSupervisors.filtersInitialized) {
+            setupFilter('bs-super', allSupervisors, 'brokersSupervisors');
+            state.brokersSupervisors.filtersInitialized = true;
+
+            const saveBtn = document.getElementById('bs-save');
+            const clearBtn = document.getElementById('bs-clear');
+
+            if (saveBtn && !saveBtn.dataset.bound) {
+                saveBtn.dataset.bound = '1';
+                saveBtn.addEventListener('click', async () => {
+                    const selected = [...getSelected('bs-super')].map(v => normalizeSupervisorName(v));
+                    const allSelected = selected.length === allSupervisors.length;
+                    const payload = allSelected ? [] : selected;
+                    const ok = await saveBrokersEnabledSupervisors(payload);
+                    if (!ok) return;
+                    renderBrokersSupervisorsCurrent();
+                    invalidateBrokersSupervisorScope();
+                    showInfo('Supervisores habilitados actualizados.');
+                });
+            }
+
+            if (clearBtn && !clearBtn.dataset.bound) {
+                clearBtn.dataset.bound = '1';
+                clearBtn.addEventListener('click', async () => {
+                    setFilterSelectionByValues('bs-super', []);
+                    const ok = await saveBrokersEnabledSupervisors([]);
+                    if (!ok) return;
+                    renderBrokersSupervisorsCurrent();
+                    invalidateBrokersSupervisorScope();
+                    showInfo('Ahora se usan todos los supervisores.');
+                });
+            }
+        }
+
+        setFilterSelectionByValues('bs-super', brokersEnabledSupervisors);
+        renderBrokersSupervisorsCurrent();
+    }
+
+    function renderCommissionRulesTable() {
+        const tbody = document.getElementById('br-comm-table-body');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        if (!commissionRules.length) {
+            tbody.innerHTML = '<tr><td colspan="6">Sin reglas todavía.</td></tr>';
+            return;
+        }
+        commissionRules.forEach((r, idx) => {
+            const monthsLabel = (r.months && r.months.length)
+                ? r.months.join(', ')
+                : 'S/D';
+            const factorLabel = Number.isFinite(r.factor) ? r.factor.toString().replace('.', ',') : '0';
+            const supLabel = (r.supervisors || []).includes('__ALL__') ? 'Todos' : (r.supervisors || []).join(', ') || 'S/D';
+            const unLabel = (r.uns || []).includes('__ALL__') ? 'Todas' : (r.uns || []).join(', ') || 'S/D';
+            const viaLabel = (r.vias || []).includes('__ALL__') ? 'Todas' : (r.vias || []).join(', ') || 'S/D';
+            tbody.innerHTML += `
+                <tr>
+                    <td>${supLabel}</td>
+                    <td>${unLabel}</td>
+                    <td>${viaLabel}</td>
+                    <td>${monthsLabel}</td>
+                    <td>${factorLabel}</td>
+                    <td><button class="btn-reset" data-idx="${idx}">Eliminar</button></td>
+                </tr>
+            `;
+        });
+        tbody.querySelectorAll('button[data-idx]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const idx = parseInt(btn.getAttribute('data-idx'), 10);
+                if (Number.isNaN(idx)) return;
+                commissionRules.splice(idx, 1);
+                await saveCommissionRules();
+                renderCommissionRulesTable();
+                setTabDirty('brokers', true);
+            });
+        });
+    }
+
+    async function loadCommissionRules() {
+        try {
+            const res = await fetch('/api/commissions');
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const payload = await res.json();
+            const rules = Array.isArray(payload.rules) ? payload.rules : [];
+            commissionRules = rules.map(r => ({
+                supervisors: Array.isArray(r.supervisors) ? r.supervisors.map(v => String(v)) : (r.supervisor ? [String(r.supervisor)] : []),
+                uns: Array.isArray(r.uns) ? r.uns.map(v => String(v)) : (r.un ? [String(r.un)] : []),
+                vias: Array.isArray(r.vias) ? r.vias.map(v => String(v)) : (r.via ? [String(r.via)] : []),
+                months: Array.isArray(r.months) ? r.months.map(m => String(m)) : [],
+                factor: parseDecimalInput(r.factor)
+            }));
+            commissionRulesLoaded = true;
+            renderCommissionRulesTable();
+        } catch (e) {
+            showWarning(`No se pudieron cargar reglas de comisiones: ${e.message || e}`);
+        }
+    }
+
+    async function ensureCommissionConfigReady() {
+        await ensureContratosLoaded();
+        await ensureCarteraLoaded();
+        await ensureBrokersSupervisorConfigLoaded();
+        if (!state.contratos.data.length) return;
+        if (!commissionRulesLoaded) {
+            await loadCommissionRules();
+        }
+        if (!prizeRulesLoaded) {
+            await loadPrizeRules();
+        }
+        if (!state.brokersCommissions.filtersInitialized) {
+            const supervisorsAll = [...new Set(state.contratos.data.map(r => normalizeSupervisorName(r._supervisorNorm || r._supervisor || r.Supervisor || 'S/D')))].sort();
+            const supervisors = applyBrokersSupervisorScope(supervisorsAll);
+            const uns = [...new Set(state.contratos.data.map(r => String(r.UN || 'S/D').trim() || 'S/D'))].sort();
+            const fechas = [...new Set(state.contratos.data.map(r => String(r._contractMonth || 'S/D')).filter(Boolean))].sort(monthCompare);
+            const viaById = getViaByContractId();
+            const viaSet = new Set();
+            Object.keys(viaById).forEach(k => viaSet.add(String(viaById[k] || 'S/D')));
+            if (viaSet.size === 0) {
+                viaSet.add('DEBITO');
+                viaSet.add('COBRADOR');
+            }
+            initCommissionConfig({ supervisors, uns, fechas, vias: [...viaSet].sort() });
+            state.brokersCommissions.filtersInitialized = true;
+            renderCommissionRulesTable();
+        }
+    }
+
+    function renderPrizeScaleDraftTable() {
+        const tbody = document.getElementById('bp-scale-table-body');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        if (!prizeScaleDraft.length) {
+            tbody.innerHTML = '<tr><td colspan="3">Sin escalas todavía.</td></tr>';
+            return;
+        }
+        prizeScaleDraft
+            .sort((a, b) => a.minPct - b.minPct)
+            .forEach((s, idx) => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${s.minPct}</td>
+                        <td>${formatPYG(s.prize)}</td>
+                        <td><button class="btn-reset" data-idx="${idx}">Eliminar</button></td>
+                    </tr>
+                `;
+            });
+        tbody.querySelectorAll('button[data-idx]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.getAttribute('data-idx'), 10);
+                if (Number.isNaN(idx)) return;
+                prizeScaleDraft.splice(idx, 1);
+                renderPrizeScaleDraftTable();
+            });
+        });
+    }
+
+    function renderPrizeRulesTable() {
+        const tbody = document.getElementById('bp-rules-table-body');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        if (!prizeRules.length) {
+            tbody.innerHTML = '<tr><td colspan="6">Sin reglas todavía.</td></tr>';
+            return;
+        }
+        prizeRules.forEach((r, idx) => {
+            const monthsLabel = (r.months && r.months.length)
+                ? r.months.join(', ')
+                : 'S/D';
+            const supLabel = (r.supervisors || []).includes('__ALL__') ? 'Todos' : (r.supervisors || []).join(', ') || 'S/D';
+            const unLabel = (r.uns || []).includes('__ALL__') ? 'Todas' : (r.uns || []).join(', ') || 'S/D';
+            const scalesLabel = (r.scales || [])
+                .sort((a, b) => a.minPct - b.minPct)
+                .map(s => `${s.minPct}% -> ${formatPYG(s.prize)}`)
+                .join(' | ');
+            tbody.innerHTML += `
+                <tr>
+                    <td>${supLabel}</td>
+                    <td>${unLabel}</td>
+                    <td>${monthsLabel}</td>
+                    <td>${(r.meta || 0).toLocaleString()}</td>
+                    <td>${scalesLabel || 'S/D'}</td>
+                    <td><button class="btn-reset" data-idx="${idx}">Eliminar</button></td>
+                </tr>
+            `;
+        });
+        tbody.querySelectorAll('button[data-idx]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const idx = parseInt(btn.getAttribute('data-idx'), 10);
+                if (Number.isNaN(idx)) return;
+                prizeRules.splice(idx, 1);
+                await savePrizeRules();
+                renderPrizeRulesTable();
+                setTabDirty('brokers', true);
+            });
+        });
+    }
+
+    async function loadPrizeRules() {
+        try {
+            const res = await fetch('/api/prizes');
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const payload = await res.json();
+            const rules = Array.isArray(payload.rules) ? payload.rules : [];
+            prizeRules = rules.map(r => ({
+                supervisors: Array.isArray(r.supervisors) ? r.supervisors.map(v => String(v)) : (r.supervisor ? [String(r.supervisor)] : []),
+                uns: Array.isArray(r.uns) ? r.uns.map(v => String(v)) : (r.un ? [String(r.un)] : []),
+                months: Array.isArray(r.months) ? r.months.map(m => String(m)) : [],
+                meta: parseInt(r.meta, 10) || 0,
+                scales: Array.isArray(r.scales) ? r.scales.map(s => ({
+                    minPct: parseDecimalInput(s.minPct),
+                    prize: parseDecimalInput(s.prize)
+                })) : []
+            }));
+            prizeRulesLoaded = true;
+            renderPrizeRulesTable();
+        } catch (e) {
+            showWarning(`No se pudieron cargar reglas de premios: ${e.message || e}`);
+        }
+    }
+
+    async function savePrizeRules() {
+        try {
+            const res = await fetch('/api/prizes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rules: prizeRules })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return true;
+        } catch (e) {
+            showError('No se pudieron guardar reglas de premios.', e);
+            return false;
+        }
+    }
+
+    function initPrizeConfig({ supervisors, uns, fechas }) {
+        setupFilter('bp-super', supervisors, 'brokersPrizes');
+        setupFilter('bp-un', uns, 'brokersPrizes');
+        setupFilter('bp-fecha', fechas, 'brokersPrizes');
+
+        const scaleAdd = document.getElementById('bp-scale-add');
+        const scaleClear = document.getElementById('bp-scale-clear');
+        const ruleSave = document.getElementById('bp-rule-save');
+        const ruleClear = document.getElementById('bp-rule-clear');
+        if (scaleAdd && !scaleAdd.dataset.bound) {
+            scaleAdd.dataset.bound = '1';
+            scaleAdd.addEventListener('click', () => {
+                const minEl = document.getElementById('bp-scale-min');
+                const prizeEl = document.getElementById('bp-scale-prize');
+                if (!minEl || !prizeEl) return;
+                const minPct = parseDecimalInput(minEl.value);
+                const prize = parseDecimalInput(prizeEl.value);
+                if (minPct <= 0) {
+                    showWarning('El porcentaje mínimo debe ser mayor a 0.');
+                    return;
+                }
+                if (prize <= 0) {
+                    showWarning('El premio fijo debe ser mayor a 0.');
+                    return;
+                }
+                prizeScaleDraft.push({ minPct, prize });
+                renderPrizeScaleDraftTable();
+            });
+        }
+        if (scaleClear && !scaleClear.dataset.bound) {
+            scaleClear.dataset.bound = '1';
+            scaleClear.addEventListener('click', () => {
+                prizeScaleDraft = [];
+                renderPrizeScaleDraftTable();
+            });
+        }
+        if (ruleSave && !ruleSave.dataset.bound) {
+            ruleSave.dataset.bound = '1';
+            ruleSave.addEventListener('click', async () => {
+                const metaEl = document.getElementById('bp-meta');
+                if (!metaEl) return;
+                const meta = parseInt(parseDecimalInput(metaEl.value), 10);
+                if (!meta || meta <= 0) {
+                    showWarning('La meta debe ser mayor a 0.');
+                    return;
+                }
+                if (!prizeScaleDraft.length) {
+                    showWarning('Agrega al menos una escala.');
+                    return;
+                }
+                const supervisorsSel = getRuleSelection('bp-super');
+                const unsSel = getRuleSelection('bp-un');
+                const monthsSel = getRuleSelection('bp-fecha');
+                if (!monthsSel.length) {
+                    showWarning('Selecciona al menos un mes/año.');
+                    return;
+                }
+                prizeRules.push({
+                    supervisors: supervisorsSel.length ? supervisorsSel : ['__ALL__'],
+                    uns: unsSel.length ? unsSel : ['__ALL__'],
+                    months: monthsSel,
+                    meta,
+                    scales: [...prizeScaleDraft]
+                });
+                const ok = await savePrizeRules();
+                if (ok) {
+                    prizeScaleDraft = [];
+                    renderPrizeScaleDraftTable();
+                    renderPrizeRulesTable();
+                    setTabDirty('brokers', true);
+                }
+            });
+        }
+        if (ruleClear && !ruleClear.dataset.bound) {
+            ruleClear.dataset.bound = '1';
+            ruleClear.addEventListener('click', () => {
+                const metaEl = document.getElementById('bp-meta');
+                const minEl = document.getElementById('bp-scale-min');
+                const prizeEl = document.getElementById('bp-scale-prize');
+                if (metaEl) metaEl.value = '';
+                if (minEl) minEl.value = '';
+                if (prizeEl) prizeEl.value = '';
+                ['bp-super', 'bp-un', 'bp-fecha'].forEach((id) => {
+                    const allCb = document.getElementById(`${id}-all`);
+                    if (allCb) allCb.checked = true;
+                    document.querySelectorAll(`.${id}-cb`).forEach(c => c.checked = true);
+                    const countSpan = document.getElementById(`${id}-count`);
+                    if (countSpan) countSpan.textContent = id.includes('fecha') ? 'Historia' : 'Todas';
+                });
+                prizeScaleDraft = [];
+                renderPrizeScaleDraftTable();
+            });
+        }
+        renderPrizeScaleDraftTable();
+    }
+
+    async function ensurePrizeConfigReady() {
+        await ensureContratosLoaded();
+        await ensureBrokersSupervisorConfigLoaded();
+        if (!state.contratos.data.length) return;
+        if (!prizeRulesLoaded) {
+            await loadPrizeRules();
+        }
+        if (!state.brokersPrizes.filtersInitialized) {
+            const supervisorsAll = [...new Set(state.contratos.data.map(r => normalizeSupervisorName(r._supervisorNorm || r._supervisor || r.Supervisor || 'S/D')))].sort();
+            const supervisors = applyBrokersSupervisorScope(supervisorsAll);
+            const uns = [...new Set(state.contratos.data.map(r => String(r.UN || 'S/D').trim() || 'S/D'))].sort();
+            const fechas = [...new Set(state.contratos.data.map(r => String(r._contractMonth || 'S/D')).filter(Boolean))].sort(monthCompare);
+            initPrizeConfig({ supervisors, uns, fechas });
+            state.brokersPrizes.filtersInitialized = true;
+            renderPrizeRulesTable();
+        }
+    }
+
+    async function saveCommissionRules() {
+        try {
+            const res = await fetch('/api/commissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rules: commissionRules })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return true;
+        } catch (e) {
+            showError('No se pudieron guardar reglas de comisiones.', e);
+            return false;
+        }
+    }
+
+    function initCommissionConfig({ supervisors, uns, fechas, vias }) {
+        setupFilter('bc-super', supervisors, 'brokersCommissions');
+        setupFilter('bc-un', uns, 'brokersCommissions');
+        setupFilter('bc-via', vias, 'brokersCommissions');
+        setupFilter('bc-fecha', fechas, 'brokersCommissions');
+
+        const addBtn = document.getElementById('br-comm-add');
+        const clearBtn = document.getElementById('br-comm-clear');
+        if (addBtn && !addBtn.dataset.bound) {
+            addBtn.dataset.bound = '1';
+            addBtn.addEventListener('click', async () => {
+                const factorEl = document.getElementById('br-comm-factor');
+                if (!factorEl) return;
+
+                const supervisorsSel = getRuleSelection('bc-super');
+                const unsSel = getRuleSelection('bc-un');
+                const viasSel = getRuleSelection('bc-via');
+                const monthsSel = getRuleSelection('bc-fecha');
+                const factor = parseDecimalInput(factorEl.value);
+
+                if (!monthsSel.length) {
+                    showWarning('Selecciona al menos un mes/año para la regla.');
+                    return;
+                }
+                if (!factor || factor <= 0) {
+                    showWarning('El factor de comisión debe ser mayor a 0.');
+                    return;
+                }
+
+                commissionRules.push({
+                    supervisors: supervisorsSel.length ? supervisorsSel : ['__ALL__'],
+                    uns: unsSel.length ? unsSel : ['__ALL__'],
+                    vias: viasSel.length ? viasSel : ['__ALL__'],
+                    months: monthsSel,
+                    factor
+                });
+                const ok = await saveCommissionRules();
+                if (ok) {
+                    renderCommissionRulesTable();
+                    setTabDirty('brokers', true);
+                }
+            });
+        }
+
+        if (clearBtn && !clearBtn.dataset.bound) {
+            clearBtn.dataset.bound = '1';
+            clearBtn.addEventListener('click', () => {
+                const factorEl = document.getElementById('br-comm-factor');
+                if (factorEl) factorEl.value = '';
+                ['bc-super', 'bc-un', 'bc-via', 'bc-fecha'].forEach((id) => {
+                    const allCb = document.getElementById(`${id}-all`);
+                    if (allCb) allCb.checked = true;
+                    document.querySelectorAll(`.${id}-cb`).forEach(c => c.checked = true);
+                    const countSpan = document.getElementById(`${id}-count`);
+                    if (countSpan) {
+                        const label = id.includes('fecha') ? 'Historia' : 'Todas';
+                        countSpan.textContent = label;
+                    }
+                });
+            });
+        }
+    }
+
+    function computeCommission(contractRow, supervisor, un, via, month) {
+        if (!commissionRules || !commissionRules.length) return 0;
+        const supNorm = supervisor || 'S/D';
+        const unVal = un || 'S/D';
+        const viaVal = via || 'S/D';
+        for (let i = 0; i < commissionRules.length; i++) {
+            const r = commissionRules[i];
+            const supMatch = (r.supervisors || []).includes('__ALL__') || (r.supervisors || []).includes(supNorm);
+            const unMatch = (r.uns || []).includes('__ALL__') || (r.uns || []).includes(unVal);
+            const viaMatch = (r.vias || []).includes('__ALL__') || (r.vias || []).includes(viaVal);
+            const monthMatch = !r.months || r.months.length === 0 || r.months.includes(month);
+            if (supMatch && unMatch && viaMatch && monthMatch) {
+                return (contractRow._montoCuota || 0) * (r.factor || 0);
+            }
+        }
+        return 0;
+    }
+
+    function computePrizeForCombo(combo, totalContracts) {
+        if (!prizeRules || !prizeRules.length) return 0;
+        let bestPrize = 0;
+        for (let i = 0; i < prizeRules.length; i++) {
+            const r = prizeRules[i];
+            const supMatch = (r.supervisors || []).includes('__ALL__') || (r.supervisors || []).includes(combo.supervisor);
+            const unMatch = (r.uns || []).includes('__ALL__') || (r.uns || []).includes(combo.un);
+            const monthMatch = (r.months || []).includes('__ALL__') || (r.months || []).includes(combo.month);
+            if (!supMatch || !unMatch || !monthMatch) continue;
+            const meta = r.meta || 0;
+            if (meta <= 0) continue;
+            const pct = (totalContracts / meta) * 100;
+            let scalePrize = 0;
+            let bestMin = -1;
+            (r.scales || []).forEach((s) => {
+                if (pct >= s.minPct && s.minPct >= bestMin) {
+                    bestMin = s.minPct;
+                    scalePrize = s.prize;
+                }
+            });
+            if (scalePrize > bestPrize) bestPrize = scalePrize;
+        }
+        return bestPrize;
+    }
+
+    function computePrizeForMonthSup(combo, countsByUn) {
+        if (!prizeRules || !prizeRules.length) return 0;
+        let bestPrize = 0;
+        for (let i = 0; i < prizeRules.length; i++) {
+            const r = prizeRules[i];
+            const ruleSups = r.supervisors || [];
+            const supMatch =
+                ruleSups.includes('__ALL__') ||
+                ruleSups.includes(combo.supervisor) ||
+                (
+                    combo.supervisor === 'FVBROKERS' &&
+                    (ruleSups.includes('FVBROKEREAS') || ruleSups.includes('FVBROKEREASCDE'))
+                ) ||
+                (
+                    ruleSups.includes('FVBROKERS') &&
+                    (combo.supervisor === 'FVBROKEREAS' || combo.supervisor === 'FVBROKEREASCDE')
+                );
+            const monthMatch = (r.months || []).includes('__ALL__') || (r.months || []).includes(combo.month);
+            if (!supMatch || !monthMatch) continue;
+
+            let totalContracts = 0;
+            const uns = r.uns || [];
+            if (uns.includes('__ALL__') || uns.length === 0) {
+                totalContracts = Object.values(countsByUn || {}).reduce((acc, v) => acc + (v || 0), 0);
+            } else {
+                uns.forEach((u) => { totalContracts += countsByUn[u] || 0; });
+            }
+
+            const meta = r.meta || 0;
+            if (meta <= 0) continue;
+            const pct = (totalContracts / meta) * 100;
+            let scalePrize = 0;
+            let bestMin = -1;
+            (r.scales || []).forEach((s) => {
+                if (pct >= s.minPct && s.minPct >= bestMin) {
+                    bestMin = s.minPct;
+                    scalePrize = s.prize;
+                }
+            });
+            if (scalePrize > bestPrize) bestPrize = scalePrize;
+        }
+        return bestPrize;
+    }
+
+    function mapUnifiedBrokersSupervisor(name) {
+        const n = normalizeSupervisorName(name);
+        if (n === 'FVBROKEREAS' || n === 'FVBROKEREASCDE') return 'FVBROKERS';
+        return n;
+    }
+
+    function renderBrokersTables(payload) {
+        const { rows, prizeByMonthSup, unifiedPrizeByMonthSup } = payload;
+        const head = document.getElementById('br-ms-table-head');
+        const body = document.getElementById('br-ms-table-body');
+        if (!head || !body) return;
+
+        head.innerHTML = '<tr><th>Año</th><th>Mes</th><th>Supervisor</th><th>UN</th><th>Vía</th><th>Contratos</th><th>Mora 3M</th><th>Monto Cuota</th><th>Comisiones</th></tr>';
+        body.innerHTML = '';
+
+        const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        const yearTotals = {};
+        const yearMontoTotals = {};
+        const yearCommissionTotals = {};
+        const yearPrizeTotals = {};
+        const yearMoraTotals = {};
+        let grandContracts = 0;
+        let grandMora = 0;
+        let grandMonto = 0;
+        let grandCommission = 0;
+        let grandPrize = 0;
+        const groupTotals = {};
+        const hasUnifiedPrizes = !!(unifiedPrizeByMonthSup && Object.keys(unifiedPrizeByMonthSup).length);
+        for (let i = 0; i < rows.length; i++) {
+            const r = rows[i];
+            const gKey = `${r.month}__${r.supervisor}`;
+            if (!groupTotals[gKey]) {
+                groupTotals[gKey] = { count: 0, mora: 0, monto: 0, commission: 0 };
+            }
+            groupTotals[gKey].count += r.count || 0;
+            groupTotals[gKey].mora += r.mora3m || 0;
+            groupTotals[gKey].monto += r.montoCuota || 0;
+            groupTotals[gKey].commission += r.commission || 0;
+        }
+
+        Object.keys(groupTotals).forEach((gKey) => {
+            const [month] = gKey.split('__');
+            const year = getYearFromGestionMonth(month) || 'S/D';
+            yearTotals[year] = (yearTotals[year] || 0) + groupTotals[gKey].count;
+            yearMoraTotals[year] = (yearMoraTotals[year] || 0) + groupTotals[gKey].mora;
+            yearMontoTotals[year] = (yearMontoTotals[year] || 0) + groupTotals[gKey].monto;
+            yearCommissionTotals[year] = (yearCommissionTotals[year] || 0) + groupTotals[gKey].commission;
+            grandContracts += groupTotals[gKey].count;
+            grandMora += groupTotals[gKey].mora;
+            grandMonto += groupTotals[gKey].monto;
+            grandCommission += groupTotals[gKey].commission;
+        });
+
+        let grandPrizeUnified = 0;
+        if (hasUnifiedPrizes) {
+            Object.keys(unifiedPrizeByMonthSup).forEach((k) => {
+                const [month] = k.split('__');
+                const year = getYearFromGestionMonth(month) || 'S/D';
+                const p = unifiedPrizeByMonthSup[k] || 0;
+                yearPrizeTotals[year] = (yearPrizeTotals[year] || 0) + p;
+                grandPrizeUnified += p;
+            });
+        } else {
+            Object.keys(groupTotals).forEach((gKey) => {
+                const [month] = gKey.split('__');
+                const year = getYearFromGestionMonth(month) || 'S/D';
+                const p = (prizeByMonthSup && prizeByMonthSup[gKey]) ? prizeByMonthSup[gKey] : 0;
+                yearPrizeTotals[year] = (yearPrizeTotals[year] || 0) + p;
+                grandPrize += p;
+            });
+        }
+
+        const MAX_RENDER = 20000;
+        let renderRows = rows;
+        if (rows.length > MAX_RENDER) {
+            renderRows = rows.slice(0, MAX_RENDER);
+            showWarning(`Brokers: se mostrarán ${MAX_RENDER.toLocaleString()} de ${rows.length.toLocaleString()} filas para evitar bloqueo del navegador.`);
+        }
+
+        const chunkSize = 300;
+        let index = 0;
+        let lastYear = null;
+        let lastGroup = null;
+
+        const renderChunk = () => {
+            const end = Math.min(index + chunkSize, renderRows.length);
+            let html = '';
+            for (let i = index; i < end; i++) {
+                const r = renderRows[i];
+                const groupKey = `${r.month}__${r.supervisor}`;
+                if (r.year !== lastYear) {
+                    if (lastGroup !== null) {
+                        const gPrev = groupTotals[lastGroup] || { count: 0, mora: 0, monto: 0, commission: 0 };
+                        const prizePrev = (prizeByMonthSup && prizeByMonthSup[lastGroup]) ? prizeByMonthSup[lastGroup] : 0;
+                        const [mPrev, sPrev] = lastGroup.split('__');
+                        const mIdx = parseInt(String(mPrev || '').split('/')[0], 10);
+                        const mLabel = Number.isFinite(mIdx) ? (monthNames[mIdx - 1] || mPrev) : mPrev;
+                        const supPrevUnified = mapUnifiedBrokersSupervisor(sPrev);
+                        const individualBroker = (supPrevUnified === 'FVBROKERS' && normalizeSupervisorName(sPrev) !== 'FVBROKERS');
+                        const prizeTextPrev = individualBroker && hasUnifiedPrizes
+                            ? 'Premios: calculado en total unificado FVBROKERS'
+                            : `Premios: ${formatPYG(prizePrev)}`;
+                        html += `<tr class="brokers-year-row"><td colspan="9">Subtotal ${mLabel} - ${sPrev} — Contratos: ${gPrev.count.toLocaleString()} | Mora 3M: ${gPrev.mora.toLocaleString()} | Monto cuota: ${formatPYG(gPrev.monto)} | Comisiones: ${formatPYG(gPrev.commission)} | ${prizeTextPrev}</td></tr>`;
+                    }
+                    const total = yearTotals[r.year] || 0;
+                    const totalMora = yearMoraTotals[r.year] || 0;
+                    const totalMonto = yearMontoTotals[r.year] || 0;
+                    const totalCommission = yearCommissionTotals[r.year] || 0;
+                    const totalPrize = yearPrizeTotals[r.year] || 0;
+                    html += `<tr class="brokers-year-row"><td colspan="9">Año ${r.year} — Total contratos: ${total.toLocaleString()} | Mora 3M: ${totalMora.toLocaleString()} | Monto cuota: ${formatPYG(totalMonto)} | Comisiones: ${formatPYG(totalCommission)} | Premios: ${formatPYG(totalPrize)}</td></tr>`;
+                    lastYear = r.year;
+                    lastGroup = null;
+                }
+                if (groupKey !== lastGroup && lastGroup !== null) {
+                    const g = groupTotals[lastGroup] || { count: 0, mora: 0, monto: 0, commission: 0 };
+                    const prize = (prizeByMonthSup && prizeByMonthSup[lastGroup]) ? prizeByMonthSup[lastGroup] : 0;
+                    const [mPrev, sPrev] = lastGroup.split('__');
+                    const mIdx = parseInt(String(mPrev || '').split('/')[0], 10);
+                    const mLabel = Number.isFinite(mIdx) ? (monthNames[mIdx - 1] || mPrev) : mPrev;
+                    const supUnified = mapUnifiedBrokersSupervisor(sPrev);
+                    const individualBroker = (supUnified === 'FVBROKERS' && normalizeSupervisorName(sPrev) !== 'FVBROKERS');
+                    const prizeText = individualBroker && hasUnifiedPrizes
+                        ? 'Premios: calculado en total unificado FVBROKERS'
+                        : `Premios: ${formatPYG(prize)}`;
+                    html += `<tr class="brokers-year-row"><td colspan="9">Subtotal ${mLabel} - ${sPrev} — Contratos: ${g.count.toLocaleString()} | Mora 3M: ${g.mora.toLocaleString()} | Monto cuota: ${formatPYG(g.monto)} | Comisiones: ${formatPYG(g.commission)} | ${prizeText}</td></tr>`;
+                }
+                const monthIdx = parseInt(r.monthPart, 10);
+                const monthLabel = Number.isFinite(monthIdx) ? (monthNames[monthIdx - 1] || r.monthPart) : r.monthPart;
+                html += `<tr><td>${r.year}</td><td>${monthLabel}</td><td>${r.supervisor}</td><td>${r.un}</td><td>${r.via}</td><td>${r.count.toLocaleString()}</td><td>${(r.mora3m || 0).toLocaleString()}</td><td>${formatPYG(r.montoCuota || 0)}</td><td>${formatPYG(r.commission || 0)}</td></tr>`;
+                lastGroup = groupKey;
+            }
+            body.insertAdjacentHTML('beforeend', html);
+            index = end;
+            if (index < renderRows.length) {
+                requestAnimationFrame(renderChunk);
+            } else {
+                if (lastGroup !== null) {
+                    const g = groupTotals[lastGroup] || { count: 0, mora: 0, monto: 0, commission: 0 };
+                    const prize = (prizeByMonthSup && prizeByMonthSup[lastGroup]) ? prizeByMonthSup[lastGroup] : 0;
+                    const [mPrev, sPrev] = lastGroup.split('__');
+                    const mIdx = parseInt(String(mPrev || '').split('/')[0], 10);
+                    const mLabel = Number.isFinite(mIdx) ? (monthNames[mIdx - 1] || mPrev) : mPrev;
+                    const supUnified = mapUnifiedBrokersSupervisor(sPrev);
+                    const individualBroker = (supUnified === 'FVBROKERS' && normalizeSupervisorName(sPrev) !== 'FVBROKERS');
+                    const prizeText = individualBroker && hasUnifiedPrizes
+                        ? 'Premios: calculado en total unificado FVBROKERS'
+                        : `Premios: ${formatPYG(prize)}`;
+                    const groupRow = document.createElement('tr');
+                    groupRow.className = 'brokers-year-row';
+                    groupRow.innerHTML = `<td colspan="9">Subtotal ${mLabel} - ${sPrev} — Contratos: ${g.count.toLocaleString()} | Mora 3M: ${g.mora.toLocaleString()} | Monto cuota: ${formatPYG(g.monto)} | Comisiones: ${formatPYG(g.commission)} | ${prizeText}</td>`;
+                    body.appendChild(groupRow);
+                }
+                const totalRow = document.createElement('tr');
+                totalRow.className = 'brokers-year-row';
+                const prizeTotalFinal = grandPrizeUnified > 0 ? grandPrizeUnified : grandPrize;
+                totalRow.innerHTML = `<td colspan="9">Total general — Contratos: ${grandContracts.toLocaleString()} | Mora 3M: ${grandMora.toLocaleString()} | Monto cuota: ${formatPYG(grandMonto)} | Comisiones: ${formatPYG(grandCommission)} | Premios: ${formatPYG(prizeTotalFinal)}</td>`;
+                body.appendChild(totalRow);
+            }
+        };
+        renderChunk();
+    }
+
+    async function calculateBrokers() {
+        await ensureContratosLoaded();
+        await ensureCarteraLoaded();
+        await ensureBrokersSupervisorConfigLoaded();
+        if (!state.contratos.data.length) return;
+
+        loading.classList.remove('hidden');
+        progressText.textContent = "Analizando contratos por broker...";
+        await new Promise(r => setTimeout(r, 50));
+
+        if (!commissionRulesLoaded) {
+            await loadCommissionRules();
+        }
+        if (!prizeRulesLoaded) {
+            await loadPrizeRules();
+        }
+
+        if (!state.brokers.filtersInitialized) {
+            const supervisorsAll = [...new Set(state.contratos.data.map(r => normalizeSupervisorName(r._supervisorNorm || r._supervisor || r.Supervisor || 'S/D')))].sort();
+            const supervisors = applyBrokersSupervisorScope(supervisorsAll);
+            const uns = [...new Set(state.contratos.data.map(r => String(r.UN || 'S/D').trim() || 'S/D'))].sort();
+            const fechas = [...new Set(state.contratos.data.map(r => String(r._contractMonth || 'S/D')).filter(Boolean))].sort(monthCompare);
+            const anios = [...new Set(fechas.map(getYearFromGestionMonth).filter(Boolean))].sort();
+
+            const viaById = getViaByContractId();
+            const viaSet = new Set();
+            Object.keys(viaById).forEach(k => viaSet.add(String(viaById[k] || 'S/D')));
+            if (viaSet.size === 0) {
+                viaSet.add('DEBITO');
+                viaSet.add('COBRADOR');
+            }
+
+            setupFilter('br-super', supervisors, 'brokers');
+            setupFilter('br-un', uns, 'brokers');
+            setupFilter('br-anio', anios, 'brokers');
+            setupFilter('br-fecha', fechas, 'brokers');
+            setupFilter('br-via', [...viaSet].sort(), 'brokers');
+
+            const anioOptions = document.getElementById('br-anio-options');
+            if (anioOptions) anioOptions.addEventListener('change', () => syncBrokersFechaByYear({ markDirty: true }));
+            syncBrokersFechaByYear({ ensureSelection: true, markDirty: false });
+
+            document.getElementById('reset-br').onclick = async () => {
+                resetFilters('brokers');
+                syncBrokersFechaByYear({ ensureSelection: true, markDirty: true });
+            };
+
+            snapshotAppliedFilters('brokers');
+            state.brokers.filtersInitialized = true;
+        }
+
+        const selSuper = getAppliedSelected('brokers', 'br-super');
+        const selUn = getAppliedSelected('brokers', 'br-un');
+        const selAnio = getAppliedSelected('brokers', 'br-anio');
+        const selFecha = getAppliedSelected('brokers', 'br-fecha');
+        const selVia = getAppliedSelected('brokers', 'br-via');
+        const enabledSupervisorSet = getEnabledBrokersSupervisorSet();
+
+        updateBrokersSelectionSummary(selSuper, selUn, selAnio, selFecha, selVia);
+
+        const viaById = getViaByContractId();
+        const bySupervisor = {};
+        const byMonth = {};
+        const byUn = {};
+        const byVia = {};
+        const byMonthSupervisor = {};
+        const rowAgg = {};
+        const moraAgg = {};
+        const contractsById = getContractsByIdMap();
+        let totalContracts = 0;
+
+        const contracts = state.contratos.data;
+        for (let i = 0; i < contracts.length; i++) {
+            const c = contracts[i];
+            const cId = String(c._cId || c.id || c.contract_id || '').replace(/[^0-9]/g, '');
+            if (!cId) continue;
+
+            const month = String(c._contractMonth || 'S/D');
+            const year = String(c._contractYear || getYearFromGestionMonth(month) || 'S/D');
+            const supervisor = normalizeSupervisorName(c._supervisorNorm || c._supervisor || c.Supervisor || 'S/D');
+            const un = String(c.UN || 'S/D').trim() || 'S/D';
+            const via = String(viaById[cId] || 'S/D');
+
+            if (enabledSupervisorSet.size > 0 && !enabledSupervisorSet.has(supervisor)) continue;
+            if (selSuper.size > 0 && !selSuper.has(supervisor)) continue;
+            if (selUn.size > 0 && !selUn.has(un)) continue;
+            if (selAnio.size > 0 && !selAnio.has(year)) continue;
+            if (selFecha.size > 0 && !selFecha.has(month)) continue;
+            if (selVia.size > 0 && !selVia.has(via)) continue;
+
+            totalContracts += 1;
+            bySupervisor[supervisor] = (bySupervisor[supervisor] || 0) + 1;
+            byMonth[month] = (byMonth[month] || 0) + 1;
+            byUn[un] = (byUn[un] || 0) + 1;
+            byVia[via] = (byVia[via] || 0) + 1;
+
+            if (!byMonthSupervisor[month]) byMonthSupervisor[month] = {};
+            byMonthSupervisor[month][supervisor] = (byMonthSupervisor[month][supervisor] || 0) + 1;
+
+            const rowKey = `${month}__${supervisor}__${un}__${via}`;
+            if (!rowAgg[rowKey]) rowAgg[rowKey] = { count: 0, montoCuota: 0 };
+            rowAgg[rowKey].count += 1;
+            rowAgg[rowKey].montoCuota += (c._montoCuota || 0);
+            rowAgg[rowKey].commission = (rowAgg[rowKey].commission || 0) + computeCommission(c, supervisor, un, via, month);
+
+            if (i % 25000 === 0) {
+                progressText.textContent = `Brokers: procesando ${i.toLocaleString()} / ${contracts.length.toLocaleString()}...`;
+                await new Promise(r => setTimeout(r, 0));
+            }
+        }
+
+        const moraSeen = new Set();
+        for (let i = 0; i < state.cartera.data.length; i++) {
+            const r = state.cartera.data[i];
+            const cId = String(r._cId || '').replace(/[^0-9]/g, '');
+            if (!cId) continue;
+            const c = contractsById[cId];
+            if (!c) continue;
+
+            const saleMonth = String(c._contractMonth || 'S/D');
+            if (!/^\d{2}\/\d{4}$/.test(saleMonth)) continue;
+            const cierreMonth = String(r._cierreMonth || '');
+            if (!/^\d{2}\/\d{4}$/.test(cierreMonth)) continue;
+
+            const tramo = parseInt(r.tramo, 10) || 0;
+            if (tramo < 4) continue;
+
+            const antigMeses = monthsBetweenDates(String(c.date || c.fecha_contrato || ''), String(r.fecha_cierre || ''));
+            if (antigMeses === null || !(antigMeses > 3 && antigMeses <= 6)) continue;
+
+            const supervisor = normalizeSupervisorName(c._supervisorNorm || c._supervisor || c.Supervisor || 'S/D');
+            const un = String(c.UN || r.UN || 'S/D').trim() || 'S/D';
+            const via = normalizeViaCobro(r.via_de_cobro);
+
+            if (enabledSupervisorSet.size > 0 && !enabledSupervisorSet.has(supervisor)) continue;
+            if (selSuper.size > 0 && !selSuper.has(supervisor)) continue;
+            if (selUn.size > 0 && !selUn.has(un)) continue;
+            if (selAnio.size > 0 && !selAnio.has(getYearFromGestionMonth(cierreMonth))) continue;
+            if (selFecha.size > 0 && !selFecha.has(cierreMonth)) continue;
+            if (selVia.size > 0 && !selVia.has(via)) continue;
+
+            const key = `${cierreMonth}__${supervisor}__${un}__${via}`;
+            const seenKey = `${key}__${cId}`;
+            if (moraSeen.has(seenKey)) continue;
+            moraSeen.add(seenKey);
+            moraAgg[key] = (moraAgg[key] || 0) + 1;
+        }
+
+        const totalSupervisors = Object.keys(bySupervisor).length;
+        updateBrokersUI({ totalContracts, totalSupervisors });
+
+        const monthLabels = Object.keys(byMonth).sort(monthCompare);
+        const countsByMonthSupUn = {};
+        for (let i = 0; i < contracts.length; i++) {
+            const c = contracts[i];
+            const cId = String(c._cId || c.id || c.contract_id || '').replace(/[^0-9]/g, '');
+            if (!cId) continue;
+            const month = String(c._contractMonth || 'S/D');
+            if (!/^\d{2}\/\d{4}$/.test(month)) continue;
+            const supervisor = normalizeSupervisorName(c._supervisorNorm || c._supervisor || c.Supervisor || 'S/D');
+            const un = String(c.UN || 'S/D').trim() || 'S/D';
+            if (enabledSupervisorSet.size > 0 && !enabledSupervisorSet.has(supervisor)) continue;
+            if (selSuper.size > 0 && !selSuper.has(supervisor)) continue;
+            if (selUn.size > 0 && !selUn.has(un)) continue;
+            if (selAnio.size > 0 && !selAnio.has(getYearFromGestionMonth(month))) continue;
+            if (selFecha.size > 0 && !selFecha.has(month)) continue;
+            // Important: prize rules are independent from via filter.
+            const msKey = `${month}__${supervisor}`;
+            if (!countsByMonthSupUn[msKey]) countsByMonthSupUn[msKey] = {};
+            countsByMonthSupUn[msKey][un] = (countsByMonthSupUn[msKey][un] || 0) + 1;
+        }
+
+        const prizeByMonthSup = {};
+        Object.keys(countsByMonthSupUn).forEach((msKey) => {
+            const [month, supervisor] = msKey.split('__');
+            prizeByMonthSup[msKey] = computePrizeForMonthSup({ month, supervisor }, countsByMonthSupUn[msKey]);
+        });
+
+        const unifiedCountsByMonthSupUn = {};
+        Object.keys(countsByMonthSupUn).forEach((msKey) => {
+            const [month, supervisor] = msKey.split('__');
+            const supUnified = mapUnifiedBrokersSupervisor(supervisor);
+            const keyUnified = `${month}__${supUnified}`;
+            if (!unifiedCountsByMonthSupUn[keyUnified]) unifiedCountsByMonthSupUn[keyUnified] = {};
+            const byUn = countsByMonthSupUn[msKey] || {};
+            Object.keys(byUn).forEach((un) => {
+                unifiedCountsByMonthSupUn[keyUnified][un] = (unifiedCountsByMonthSupUn[keyUnified][un] || 0) + (byUn[un] || 0);
+            });
+        });
+        const unifiedPrizeByMonthSup = {};
+        Object.keys(unifiedCountsByMonthSupUn).forEach((msKey) => {
+            const [month, supervisor] = msKey.split('__');
+            unifiedPrizeByMonthSup[msKey] = computePrizeForMonthSup({ month, supervisor }, unifiedCountsByMonthSupUn[msKey]);
+        });
+
+        const rows = Object.keys(rowAgg).map((key) => {
+            const [month, supervisor, un, via] = key.split('__');
+            const aggr = rowAgg[key];
+            const year = getYearFromGestionMonth(month) || 'S/D';
+            const monthPart = String(month || '').split('/')[0] || '';
+            return {
+                month,
+                year,
+                monthPart,
+                supervisor,
+                un,
+                via,
+                count: aggr.count,
+                montoCuota: aggr.montoCuota,
+                commission: aggr.commission || 0,
+                prize: 0,
+                mora3m: moraAgg[`${month}__${supervisor}__${un}__${via}`] || 0
+            };
+        }).sort((a, b) => {
+            const mComp = monthCompare(a.month, b.month);
+            if (mComp !== 0) return mComp;
+            if (a.supervisor !== b.supervisor) return a.supervisor.localeCompare(b.supervisor);
+            if (a.un !== b.un) return a.un.localeCompare(b.un);
+            return a.via.localeCompare(b.via);
+        });
+
+        renderBrokersTables({ rows, prizeByMonthSup, unifiedPrizeByMonthSup });
+
+        loading.classList.add('hidden');
+    }
+
+    async function calculateBrokersMora() {
+        await ensureContratosLoaded();
+        await ensureCarteraLoaded();
+        await ensureBrokersSupervisorConfigLoaded();
+        if (!state.contratos.data.length || !state.cartera.data.length) return;
+
+        loading.classList.remove('hidden');
+        progressText.textContent = "Analizando mora por broker...";
+        await new Promise(r => setTimeout(r, 50));
+
+        const contractsById = getContractsByIdMap();
+        const byKey = {};
+
+        if (!state.brokersMora.filtersInitialized) {
+            const supervisorsAll = [...new Set(state.contratos.data.map(c => normalizeSupervisorName(c._supervisorNorm || c._supervisor || c.Supervisor || 'S/D')))].sort();
+            const supervisors = applyBrokersSupervisorScope(supervisorsAll);
+            const uns = [...new Set(state.contratos.data.map(c => String(c.UN || 'S/D').trim() || 'S/D'))].sort();
+            const ventas = [...new Set(state.contratos.data.map(c => String(c._contractMonth || 'S/D')).filter(v => /^\d{2}\/\d{4}$/.test(v)))].sort(monthCompare);
+            const cierres = [...new Set(state.cartera.data.map(r => String(r._cierreMonth || 'S/D')).filter(v => /^\d{2}\/\d{4}$/.test(v)))].sort(monthCompare);
+            const antigSet = new Set();
+            const viaSet = new Set();
+            for (let i = 0; i < state.cartera.data.length; i++) {
+                const row = state.cartera.data[i];
+                viaSet.add(normalizeViaCobro(row.via_de_cobro));
+                const cId = String(row._cId || '').replace(/[^0-9]/g, '');
+                const contract = contractsById[cId];
+                if (!contract) continue;
+                const antig = monthsBetweenDates(String(contract.date || contract.fecha_contrato || ''), String(row.fecha_cierre || ''));
+                if (antig !== null) antigSet.add(String(antig));
+            }
+            const vias = [...viaSet].sort();
+            const antiguedades = [...antigSet].sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+
+            setupFilter('bm-super', supervisors, 'brokersMora');
+            setupFilter('bm-un', uns, 'brokersMora');
+            setupFilter('bm-via', vias, 'brokersMora');
+            setupFilter('bm-venta', ventas, 'brokersMora');
+            setupFilter('bm-cierre', cierres, 'brokersMora');
+            setupFilter('bm-antig', antiguedades, 'brokersMora');
+
+            document.getElementById('reset-bm').onclick = async () => {
+                resetFilters('brokersMora');
+            };
+            snapshotAppliedFilters('brokersMora');
+            state.brokersMora.filtersInitialized = true;
+        }
+
+        const selSuper = getAppliedSelected('brokersMora', 'bm-super');
+        const selUn = getAppliedSelected('brokersMora', 'bm-un');
+        const selVia = getAppliedSelected('brokersMora', 'bm-via');
+        const selVenta = getAppliedSelected('brokersMora', 'bm-venta');
+        const selCierre = getAppliedSelected('brokersMora', 'bm-cierre');
+        const selAntig = getAppliedSelected('brokersMora', 'bm-antig');
+        const enabledSupervisorSet = getEnabledBrokersSupervisorSet();
+
+        for (let i = 0; i < state.cartera.data.length; i++) {
+            const r = state.cartera.data[i];
+            const cId = String(r._cId || '').replace(/[^0-9]/g, '');
+            if (!cId) continue;
+            const contract = contractsById[cId];
+            if (!contract) continue;
+
+            const saleMonth = String(contract._contractMonth || 'S/D');
+            if (!/^\d{2}\/\d{4}$/.test(saleMonth)) continue;
+            const cierre = String(r._cierreMonth || '');
+            if (!/^\d{2}\/\d{4}$/.test(cierre)) continue;
+
+            const supervisor = normalizeSupervisorName(contract._supervisorNorm || contract._supervisor || contract.Supervisor || 'S/D');
+            const un = String(contract.UN || r.UN || 'S/D').trim() || 'S/D';
+            const via = normalizeViaCobro(r.via_de_cobro);
+            const tramo = parseInt(r.tramo, 10) || 0;
+            const antigMeses = monthsBetweenDates(String(contract.date || contract.fecha_contrato || ''), String(r.fecha_cierre || ''));
+
+            if (enabledSupervisorSet.size > 0 && !enabledSupervisorSet.has(supervisor)) continue;
+            if (selSuper.size > 0 && !selSuper.has(supervisor)) continue;
+            if (selUn.size > 0 && !selUn.has(un)) continue;
+            if (selVia.size > 0 && !selVia.has(via)) continue;
+            if (selVenta.size > 0 && !selVenta.has(saleMonth)) continue;
+            if (selCierre.size > 0 && !selCierre.has(cierre)) continue;
+            if (selAntig.size > 0 && !selAntig.has(String(antigMeses))) continue;
+
+            const key = `${cId}__${saleMonth}__${cierre}__${supervisor}__${un}__${via}`;
+            if (!byKey[key]) {
+                byKey[key] = {
+                    contractId: cId,
+                    saleMonth,
+                    gestion: cierre,
+                    antiguedad: null,
+                    antiguedadDias: null,
+                    supervisor,
+                    un,
+                    via,
+                    vigente: 0,
+                    moroso: 0
+                };
+            }
+
+            if (byKey[key].antiguedad === null) {
+                const cierreDate = r.fecha_cierre || '';
+                const contractDate = contract.date || contract.fecha_contrato || '';
+                byKey[key].antiguedad = antigMeses !== null ? antigMeses : null;
+                const diffDays = daysBetweenDates(contractDate, cierreDate);
+                byKey[key].antiguedadDias = diffDays !== null ? diffDays : null;
+            }
+
+            if (tramo <= 3) byKey[key].vigente = 1;
+            if (tramo >= 4) byKey[key].moroso = 1;
+
+            if (i % 25000 === 0) {
+                progressText.textContent = `Mora brokers: ${i.toLocaleString()} / ${state.cartera.data.length.toLocaleString()}...`;
+                await new Promise(r => setTimeout(r, 0));
+            }
+        }
+
+        const rows = Object.values(byKey)
+            .filter(v => (v.moroso || 0) === 1)
+            .map((v) => ({
+            contractId: v.contractId || '',
+            saleMonth: v.saleMonth,
+            gestion: v.gestion,
+            antiguedad: v.antiguedad,
+            antiguedadDias: v.antiguedadDias,
+            supervisor: v.supervisor,
+            un: v.un,
+            via: v.via,
+            vigente: v.vigente || 0,
+            moroso: v.moroso || 0
+        })).sort((a, b) => {
+            const s = monthCompare(a.saleMonth, b.saleMonth);
+            if (s !== 0) return s;
+            const g = monthCompare(a.gestion, b.gestion);
+            if (g !== 0) return g;
+            if (a.supervisor !== b.supervisor) return a.supervisor.localeCompare(b.supervisor);
+            if (a.un !== b.un) return a.un.localeCompare(b.un);
+            return a.via.localeCompare(b.via);
+        });
+
+        renderBrokersMoraTable(rows, {
+            totalContracts: Object.keys(byKey).length,
+            totalMorosos: rows.length
+        });
+        loading.classList.add('hidden');
+    }
+
+    function renderBrokersMoraTable(rows, totals) {
+        const head = document.getElementById('bm-table-head');
+        const body = document.getElementById('bm-table-body');
+        if (!head || !body) return;
+
+        head.innerHTML = '<tr><th>Contrato</th><th>Venta (Mes/Año)</th><th>Cierre (Mes/Año)</th><th>Antigüedad (meses)</th><th>Antigüedad (días)</th><th>Supervisor</th><th>UN</th><th>Vía de Pago</th><th>Vigente</th><th>Moroso</th></tr>';
+        body.innerHTML = '';
+
+        const maxRows = 30000;
+        const renderRows = rows.length > maxRows ? rows.slice(0, maxRows) : rows;
+        if (rows.length > maxRows) {
+            showWarning(`Mora Brokers: se muestran ${maxRows.toLocaleString()} de ${rows.length.toLocaleString()} filas.`);
+        }
+
+        const chunkSize = 400;
+        let index = 0;
+        const totalVig = renderRows.reduce((acc, r) => acc + (r.vigente || 0), 0);
+        const totalMor = renderRows.reduce((acc, r) => acc + (r.moroso || 0), 0);
+        const cardTotal = document.getElementById('bm-total-contracts');
+        const cardMor = document.getElementById('bm-total-morosos');
+        if (cardTotal) cardTotal.textContent = (totals && totals.totalContracts ? totals.totalContracts : renderRows.length).toLocaleString();
+        if (cardMor) cardMor.textContent = (totals && totals.totalMorosos ? totals.totalMorosos : totalMor).toLocaleString();
+
+        const renderChunk = () => {
+            const end = Math.min(index + chunkSize, renderRows.length);
+            let html = '';
+            for (let i = index; i < end; i++) {
+                const r = renderRows[i];
+                html += `<tr><td>${r.contractId}</td><td>${r.saleMonth}</td><td>${r.gestion}</td><td>${r.antiguedad !== null ? r.antiguedad : 'S/D'}</td><td>${r.antiguedadDias !== null ? r.antiguedadDias : 'S/D'}</td><td>${r.supervisor}</td><td>${r.un}</td><td>${r.via}</td><td>${r.vigente.toLocaleString()}</td><td>${r.moroso.toLocaleString()}</td></tr>`;
+            }
+            body.insertAdjacentHTML('beforeend', html);
+            index = end;
+            if (index < renderRows.length) {
+                requestAnimationFrame(renderChunk);
+            } else {
+                const totalRow = document.createElement('tr');
+                totalRow.className = 'brokers-year-row';
+                totalRow.innerHTML = `<td colspan="10">Total (filas visibles) — Vigentes: ${totalVig.toLocaleString()} | Morosos: ${totalMor.toLocaleString()}</td>`;
+                body.appendChild(totalRow);
+            }
+        };
+        renderChunk();
+    }
+
     function updateGestoresUI(stats) {
         document.getElementById('gs-total-contracts').textContent = stats.totalContracts.toLocaleString();
         document.getElementById('gs-total-debt').textContent = formatPYG(stats.totalDebt);
@@ -4960,6 +6258,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         else if (tab === 'culminados') await calculateCulminados();
         else if (tab === 'cosecha') await calculateCosecha();
         else if (tab === 'gestores') await calculateGestoresDashboard();
+        else if (tab === 'brokers') await calculateBrokers();
+        else if (tab === 'brokersMora') await calculateBrokersMora();
         if (state[tab]) state[tab].lastComputeSignature = signature;
         debugLog('applyTabFilters.done', {
             tab,
@@ -5090,11 +6390,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (tab === 'culminados') sel = '#culminados-content';
         if (tab === 'cosecha') sel = '#cosecha-content';
         if (tab === 'gestores') sel = '#gestores-content';
+        if (tab === 'brokers') sel = '#brokers-content';
+        if (tab === 'brokersSupervisors') sel = '#brokers-super-content';
+        if (tab === 'brokersMora') sel = '#brokers-mora-content';
 
         const ids = tabFilterIds[tab] || [];
         const getDefaultCountLabel = (id) => {
             if (id.includes('fecha') || id.includes('gestion')) return 'Historia';
-            if (id.includes('un') || id.includes('via-cobro') || id.includes('via-pago') || id.includes('cat')) return 'Todas';
+            if (id.includes('un') || id.includes('via') || id.includes('cat')) return 'Todas';
             return 'Todos';
         };
 
@@ -5311,16 +6614,120 @@ document.addEventListener('DOMContentLoaded', async () => {
         return diff === 0 ? 1 : diff;
     }
 
+    function parseDateToParts(val) {
+        const s = String(val || '').trim();
+        if (!s) return null;
+        let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+        if (m) return { y: parseInt(m[1], 10), m: parseInt(m[2], 10), d: parseInt(m[3], 10) };
+        m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+        if (m) return { y: parseInt(m[1], 10), m: parseInt(m[2], 10), d: parseInt(m[3], 10) };
+        m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (m) return { y: parseInt(m[3], 10), m: parseInt(m[2], 10), d: parseInt(m[1], 10) };
+        m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+        if (m) return { y: parseInt(m[3], 10), m: parseInt(m[2], 10), d: parseInt(m[1], 10) };
+        return null;
+    }
+
+    function addDaysToDateStr(dateStr, days) {
+        const p = parseDateToParts(dateStr);
+        if (!p) return '';
+        const dt = new Date(p.y, p.m - 1, p.d);
+        if (Number.isNaN(dt.getTime())) return '';
+        dt.setDate(dt.getDate() + (days || 0));
+        const y = dt.getFullYear();
+        const m = String(dt.getMonth() + 1).padStart(2, '0');
+        const d = String(dt.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+
+    function monthsBetweenDates(startDateStr, endDateStr) {
+        const a = parseDateToParts(startDateStr);
+        const b = parseDateToParts(endDateStr);
+        if (!a || !b) return null;
+        let months = (b.y - a.y) * 12 + (b.m - a.m);
+        if (b.d < a.d) months -= 1;
+        if (months < 0) months = 0;
+        return months;
+    }
+
+    function daysBetweenDates(startDateStr, endDateStr) {
+        const a = parseDateToParts(startDateStr);
+        const b = parseDateToParts(endDateStr);
+        if (!a || !b) return null;
+        const d1 = new Date(a.y, a.m - 1, a.d);
+        const d2 = new Date(b.y, b.m - 1, b.d);
+        if (Number.isNaN(d1.getTime()) || Number.isNaN(d2.getTime())) return null;
+        let diff = Math.floor((d2 - d1) / (1000 * 60 * 60 * 24));
+        if (diff < 0) diff = 0;
+        return diff;
+    }
+
+    function filterDropdownOptions(id, query) {
+        const container = document.getElementById(`${id}-options`);
+        if (!container) return;
+        const q = String(query || '').trim().toLowerCase();
+        const labels = container.querySelectorAll('label');
+        labels.forEach(label => {
+            const text = label.textContent || '';
+            label.style.display = text.toLowerCase().includes(q) ? '' : 'none';
+        });
+    }
+    window.filterDropdownOptions = filterDropdownOptions;
+
     function normalizeViaCobro(viaCobro) {
         if (normalizeUtils.normalizeViaCobro) return normalizeUtils.normalizeViaCobro(viaCobro);
         const rawVia = String(viaCobro || '').trim().toUpperCase();
         return (rawVia === 'COBRADOR' || rawVia === 'COB') ? 'COBRADOR' : 'DEBITO';
     }
 
+    function normalizeSupervisorName(name) {
+        if (normalizeUtils.normalizeSupervisorName) return normalizeUtils.normalizeSupervisorName(name);
+        let s = String(name || '').trim().toUpperCase();
+        s = s.replace(/\s+/g, ' ');
+        s = s.replace(/[.\-_/]+$/g, '').trim();
+        return s || 'S/D';
+    }
+
+    function parseDecimalInput(val) {
+        const raw = String(val || '').trim().replace(',', '.');
+        const num = parseFloat(raw);
+        return Number.isFinite(num) ? num : 0;
+    }
+
+    function fillSelectOptions(selectId, options, includeAllLabel) {
+        const el = document.getElementById(selectId);
+        if (!el) return;
+        el.innerHTML = '';
+        if (includeAllLabel) {
+            const opt = document.createElement('option');
+            opt.value = '__ALL__';
+            opt.textContent = includeAllLabel;
+            el.appendChild(opt);
+        }
+        options.forEach((val) => {
+            const opt = document.createElement('option');
+            opt.value = val;
+            opt.textContent = val;
+            el.appendChild(opt);
+        });
+    }
+
+    function getAllFilterOptions(id) {
+        return [...document.querySelectorAll(`.${id}-cb`)].map(c => String(c.value));
+    }
+
+    function getRuleSelection(id) {
+        const selected = [...getSelected(id)];
+        const allOptions = getAllFilterOptions(id);
+        if (selected.length === 0) return [];
+        if (allOptions.length > 0 && selected.length === allOptions.length) return ['__ALL__'];
+        return selected;
+    }
+
     function getSupervisorOptions() {
         const set = new Set();
         for (let i = 0; i < state.contratos.data.length; i++) {
-            const s = String(state.contratos.data[i]._supervisor || state.contratos.data[i].Supervisor || 'S/D').trim() || 'S/D';
+            const s = normalizeSupervisorName(state.contratos.data[i]._supervisor || state.contratos.data[i].Supervisor || 'S/D');
             set.add(s);
         }
         // Keep an explicit fallback option for contracts not present in contratos.csv
@@ -5335,9 +6742,104 @@ document.addEventListener('DOMContentLoaded', async () => {
             const c = state.contratos.data[i];
             const cId = String(c._cId || c.id || c.contract_id || '').replace(/[^0-9]/g, '');
             if (!cId) continue;
-            map[cId] = String(c._supervisor || c.Supervisor || 'S/D').trim() || 'S/D';
+            map[cId] = normalizeSupervisorName(c._supervisor || c.Supervisor || 'S/D');
         }
         return map;
+    }
+
+    function getViaByContractId() {
+        const stamp = buildDatasetStamp(state.cartera.data, ['_cId', 'via_de_cobro']);
+        if (memo.viaById.stamp === stamp && memo.viaById.value) return memo.viaById.value;
+
+        const counts = {};
+        for (let i = 0; i < state.cartera.data.length; i++) {
+            const r = state.cartera.data[i];
+            const cId = String(r._cId || '').replace(/[^0-9]/g, '');
+            if (!cId) continue;
+            const via = normalizeViaCobro(r.via_de_cobro);
+            if (!counts[cId]) counts[cId] = { COBRADOR: 0, DEBITO: 0 };
+            counts[cId][via] = (counts[cId][via] || 0) + 1;
+        }
+
+        const map = {};
+        Object.keys(counts).forEach((id) => {
+            const c = counts[id];
+            if ((c.COBRADOR || 0) === 0 && (c.DEBITO || 0) === 0) {
+                map[id] = 'S/D';
+            } else {
+                map[id] = (c.COBRADOR || 0) > (c.DEBITO || 0) ? 'COBRADOR' : 'DEBITO';
+            }
+        });
+        memo.viaById = { stamp, value: map };
+        return memo.viaById.value;
+    }
+
+    function getMoraTransitionByContract() {
+        const monthTramoById = getTramoByContractMonth();
+        const stamp = memo.tramoById.stamp;
+        if (memo.moraTransitions.stamp === stamp && memo.moraTransitions.value) return memo.moraTransitions.value;
+
+        const transitions = {};
+        const ids = Object.keys(monthTramoById);
+        for (let i = 0; i < ids.length; i++) {
+            const id = ids[i];
+            const mm = monthTramoById[id];
+            const months = Object.keys(mm).sort(monthCompare);
+            let seenVigente = false;
+            const set = new Set();
+            for (let j = 0; j < months.length; j++) {
+                const m = months[j];
+                const tramo = mm[m];
+                if (tramo <= 3) seenVigente = true;
+                if (tramo >= 4 && seenVigente) set.add(m);
+            }
+            transitions[id] = set;
+        }
+
+        memo.moraTransitions = { stamp, value: transitions };
+        return memo.moraTransitions.value;
+    }
+
+    function getTramoByContractMonth() {
+        const stamp = buildDatasetStamp(state.cartera.data, ['_cId', '_feNorm', 'tramo']);
+        if (memo.tramoById.stamp === stamp && memo.tramoById.value) return memo.tramoById.value;
+
+        const monthTramoById = {};
+        for (let i = 0; i < state.cartera.data.length; i++) {
+            const r = state.cartera.data[i];
+            const cId = String(r._cId || '').replace(/[^0-9]/g, '');
+            if (!cId || !r._feNorm) continue;
+            const m = String(r._feNorm || '');
+            if (!/^\d{2}\/\d{4}$/.test(m)) continue;
+            const tramo = parseInt(r.tramo, 10) || 0;
+            if (!monthTramoById[cId]) monthTramoById[cId] = {};
+            const prev = monthTramoById[cId][m];
+            if (prev === undefined || tramo > prev) monthTramoById[cId][m] = tramo;
+        }
+
+        memo.tramoById = { stamp, value: monthTramoById };
+        return memo.tramoById.value;
+    }
+
+    function getTramoByContractCierreMonth() {
+        const stamp = buildDatasetStamp(state.cartera.data, ['_cId', '_cierreMonth', 'tramo']);
+        if (memo.tramoByCierreId.stamp === stamp && memo.tramoByCierreId.value) return memo.tramoByCierreId.value;
+
+        const monthTramoById = {};
+        for (let i = 0; i < state.cartera.data.length; i++) {
+            const r = state.cartera.data[i];
+            const cId = String(r._cId || '').replace(/[^0-9]/g, '');
+            if (!cId) continue;
+            const m = String(r._cierreMonth || '');
+            if (!/^\d{2}\/\d{4}$/.test(m)) continue;
+            const tramo = parseInt(r.tramo, 10) || 0;
+            if (!monthTramoById[cId]) monthTramoById[cId] = {};
+            const prev = monthTramoById[cId][m];
+            if (prev === undefined || tramo > prev) monthTramoById[cId][m] = tramo;
+        }
+
+        memo.tramoByCierreId = { stamp, value: monthTramoById };
+        return memo.tramoByCierreId.value;
     }
 
     function monthToSerial(mmYYYY) {
@@ -5630,6 +7132,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.onclick = (e) => { if (!e.target.closest('.multi-select')) document.querySelectorAll('.dropdown-content').forEach(d => d.classList.add('hidden')); };
 });
+
+
 
 
 

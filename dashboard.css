@@ -209,6 +209,10 @@ header h1 {
     cursor: pointer;
     border-radius: 0.5rem;
     transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-content: flex-start;
 }
 
 .tab-btn:hover {
@@ -253,6 +257,16 @@ header h1 {
     padding-left: 2.25rem;
     font-size: 0.95rem;
     color: #a5b4fc;
+    border-left: 2px solid rgba(148, 163, 184, 0.2);
+}
+
+.tabs-section-title {
+    margin: 0.75rem 0 0.25rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #94a3b8;
 }
 
 body.sidebar-open .tabs-nav {
@@ -311,6 +325,118 @@ body.sidebar-open .sidebar-overlay {
 .section-header h2 {
     font-size: 1.5rem;
     color: var(--primary);
+}
+
+.brokers-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+
+.brokers-card {
+    background: var(--card-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    backdrop-filter: blur(8px);
+}
+
+.brokers-card h3 {
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.brokers-card p {
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.brokers-list {
+    list-style: none;
+    display: grid;
+    gap: 0.5rem;
+    color: var(--text-secondary);
+}
+
+.brokers-list li::before {
+    content: "•";
+    color: var(--accent-color);
+    margin-right: 0.5rem;
+}
+
+.brokers-table h3 {
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.brokers-table table th,
+.brokers-table table td {
+    font-size: 0.85rem;
+}
+
+.brokers-year-row td {
+    font-weight: 700;
+    color: #e2e8f0;
+    background: rgba(56, 189, 248, 0.08);
+}
+
+.card.danger {
+    background: rgba(248, 113, 113, 0.12);
+    border: 1px solid rgba(248, 113, 113, 0.2);
+    color: #fecaca;
+}
+
+.commission-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid var(--glass-border);
+    border-radius: 1rem;
+    padding: 1rem;
+}
+
+.commission-grid label,
+.commission-grid .filter-group label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.commission-grid input {
+    background: #0f172a;
+    color: var(--text-primary);
+    border: 1px solid #334155;
+    border-radius: 0.5rem;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.commission-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.commission-hint {
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
+.filter-search {
+    width: 100%;
+    margin-bottom: 0.5rem;
+    padding: 0.4rem 0.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid #334155;
+    background: #0f172a;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
+@media (max-width: 1024px) {
+    .commission-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 /* Config layout */

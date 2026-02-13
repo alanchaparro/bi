@@ -55,6 +55,72 @@ OPS_METRICS = {
     "by_endpoint": {},
     "started_at": time.time(),
 }
+COMMISSIONS_RULES_FILE = os.path.join("data", "commissions_rules.json")
+PRIZES_RULES_FILE = os.path.join("data", "prizes_rules.json")
+BROKERS_SUPERVISORS_FILE = os.path.join("data", "brokers_supervisors.json")
+
+
+def load_commission_rules():
+    try:
+        if not os.path.exists(COMMISSIONS_RULES_FILE):
+            return []
+        with open(COMMISSIONS_RULES_FILE, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        if isinstance(payload, dict):
+            rules = payload.get("rules", [])
+        else:
+            rules = payload
+        return rules if isinstance(rules, list) else []
+    except Exception:
+        return []
+
+
+def save_commission_rules(rules):
+    os.makedirs(os.path.dirname(COMMISSIONS_RULES_FILE), exist_ok=True)
+    with open(COMMISSIONS_RULES_FILE, "w", encoding="utf-8") as f:
+        json.dump({"rules": rules}, f, ensure_ascii=False, indent=2)
+
+
+def load_prize_rules():
+    try:
+        if not os.path.exists(PRIZES_RULES_FILE):
+            return []
+        with open(PRIZES_RULES_FILE, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        if isinstance(payload, dict):
+            rules = payload.get("rules", [])
+        else:
+            rules = payload
+        return rules if isinstance(rules, list) else []
+    except Exception:
+        return []
+
+
+def save_prize_rules(rules):
+    os.makedirs(os.path.dirname(PRIZES_RULES_FILE), exist_ok=True)
+    with open(PRIZES_RULES_FILE, "w", encoding="utf-8") as f:
+        json.dump({"rules": rules}, f, ensure_ascii=False, indent=2)
+
+
+def load_brokers_supervisors():
+    try:
+        if not os.path.exists(BROKERS_SUPERVISORS_FILE):
+            return []
+        with open(BROKERS_SUPERVISORS_FILE, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        if isinstance(payload, dict):
+            supervisors = payload.get("supervisors", [])
+        else:
+            supervisors = payload
+        return supervisors if isinstance(supervisors, list) else []
+    except Exception:
+        return []
+
+
+def save_brokers_supervisors(supervisors):
+    os.makedirs(os.path.dirname(BROKERS_SUPERVISORS_FILE), exist_ok=True)
+    with open(BROKERS_SUPERVISORS_FILE, "w", encoding="utf-8") as f:
+        json.dump({"supervisors": supervisors}, f, ensure_ascii=False, indent=2)
 
 
 def log_event(event, **fields):
@@ -1744,9 +1810,61 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(files)
             return
 
+        if parsed_path.path == '/api/commissions':
+            self._send_json({"rules": load_commission_rules()})
+            return
+
+        if parsed_path.path == '/api/prizes':
+            self._send_json({"rules": load_prize_rules()})
+            return
+
+        if parsed_path.path == '/api/brokers-supervisors':
+            self._send_json({"supervisors": load_brokers_supervisors()})
+            return
+
         if self.path == '/':
             self.path = '/dashboard.html'
         return http.server.SimpleHTTPRequestHandler.do_GET(self)
+
+    def do_POST(self):
+        parsed_path = urlparse(self.path)
+        if parsed_path.path == '/api/commissions':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                raw = self.rfile.read(length) if length > 0 else b''
+                payload = json.loads(raw.decode('utf-8') or '{}')
+                rules = payload.get("rules", [])
+                if not isinstance(rules, list):
+                    return self._send_error_json('INVALID_PAYLOAD', 'rules debe ser una lista')
+                save_commission_rules(rules)
+                return self._send_json({"ok": True, "rules": rules})
+            except Exception as e:
+                return self._send_error_json('INVALID_PAYLOAD', 'No se pudo guardar reglas', str(e))
+        if parsed_path.path == '/api/prizes':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                raw = self.rfile.read(length) if length > 0 else b''
+                payload = json.loads(raw.decode('utf-8') or '{}')
+                rules = payload.get("rules", [])
+                if not isinstance(rules, list):
+                    return self._send_error_json('INVALID_PAYLOAD', 'rules debe ser una lista')
+                save_prize_rules(rules)
+                return self._send_json({"ok": True, "rules": rules})
+            except Exception as e:
+                return self._send_error_json('INVALID_PAYLOAD', 'No se pudo guardar reglas', str(e))
+        if parsed_path.path == '/api/brokers-supervisors':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                raw = self.rfile.read(length) if length > 0 else b''
+                payload = json.loads(raw.decode('utf-8') or '{}')
+                supervisors = payload.get("supervisors", [])
+                if not isinstance(supervisors, list):
+                    return self._send_error_json('INVALID_PAYLOAD', 'supervisors debe ser una lista')
+                save_brokers_supervisors(supervisors)
+                return self._send_json({"ok": True, "supervisors": supervisors})
+            except Exception as e:
+                return self._send_error_json('INVALID_PAYLOAD', 'No se pudo guardar supervisores', str(e))
+        return self._send_error_json('NOT_FOUND', 'Endpoint no encontrado')
 
     def end_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')

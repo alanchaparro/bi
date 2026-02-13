@@ -251,8 +251,8 @@
             const allKnownViaSelected = selViaCobro.size === 0 || (selViaCobro.has('COBRADOR') && selViaCobro.has('DEBITO'));
             const contractUN = String(c.UN || 'S/D');
 
-            let row = findSnapshotAtOrBefore(cId, culmMonth);
-            if (!row) row = findSnapshotAtOrAfter(cId, culmMonth);
+            const exactKey = `${cId}_${culmMonth}`;
+            let row = byContractMonth[exactKey] || null;
             const un = String((row && row.un) || contractUN || 'S/D');
             const via = String((row && row.via) || 'S/D');
             if (selUn.size > 0 && !selUn.has(un)) continue;

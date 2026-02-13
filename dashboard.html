@@ -64,18 +64,32 @@
         <!-- Navigation Tabs -->
         <div class="sidebar-overlay hidden" id="sidebar-overlay"></div>
         <nav class="tabs-nav hidden" id="tabs-nav">
+            <div class="tabs-section-title">Operación</div>
             <button class="tab-btn active" onclick="switchTab('cartera')">📊 Cartera</button>
             <button class="tab-btn" onclick="switchTab('cobranzas')">💰 Cobranzas</button>
+
+            <div class="tabs-section-title">Análisis Cartera</div>
             <button class="tab-btn" onclick="switchTab('analisisCartera')">🗂️ Análisis Cartera</button>
             <button class="tab-btn tab-sub-btn" onclick="switchTab('acaMovimiento')">↳ Movimiento Cartera</button>
             <button class="tab-btn tab-sub-btn" onclick="switchTab('acaAnuales')">↳ Análisis Anuales</button>
+
+            <div class="tabs-section-title">Performance</div>
             <button class="tab-btn" onclick="switchTab('rendimiento')">📈 Rendimiento</button>
             <button class="tab-btn" onclick="switchTab('cosecha')">🌾 Cosecha</button>
             <button class="tab-btn" onclick="switchTab('ltv')">🧮 LTV</button>
             <button class="tab-btn" onclick="switchTab('ltvAge')">⏳ LTV-Antigüedad</button>
+
+            <div class="tabs-section-title">Gestión</div>
             <button class="tab-btn" onclick="switchTab('analisisCobranza')">🧾 Análisis Cobranzas</button>
             <button class="tab-btn" onclick="switchTab('culminados')">✅ Culminados</button>
             <button class="tab-btn" onclick="switchTab('gestores')">💼 Gestores</button>
+            <button class="tab-btn" onclick="switchTab('brokers')">🤝 Brokers</button>
+            <button class="tab-btn tab-sub-btn" onclick="switchTab('brokersCommissions')">↳ Configuración Comisiones</button>
+            <button class="tab-btn tab-sub-btn" onclick="switchTab('brokersPrizes')">↳ Configuración Premios</button>
+            <button class="tab-btn tab-sub-btn" onclick="switchTab('brokersSupervisors')">↳ Supervisores Brokers</button>
+            <button class="tab-btn tab-sub-btn" onclick="switchTab('brokersMora')">↳ Mora Brokers</button>
+
+            <div class="tabs-section-title">Sistema</div>
             <button class="tab-btn" onclick="switchTab('config')">⚙️ Configuración</button>
         </nav>
 
@@ -1855,6 +1869,497 @@
                 </div>
             </div>
         </div>
+
+        <div id="brokers-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>Brokers</h2>
+                <div class="header-hint">Ventas (contratos) por supervisor, UN y vía de cobro.</div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Supervisor:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('br-super-dropdown')">
+                            <span id="br-super-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="br-super-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('br-super', this.value)">
+                            <label><input type="checkbox" id="br-super-all" checked> Todos</label>
+                            <hr>
+                            <div id="br-super-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Unidad de Negocio:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('br-un-dropdown')">
+                            <span id="br-un-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="br-un-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('br-un', this.value)">
+                            <label><input type="checkbox" id="br-un-all" checked> Todas</label>
+                            <hr>
+                            <div id="br-un-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Año Contrato:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('br-anio-dropdown')">
+                            <span id="br-anio-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="br-anio-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('br-anio', this.value)">
+                            <label><input type="checkbox" id="br-anio-all" checked> Todos</label>
+                            <hr>
+                            <div id="br-anio-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Mes/Año Contrato:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('br-fecha-dropdown')">
+                            <span id="br-fecha-count">Historia</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="br-fecha-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('br-fecha', this.value)">
+                            <label><input type="checkbox" id="br-fecha-all" checked> Historia</label>
+                            <hr>
+                            <div id="br-fecha-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Vía de Cobro:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('br-via-dropdown')">
+                            <span id="br-via-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="br-via-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('br-via', this.value)">
+                            <label><input type="checkbox" id="br-via-all" checked> Todas</label>
+                            <hr>
+                            <div id="br-via-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn-apply" id="apply-br" style="margin-left: auto;">Aplicar Filtros</button>
+                <button class="btn-reset" id="reset-br">🔄 Resetear Filtros</button>
+            </div>
+
+            <div id="br-selection-summary" class="table-container" style="margin-top: -1rem; margin-bottom: 1.5rem; padding: 0.75rem 1rem; color: #cbd5e1; font-size: 0.9rem;">
+                <strong>Selección actual:</strong> Supervisor: Todos | UN: Todas | Año: Todos | Mes/Año: Historia | Vía Cobro: Todas
+            </div>
+
+            <div class="summary-cards">
+                <div class="card primary">
+                    <h3>Total Contratos</h3>
+                    <p id="br-total-contracts">-</p>
+                </div>
+                <div class="card">
+                    <h3>Supervisores</h3>
+                    <p id="br-total-supervisors">-</p>
+                </div>
+            </div>
+
+            <div class="table-container brokers-table">
+                <h3>Contratos por Mes/Año y Supervisor</h3>
+                <table>
+                    <thead id="br-ms-table-head"></thead>
+                    <tbody id="br-ms-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="brokers-comm-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>Configuración de Comisiones</h2>
+                <div class="header-hint">Reglas por supervisor, UN, vía y mes/año de contrato.</div>
+            </div>
+
+            <div class="commission-grid">
+                <div class="filter-group">
+                    <label>Supervisor:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('bc-super-dropdown')">
+                            <span id="bc-super-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="bc-super-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('bc-super', this.value)">
+                            <label><input type="checkbox" id="bc-super-all" checked> Todos</label>
+                            <hr>
+                            <div id="bc-super-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>UN:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('bc-un-dropdown')">
+                            <span id="bc-un-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="bc-un-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('bc-un', this.value)">
+                            <label><input type="checkbox" id="bc-un-all" checked> Todas</label>
+                            <hr>
+                            <div id="bc-un-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Vía de Cobro:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('bc-via-dropdown')">
+                            <span id="bc-via-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="bc-via-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('bc-via', this.value)">
+                            <label><input type="checkbox" id="bc-via-all" checked> Todas</label>
+                            <hr>
+                            <div id="bc-via-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Mes/Año Contrato:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('bc-fecha-dropdown')">
+                            <span id="bc-fecha-count">Historia</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="bc-fecha-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('bc-fecha', this.value)">
+                            <label><input type="checkbox" id="bc-fecha-all" checked> Historia</label>
+                            <hr>
+                            <div id="bc-fecha-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Factor Comisión:</label>
+                    <input id="br-comm-factor" type="text" placeholder="Ej: 1,5">
+                    <span class="commission-hint">Se aplica sobre monto cuota.</span>
+                </div>
+
+                <div class="commission-actions">
+                    <button class="btn-secondary" id="br-comm-add">Guardar Regla</button>
+                    <button class="btn-reset" id="br-comm-clear">Limpiar</button>
+                </div>
+            </div>
+
+            <div class="table-container brokers-table" style="margin-top: 1rem;">
+                <h3>Reglas Guardadas</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Supervisor</th>
+                            <th>UN</th>
+                            <th>Vía</th>
+                            <th>Mes/Año</th>
+                            <th>Factor</th>
+                            <th>Acciones</th>
+                            </tr>
+                        </thead>
+                    <tbody id="br-comm-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="brokers-prizes-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>Configuración de Premios</h2>
+                <div class="header-hint">Reglas por supervisor, UN y mes/año de contrato (sin vía).</div>
+            </div>
+
+            <div class="commission-grid">
+                <div class="filter-group">
+                    <label>Supervisor:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('bp-super-dropdown')">
+                            <span id="bp-super-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="bp-super-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('bp-super', this.value)">
+                            <label><input type="checkbox" id="bp-super-all" checked> Todos</label>
+                            <hr>
+                            <div id="bp-super-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>UN:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('bp-un-dropdown')">
+                            <span id="bp-un-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="bp-un-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('bp-un', this.value)">
+                            <label><input type="checkbox" id="bp-un-all" checked> Todas</label>
+                            <hr>
+                            <div id="bp-un-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Mes/Año Contrato:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('bp-fecha-dropdown')">
+                            <span id="bp-fecha-count">Historia</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="bp-fecha-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('bp-fecha', this.value)">
+                            <label><input type="checkbox" id="bp-fecha-all" checked> Historia</label>
+                            <hr>
+                            <div id="bp-fecha-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Meta (contratos):</label>
+                    <input id="bp-meta" type="text" placeholder="Ej: 140">
+                </div>
+
+                <div class="filter-group">
+                    <label>Escala mínima (%)</label>
+                    <input id="bp-scale-min" type="text" placeholder="Ej: 70">
+                </div>
+
+                <div class="filter-group">
+                    <label>Premio fijo</label>
+                    <input id="bp-scale-prize" type="text" placeholder="Ej: 2800000">
+                </div>
+
+                <div class="commission-actions">
+                    <button class="btn-secondary" id="bp-scale-add">Agregar Escala</button>
+                    <button class="btn-reset" id="bp-scale-clear">Limpiar Escalas</button>
+                </div>
+            </div>
+
+            <div class="table-container brokers-table" style="margin-top: 1rem;">
+                <h3>Escalas en edición</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mín %</th>
+                            <th>Premio</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bp-scale-table-body"></tbody>
+                </table>
+            </div>
+
+            <div class="commission-actions" style="margin-top: 1rem;">
+                <button class="btn-secondary" id="bp-rule-save">Guardar Regla</button>
+                <button class="btn-reset" id="bp-rule-clear">Limpiar Regla</button>
+            </div>
+
+            <div class="table-container brokers-table" style="margin-top: 1rem;">
+                <h3>Reglas Guardadas</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Supervisor</th>
+                            <th>UN</th>
+                            <th>Mes/Año</th>
+                            <th>Meta</th>
+                            <th>Escalas</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bp-rules-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="brokers-super-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>Supervisores Brokers</h2>
+                <div class="header-hint">Define qué supervisores estarán disponibles en filtros de todas las secciones de Brokers.</div>
+            </div>
+
+            <div class="commission-grid">
+                <div class="filter-group">
+                    <label>Supervisores habilitados:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('bs-super-dropdown')">
+                            <span id="bs-super-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="bs-super-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('bs-super', this.value)">
+                            <label><input type="checkbox" id="bs-super-all" checked> Todos</label>
+                            <hr>
+                            <div id="bs-super-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="commission-actions">
+                    <button class="btn-secondary" id="bs-save">Guardar Supervisores</button>
+                    <button class="btn-reset" id="bs-clear">Usar Todos</button>
+                </div>
+            </div>
+
+            <div class="table-container brokers-table" style="margin-top: 1rem;">
+                <h3>Configuración actual</h3>
+                <div id="bs-current" style="padding: 0.75rem 1rem; color: #cbd5e1;">Cargando...</div>
+            </div>
+        </div>
+
+        <div id="brokers-mora-content" class="tab-content hidden">
+            <div class="section-header">
+                <h2>Mora Brokers</h2>
+                <div class="header-hint">Contratos por venta, gestión, UN, vía de pago y supervisor.</div>
+            </div>
+
+            <div class="summary-cards">
+                <div class="card primary">
+                    <h3>Total Contratos</h3>
+                    <p id="bm-total-contracts">-</p>
+                </div>
+                <div class="card danger">
+                    <h3>Contratos Morosos</h3>
+                    <p id="bm-total-morosos">-</p>
+                </div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Supervisor:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('bm-super-dropdown')">
+                            <span id="bm-super-count">Todos</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="bm-super-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('bm-super', this.value)">
+                            <label><input type="checkbox" id="bm-super-all" checked> Todos</label>
+                            <hr>
+                            <div id="bm-super-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>UN:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('bm-un-dropdown')">
+                            <span id="bm-un-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="bm-un-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('bm-un', this.value)">
+                            <label><input type="checkbox" id="bm-un-all" checked> Todas</label>
+                            <hr>
+                            <div id="bm-un-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Vía de Pago:</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('bm-via-dropdown')">
+                            <span id="bm-via-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="bm-via-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('bm-via', this.value)">
+                            <label><input type="checkbox" id="bm-via-all" checked> Todas</label>
+                            <hr>
+                            <div id="bm-via-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Venta (Mes/Año):</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('bm-venta-dropdown')">
+                            <span id="bm-venta-count">Historia</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="bm-venta-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('bm-venta', this.value)">
+                            <label><input type="checkbox" id="bm-venta-all" checked> Historia</label>
+                            <hr>
+                            <div id="bm-venta-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Fecha de Cierre (Mes/Año):</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('bm-cierre-dropdown')">
+                            <span id="bm-cierre-count">Historia</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="bm-cierre-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('bm-cierre', this.value)">
+                            <label><input type="checkbox" id="bm-cierre-all" checked> Historia</label>
+                            <hr>
+                            <div id="bm-cierre-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Antigüedad (meses):</label>
+                    <div class="multi-select">
+                        <div class="select-box" onclick="toggleDropdown('bm-antig-dropdown')">
+                            <span id="bm-antig-count">Todas</span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div id="bm-antig-dropdown" class="dropdown-content hidden">
+                            <input class="filter-search" type="text" placeholder="Buscar..." oninput="filterDropdownOptions('bm-antig', this.value)">
+                            <label><input type="checkbox" id="bm-antig-all" checked> Todas</label>
+                            <hr>
+                            <div id="bm-antig-options"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn-apply" id="apply-bm" style="margin-left: auto;">Aplicar Filtros</button>
+                <button class="btn-reset" id="reset-bm">🔄 Resetear Filtros</button>
+            </div>
+
+            <div class="table-container brokers-table">
+                <h3>Vigentes vs Morosos por Gestión</h3>
+                <table>
+                    <thead id="bm-table-head"></thead>
+                    <tbody id="bm-table-body"></tbody>
+                </table>
+            </div>
+        </div>
         </div>
 
     </main>
@@ -1879,7 +2384,7 @@
     <script src="tabs/rendimiento.js?v=20260210_sprint3_1"></script>
     <script src="tabs/rendimiento-api.js?v=20260210_api_1"></script>
     <script src="tabs/acaMovimiento-api.js?v=20260212_plan_1"></script>
-    <script src="dashboard.js?v=20260212_plan_1"></script>
+    <script src="dashboard.js?v=20260212_aca_mov_1"></script>
 </body>
 
 </html>

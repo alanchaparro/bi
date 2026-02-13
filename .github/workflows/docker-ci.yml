@@ -25,14 +25,17 @@ jobs:
       - name: Build Image
         run: docker compose build --no-cache
 
-      - name: Start Dashboard
-        run: docker compose up -d
+      - name: Start Services (Legacy + API v1)
+        run: docker compose --profile dev up -d dashboard api-v1
 
       - name: Compile Check
         run: docker compose run --rm dashboard python -m py_compile start_dashboard.py
 
       - name: Unit Tests
         run: docker compose run --rm dashboard python -m unittest discover -s tests -p "test_*.py"
+
+      - name: API v1 Contract Tests
+        run: docker compose --profile dev run --rm dashboard python -m unittest tests.test_api_v1_brokers_config -v
 
       - name: Smoke - Health Endpoints
         shell: bash
@@ -41,10 +44,36 @@ jobs:
           curl -fsS "http://localhost:5000/api/check-files" > /tmp/check-files.json
           curl -fsS "http://localhost:5000/" > /tmp/index.html
           grep -q "dashboard.js" /tmp/index.html
+          curl -fsS "http://localhost:8000/api/v1/health" > /tmp/v1-health.json
+          grep -q "\"ok\":true" /tmp/v1-health.json
+
+      - name: Export OpenAPI v1
+        run: docker compose --profile dev run --rm dashboard python scripts/export_openapi_v1.py
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Frontend Install
+        working-directory: frontend
+        run: npm install
+
+      - name: Generate OpenAPI TS Types
+        working-directory: frontend
+        run: npm run generate:types
+
+      - name: Frontend Typecheck + Build
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm run build
 
       - name: Logs on Failure
         if: failure()
-        run: docker compose logs dashboard --tail=400
+        run: |
+          docker compose logs dashboard --tail=400
+          docker compose --profile dev logs api-v1 --tail=400
 
       - name: Cleanup
         if: always()

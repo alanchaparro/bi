@@ -1,0 +1,52 @@
+﻿import time
+import uuid
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app.api.v1.router import router as v1_router
+from app.core.config import settings
+from app.db.base import Base
+from app.db.session import engine
+
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title=settings.app_name, version='1.0.0')
+
+origins = [o.strip() for o in settings.cors_origins.split(',')] if settings.cors_origins else ['*']
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*'],
+)
+
+
+@app.middleware('http')
+async def trace_and_logging(request: Request, call_next):
+    trace_id = request.headers.get('x-trace-id') or str(uuid.uuid4())
+    start = time.time()
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        latency = round((time.time() - start) * 1000, 2)
+        body = {'error_code': 'INTERNAL_ERROR', 'message': 'Error interno', 'details': str(exc), 'trace_id': trace_id}
+        return JSONResponse(status_code=500, content=body, headers={'x-trace-id': trace_id, 'x-latency-ms': str(latency)})
+
+    latency = round((time.time() - start) * 1000, 2)
+    response.headers['x-trace-id'] = trace_id
+    response.headers['x-latency-ms'] = str(latency)
+    return response
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    trace_id = request.headers.get('x-trace-id') or str(uuid.uuid4())
+    details = exc.detail if isinstance(exc.detail, dict) else {'error_code': 'HTTP_ERROR', 'message': str(exc.detail), 'details': None}
+    details['trace_id'] = trace_id
+    return JSONResponse(status_code=exc.status_code, content=details)
+
+
+app.include_router(v1_router)

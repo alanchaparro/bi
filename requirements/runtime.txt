@@ -2,3 +2,11 @@ pandas
 openpyxl
 mysql-connector-python
 python-dotenv
+fastapi
+uvicorn[standard]
+sqlalchemy
+alembic
+pydantic-settings
+python-jose[cryptography]
+passlib[bcrypt]
+httpx
