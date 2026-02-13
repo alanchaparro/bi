@@ -12,6 +12,8 @@ import time
 import webbrowser
 from collections import defaultdict
 from urllib.parse import parse_qs, urlparse
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 PORT = 5000
 CACHE_DIR = ".cache"
@@ -58,6 +60,10 @@ OPS_METRICS = {
 COMMISSIONS_RULES_FILE = os.path.join("data", "commissions_rules.json")
 PRIZES_RULES_FILE = os.path.join("data", "prizes_rules.json")
 BROKERS_SUPERVISORS_FILE = os.path.join("data", "brokers_supervisors.json")
+API_V1_BASE_URL = os.getenv("API_V1_BASE_URL", "http://localhost:8000/api/v1").rstrip("/")
+API_V1_ADMIN_USER = os.getenv("DEMO_ADMIN_USER", "admin")
+API_V1_ADMIN_PASSWORD = os.getenv("DEMO_ADMIN_PASSWORD", "admin123")
+API_V1_TOKEN_CACHE = {"token": ""}
 
 
 def load_commission_rules():
@@ -121,6 +127,42 @@ def save_brokers_supervisors(supervisors):
     os.makedirs(os.path.dirname(BROKERS_SUPERVISORS_FILE), exist_ok=True)
     with open(BROKERS_SUPERVISORS_FILE, "w", encoding="utf-8") as f:
         json.dump({"supervisors": supervisors}, f, ensure_ascii=False, indent=2)
+
+
+def api_v1_login():
+    url = f"{API_V1_BASE_URL}/auth/login"
+    payload = json.dumps({"username": API_V1_ADMIN_USER, "password": API_V1_ADMIN_PASSWORD}).encode("utf-8")
+    req = Request(url, data=payload, method="POST")
+    req.add_header("Content-Type", "application/json")
+    with urlopen(req, timeout=8) as res:
+        body = json.loads(res.read().decode("utf-8"))
+    token = str(body.get("access_token") or "")
+    if not token:
+        raise RuntimeError("No se recibió token de API v1")
+    API_V1_TOKEN_CACHE["token"] = token
+    return token
+
+
+def call_api_v1_brokers(path, method="GET", payload=None, retry_auth=True):
+    token = API_V1_TOKEN_CACHE.get("token") or api_v1_login()
+    url = f"{API_V1_BASE_URL}{path}"
+    data = None
+    if payload is not None:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = Request(url, data=data, method=method.upper())
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Content-Type", "application/json")
+    try:
+        with urlopen(req, timeout=10) as res:
+            return json.loads(res.read().decode("utf-8"))
+    except HTTPError as e:
+        if e.code == 401 and retry_auth:
+            API_V1_TOKEN_CACHE["token"] = ""
+            api_v1_login()
+            return call_api_v1_brokers(path, method=method, payload=payload, retry_auth=False)
+        raise
+    except URLError:
+        raise
 
 
 def log_event(event, **fields):
@@ -1814,12 +1856,36 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json({"rules": load_commission_rules()})
             return
 
+        if parsed_path.path == '/api/v1proxy/commissions':
+            try:
+                payload = call_api_v1_brokers('/brokers/commissions', method='GET')
+                self._send_json(payload)
+            except Exception:
+                self._send_json({"rules": load_commission_rules()})
+            return
+
         if parsed_path.path == '/api/prizes':
             self._send_json({"rules": load_prize_rules()})
             return
 
+        if parsed_path.path == '/api/v1proxy/prizes':
+            try:
+                payload = call_api_v1_brokers('/brokers/prizes', method='GET')
+                self._send_json(payload)
+            except Exception:
+                self._send_json({"rules": load_prize_rules()})
+            return
+
         if parsed_path.path == '/api/brokers-supervisors':
             self._send_json({"supervisors": load_brokers_supervisors()})
+            return
+
+        if parsed_path.path == '/api/v1proxy/brokers-supervisors':
+            try:
+                payload = call_api_v1_brokers('/brokers/supervisors-scope', method='GET')
+                self._send_json(payload)
+            except Exception:
+                self._send_json({"supervisors": load_brokers_supervisors()})
             return
 
         if self.path == '/':
@@ -1840,6 +1906,22 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 return self._send_json({"ok": True, "rules": rules})
             except Exception as e:
                 return self._send_error_json('INVALID_PAYLOAD', 'No se pudo guardar reglas', str(e))
+        if parsed_path.path == '/api/v1proxy/commissions':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                raw = self.rfile.read(length) if length > 0 else b''
+                payload = json.loads(raw.decode('utf-8') or '{}')
+                rules = payload.get("rules", [])
+                if not isinstance(rules, list):
+                    return self._send_error_json('INVALID_PAYLOAD', 'rules debe ser una lista')
+                try:
+                    resp = call_api_v1_brokers('/brokers/commissions', method='POST', payload={"rules": rules})
+                    return self._send_json(resp)
+                except Exception:
+                    save_commission_rules(rules)
+                    return self._send_json({"ok": True, "rules": rules})
+            except Exception as e:
+                return self._send_error_json('INVALID_PAYLOAD', 'No se pudo guardar reglas', str(e))
         if parsed_path.path == '/api/prizes':
             try:
                 length = int(self.headers.get('Content-Length', 0))
@@ -1852,6 +1934,22 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 return self._send_json({"ok": True, "rules": rules})
             except Exception as e:
                 return self._send_error_json('INVALID_PAYLOAD', 'No se pudo guardar reglas', str(e))
+        if parsed_path.path == '/api/v1proxy/prizes':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                raw = self.rfile.read(length) if length > 0 else b''
+                payload = json.loads(raw.decode('utf-8') or '{}')
+                rules = payload.get("rules", [])
+                if not isinstance(rules, list):
+                    return self._send_error_json('INVALID_PAYLOAD', 'rules debe ser una lista')
+                try:
+                    resp = call_api_v1_brokers('/brokers/prizes', method='POST', payload={"rules": rules})
+                    return self._send_json(resp)
+                except Exception:
+                    save_prize_rules(rules)
+                    return self._send_json({"ok": True, "rules": rules})
+            except Exception as e:
+                return self._send_error_json('INVALID_PAYLOAD', 'No se pudo guardar reglas', str(e))
         if parsed_path.path == '/api/brokers-supervisors':
             try:
                 length = int(self.headers.get('Content-Length', 0))
@@ -1862,6 +1960,22 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     return self._send_error_json('INVALID_PAYLOAD', 'supervisors debe ser una lista')
                 save_brokers_supervisors(supervisors)
                 return self._send_json({"ok": True, "supervisors": supervisors})
+            except Exception as e:
+                return self._send_error_json('INVALID_PAYLOAD', 'No se pudo guardar supervisores', str(e))
+        if parsed_path.path == '/api/v1proxy/brokers-supervisors':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                raw = self.rfile.read(length) if length > 0 else b''
+                payload = json.loads(raw.decode('utf-8') or '{}')
+                supervisors = payload.get("supervisors", [])
+                if not isinstance(supervisors, list):
+                    return self._send_error_json('INVALID_PAYLOAD', 'supervisors debe ser una lista')
+                try:
+                    resp = call_api_v1_brokers('/brokers/supervisors-scope', method='POST', payload={"supervisors": supervisors})
+                    return self._send_json(resp)
+                except Exception:
+                    save_brokers_supervisors(supervisors)
+                    return self._send_json({"ok": True, "supervisors": supervisors})
             except Exception as e:
                 return self._send_error_json('INVALID_PAYLOAD', 'No se pudo guardar supervisores', str(e))
         return self._send_error_json('NOT_FOUND', 'Endpoint no encontrado')

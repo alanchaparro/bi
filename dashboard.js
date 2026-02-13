@@ -38,7 +38,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     let prizeScaleDraft = [];
     let brokersEnabledSupervisors = [];
     let brokersEnabledSupervisorsLoaded = false;
-    let brokersApiV1Token = '';
     let brokersApiV1Disabled = false;
     let brokersApiV1FallbackNotified = false;
     const enableMovementSeriesV2 = featureFlags.FF_MOVEMENT_SERIES_V2 !== false;
@@ -4815,57 +4814,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         loading.classList.add('hidden');
     }
 
-    function getApiV1BaseUrl() {
-        const proto = window.location.protocol || 'http:';
-        const host = window.location.hostname || 'localhost';
-        return `${proto}//${host}:8000/api/v1`;
-    }
-
-    function getBrokersApiV1Path(legacyPath) {
+    function getBrokersApiV1ProxyPath(legacyPath) {
         const map = {
-            '/api/brokers-supervisors': '/brokers/supervisors-scope',
-            '/api/commissions': '/brokers/commissions',
-            '/api/prizes': '/brokers/prizes'
+            '/api/brokers-supervisors': '/api/v1proxy/brokers-supervisors',
+            '/api/commissions': '/api/v1proxy/commissions',
+            '/api/prizes': '/api/v1proxy/prizes'
         };
         return map[legacyPath] || null;
     }
 
-    async function ensureBrokersApiV1Token(forceRefresh) {
-        if (!forceRefresh && brokersApiV1Token) return brokersApiV1Token;
-        const url = `${getApiV1BaseUrl()}/auth/login`;
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: 'admin', password: 'admin123' })
-        });
-        if (!res.ok) throw new Error(`auth HTTP ${res.status}`);
-        const payload = await res.json();
-        const token = String(payload.access_token || '');
-        if (!token) throw new Error('auth token vacío');
-        brokersApiV1Token = token;
-        return token;
-    }
-
     async function fetchBrokersConfigJson(legacyPath, init) {
-        const v1Path = getBrokersApiV1Path(legacyPath);
+        const v1Path = getBrokersApiV1ProxyPath(legacyPath);
         if (!brokersApiV1Disabled && v1Path) {
             try {
-                let token = await ensureBrokersApiV1Token(false);
-                const url = `${getApiV1BaseUrl()}${v1Path}`;
-                const reqHeaders = { ...(init && init.headers ? init.headers : {}), Authorization: `Bearer ${token}` };
-                let res = await fetch(url, { ...(init || {}), headers: reqHeaders });
-                if (res.status === 401) {
-                    token = await ensureBrokersApiV1Token(true);
-                    const retryHeaders = { ...(init && init.headers ? init.headers : {}), Authorization: `Bearer ${token}` };
-                    res = await fetch(url, { ...(init || {}), headers: retryHeaders });
-                }
+                const res = await fetch(v1Path, init || {});
                 if (res.ok) return await res.json();
                 throw new Error(`v1 HTTP ${res.status}`);
             } catch (e) {
                 brokersApiV1Disabled = true;
                 if (!brokersApiV1FallbackNotified) {
                     brokersApiV1FallbackNotified = true;
-                    showWarning(`Brokers API v1 no disponible, usando fallback legacy (${e.message || e}).`);
+                    showWarning(`Brokers API v1 proxy no disponible, usando fallback legacy (${e.message || e}).`);
                 }
             }
         }

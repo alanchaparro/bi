@@ -60,6 +60,13 @@ class DashboardStaticTests(unittest.TestCase):
         for rel in expected:
             self.assertTrue((ROOT / rel).exists(), f'missing {rel}')
 
+    def test_start_dashboard_has_v1proxy_brokers_routes(self):
+        content = (ROOT / 'start_dashboard.py').read_text(encoding='utf-8')
+        self.assertIn('/api/v1proxy/commissions', content)
+        self.assertIn('/api/v1proxy/prizes', content)
+        self.assertIn('/api/v1proxy/brokers-supervisors', content)
+        self.assertIn('call_api_v1_brokers', content)
+
 
 if __name__ == '__main__':
     unittest.main()
