@@ -292,6 +292,13 @@ def normalize_via_cobro(via):
     return "COBRADOR" if raw in {"COBRADOR", "COB"} else "DEBITO"
 
 
+def normalize_supervisor_name(name):
+    s = str(name or "").strip().upper()
+    s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"[.\-_/]+$", "", s).strip()
+    return s or "S/D"
+
+
 def to_float(value, default=0.0):
     try:
         return float(str(value).replace(",", "."))
@@ -352,6 +359,32 @@ def normalize_row(dataset, row):
 
 def normalize_rows(dataset, rows):
     return [normalize_row(dataset, r) for r in rows]
+
+
+def parse_date_to_parts(value):
+    val = str(value or "").strip()
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", val)
+    if m:
+        return int(m.group(1)), int(m.group(2)), int(m.group(3))
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", val)
+    if m:
+        return int(m.group(3)), int(m.group(2)), int(m.group(1))
+    return None
+
+
+def months_between_dates(start_date_str, end_date_str):
+    a = parse_date_to_parts(start_date_str)
+    b = parse_date_to_parts(end_date_str)
+    if not a or not b:
+        return None
+    y1, m1, d1 = a
+    y2, m2, d2 = b
+    months = (y2 - y1) * 12 + (m2 - m1)
+    if d2 < d1:
+        months -= 1
+    if months < 0:
+        months = 0
+    return months
 
 
 def iter_csv_rows(path):
@@ -462,6 +495,252 @@ def split_multi(values):
             if part:
                 out.append(part)
     return out
+
+
+def map_unified_brokers_supervisor(name):
+    n = normalize_supervisor_name(name)
+    if n in {"FVBROKEREAS", "FVBROKEREASCDE"}:
+        return "FVBROKERS"
+    return n
+
+
+def rule_matches_value(rule_values, value):
+    values = rule_values or []
+    return ("__ALL__" in values) or (value in values)
+
+
+def compute_commission_for_contract(monto_cuota, supervisor, un, via, month, commission_rules):
+    sup_norm = normalize_supervisor_name(supervisor)
+    un_val = str(un or "S/D").strip() or "S/D"
+    via_val = str(via or "S/D").strip() or "S/D"
+    for r in commission_rules:
+        sup_match = rule_matches_value(r.get("supervisors", []), sup_norm)
+        un_match = rule_matches_value(r.get("uns", []), un_val)
+        via_match = rule_matches_value(r.get("vias", []), via_val)
+        months = r.get("months", []) or []
+        month_match = (not months) or ("__ALL__" in months) or (month in months)
+        if sup_match and un_match and via_match and month_match:
+            return float(monto_cuota or 0.0) * float(r.get("factor", 0.0) or 0.0)
+    return 0.0
+
+
+def compute_prize_for_month_sup(month, supervisor, counts_by_un, prize_rules):
+    if not prize_rules:
+        return 0.0
+    best_prize = 0.0
+    for r in prize_rules:
+        rule_sups = r.get("supervisors", []) or []
+        sup_match = (
+            ("__ALL__" in rule_sups) or
+            (supervisor in rule_sups) or
+            (supervisor == "FVBROKERS" and ("FVBROKEREAS" in rule_sups or "FVBROKEREASCDE" in rule_sups)) or
+            ("FVBROKERS" in rule_sups and supervisor in {"FVBROKEREAS", "FVBROKEREASCDE"})
+        )
+        if not sup_match:
+            continue
+        months = r.get("months", []) or []
+        if months and ("__ALL__" not in months) and (month not in months):
+            continue
+
+        uns = r.get("uns", []) or []
+        total_contracts = 0
+        if ("__ALL__" in uns) or (len(uns) == 0):
+            total_contracts = sum((counts_by_un or {}).values())
+        else:
+            for u in uns:
+                total_contracts += int((counts_by_un or {}).get(u, 0) or 0)
+
+        meta = to_float(r.get("meta"), 0.0)
+        if meta <= 0:
+            continue
+        pct = (float(total_contracts) / meta) * 100.0
+        scale_prize = 0.0
+        best_min = -1.0
+        for s in (r.get("scales", []) or []):
+            min_pct = to_float(s.get("minPct"), 0.0)
+            prize = to_float(s.get("prize"), 0.0)
+            if pct >= min_pct and min_pct >= best_min:
+                best_min = min_pct
+                scale_prize = prize
+        if scale_prize > best_prize:
+            best_prize = scale_prize
+    return best_prize
+
+
+def compute_brokers_summary(payload):
+    refresh_data_cache()
+    contratos = DATA_CACHE["rows"].get("contratos", [])
+    cartera = DATA_CACHE["rows"].get("cartera", [])
+
+    filters = payload or {}
+    sel_super = set([normalize_supervisor_name(v) for v in (filters.get("supervisors") or []) if str(v).strip()])
+    sel_un = set([str(v).strip() for v in (filters.get("uns") or []) if str(v).strip()])
+    sel_anio = set([str(v).strip() for v in (filters.get("years") or []) if str(v).strip()])
+    sel_fecha = set([str(v).strip() for v in (filters.get("months") or []) if str(v).strip()])
+    sel_via = set([str(v).strip().upper() for v in (filters.get("vias") or []) if str(v).strip()])
+
+    enabled_supervisors = set([normalize_supervisor_name(v) for v in load_brokers_supervisors() if str(v).strip()])
+    commission_rules = load_commission_rules()
+    prize_rules = load_prize_rules()
+
+    # Determine dominant via by contract id from cartera dataset.
+    via_counts = {}
+    for r in cartera:
+        c_id = re.sub(r"[^0-9]", "", str(r.get("_cId") or r.get("id_contrato") or ""))
+        if not c_id:
+            continue
+        via = normalize_via_cobro(r.get("via_de_cobro"))
+        if c_id not in via_counts:
+            via_counts[c_id] = {"COBRADOR": 0, "DEBITO": 0}
+        via_counts[c_id][via] = via_counts[c_id].get(via, 0) + 1
+    via_by_id = {}
+    for c_id, c in via_counts.items():
+        via_by_id[c_id] = "COBRADOR" if c.get("COBRADOR", 0) > c.get("DEBITO", 0) else "DEBITO"
+
+    contracts_by_id = {}
+    for c in contratos:
+        c_id = re.sub(r"[^0-9]", "", str(c.get("_cId") or c.get("id") or c.get("contract_id") or ""))
+        if c_id:
+            contracts_by_id[c_id] = c
+
+    row_agg = {}
+    by_supervisor = {}
+    total_contracts = 0
+    counts_by_month_sup_un = {}
+
+    for c in contratos:
+        c_id = re.sub(r"[^0-9]", "", str(c.get("_cId") or c.get("id") or c.get("contract_id") or ""))
+        if not c_id:
+            continue
+        month = str(c.get("_contractMonth") or month_from_date(c.get("date", "")) or "S/D")
+        year = str(c.get("_contractYear") or year_from_mm_yyyy(month) or "S/D")
+        supervisor = normalize_supervisor_name(c.get("_supervisor") or c.get("Supervisor") or "S/D")
+        un = str(c.get("UN") or "S/D").strip() or "S/D"
+        via = str(via_by_id.get(c_id) or "S/D")
+        monto_cuota = to_float(c.get("_montoCuota") or c.get("monto_cuota") or c.get("amount"), 0.0)
+
+        if enabled_supervisors and supervisor not in enabled_supervisors:
+            continue
+        if sel_super and supervisor not in sel_super:
+            continue
+        if sel_un and un not in sel_un:
+            continue
+        if sel_anio and year not in sel_anio:
+            continue
+        if sel_fecha and month not in sel_fecha:
+            continue
+        if sel_via and via not in sel_via:
+            continue
+
+        total_contracts += 1
+        by_supervisor[supervisor] = by_supervisor.get(supervisor, 0) + 1
+        row_key = f"{month}__{supervisor}__{un}__{via}"
+        if row_key not in row_agg:
+            row_agg[row_key] = {"count": 0, "montoCuota": 0.0, "commission": 0.0}
+        row_agg[row_key]["count"] += 1
+        row_agg[row_key]["montoCuota"] += monto_cuota
+        row_agg[row_key]["commission"] += compute_commission_for_contract(monto_cuota, supervisor, un, via, month, commission_rules)
+
+        ms_key = f"{month}__{supervisor}"
+        if ms_key not in counts_by_month_sup_un:
+            counts_by_month_sup_un[ms_key] = {}
+        counts_by_month_sup_un[ms_key][un] = counts_by_month_sup_un[ms_key].get(un, 0) + 1
+
+    mora_agg = {}
+    mora_seen = set()
+    for r in cartera:
+        c_id = re.sub(r"[^0-9]", "", str(r.get("_cId") or r.get("id_contrato") or ""))
+        if not c_id:
+            continue
+        c = contracts_by_id.get(c_id)
+        if not c:
+            continue
+
+        cierre_month = str(r.get("_cierreMonth") or month_from_date(r.get("fecha_cierre", "")) or "")
+        if not re.match(r"^\d{2}/\d{4}$", cierre_month):
+            continue
+        tramo = to_int(r.get("tramo"), 0)
+        if tramo < 4:
+            continue
+
+        antig_meses = months_between_dates(c.get("date") or c.get("fecha_contrato"), r.get("fecha_cierre"))
+        if antig_meses is None or not (antig_meses > 3 and antig_meses <= 6):
+            continue
+
+        supervisor = normalize_supervisor_name(c.get("_supervisor") or c.get("Supervisor") or "S/D")
+        un = str(c.get("UN") or r.get("UN") or "S/D").strip() or "S/D"
+        via = normalize_via_cobro(r.get("via_de_cobro"))
+        cierre_year = year_from_mm_yyyy(cierre_month) or "S/D"
+
+        if enabled_supervisors and supervisor not in enabled_supervisors:
+            continue
+        if sel_super and supervisor not in sel_super:
+            continue
+        if sel_un and un not in sel_un:
+            continue
+        if sel_anio and cierre_year not in sel_anio:
+            continue
+        if sel_fecha and cierre_month not in sel_fecha:
+            continue
+        if sel_via and via not in sel_via:
+            continue
+
+        key = f"{cierre_month}__{supervisor}__{un}__{via}"
+        seen_key = f"{key}__{c_id}"
+        if seen_key in mora_seen:
+            continue
+        mora_seen.add(seen_key)
+        mora_agg[key] = mora_agg.get(key, 0) + 1
+
+    prize_by_month_sup = {}
+    for ms_key, counts in counts_by_month_sup_un.items():
+        month, supervisor = ms_key.split("__", 1)
+        prize_by_month_sup[ms_key] = compute_prize_for_month_sup(month, supervisor, counts, prize_rules)
+
+    unified_counts = {}
+    for ms_key, counts in counts_by_month_sup_un.items():
+        month, supervisor = ms_key.split("__", 1)
+        unified_supervisor = map_unified_brokers_supervisor(supervisor)
+        unified_key = f"{month}__{unified_supervisor}"
+        if unified_key not in unified_counts:
+            unified_counts[unified_key] = {}
+        for u, v in counts.items():
+            unified_counts[unified_key][u] = unified_counts[unified_key].get(u, 0) + int(v or 0)
+
+    unified_prize_by_month_sup = {}
+    for ms_key, counts in unified_counts.items():
+        month, supervisor = ms_key.split("__", 1)
+        unified_prize_by_month_sup[ms_key] = compute_prize_for_month_sup(month, supervisor, counts, prize_rules)
+
+    rows = []
+    for key, aggr in row_agg.items():
+        month, supervisor, un, via = key.split("__")
+        year = year_from_mm_yyyy(month) or "S/D"
+        month_part = month.split("/")[0] if "/" in month else ""
+        rows.append({
+            "month": month,
+            "year": year,
+            "monthPart": month_part,
+            "supervisor": supervisor,
+            "un": un,
+            "via": via,
+            "count": int(aggr.get("count", 0)),
+            "montoCuota": float(aggr.get("montoCuota", 0.0)),
+            "commission": float(aggr.get("commission", 0.0)),
+            "mora3m": int(mora_agg.get(key, 0)),
+            "prize": 0,
+        })
+
+    rows.sort(key=lambda x: (month_to_serial(x.get("month", "")), x.get("supervisor", ""), x.get("un", ""), x.get("via", "")))
+    return {
+        "rows": rows,
+        "prizeByMonthSup": prize_by_month_sup,
+        "unifiedPrizeByMonthSup": unified_prize_by_month_sup,
+        "summary": {
+            "totalContracts": int(total_contracts),
+            "totalSupervisors": int(len(by_supervisor.keys())),
+        }
+    }
 
 
 def parse_filter_set(params, name):
@@ -1894,6 +2173,15 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed_path = urlparse(self.path)
+        if parsed_path.path == '/api/brokers/summary':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                raw = self.rfile.read(length) if length > 0 else b''
+                payload = json.loads(raw.decode('utf-8') or '{}')
+                result = compute_brokers_summary(payload if isinstance(payload, dict) else {})
+                return self._send_json(result)
+            except Exception as e:
+                return self._send_error_json('BROKERS_SUMMARY_ERROR', 'No se pudo calcular brokers summary', str(e))
         if parsed_path.path == '/api/commissions':
             try:
                 length = int(self.headers.get('Content-Length', 0))

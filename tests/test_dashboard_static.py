@@ -66,6 +66,8 @@ class DashboardStaticTests(unittest.TestCase):
         self.assertIn('/api/v1proxy/prizes', content)
         self.assertIn('/api/v1proxy/brokers-supervisors', content)
         self.assertIn('call_api_v1_brokers', content)
+        self.assertIn('/api/brokers/summary', content)
+        self.assertIn('compute_brokers_summary', content)
 
 
 if __name__ == '__main__':

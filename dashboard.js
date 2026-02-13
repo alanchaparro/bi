@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let brokersEnabledSupervisorsLoaded = false;
     let brokersApiV1Disabled = false;
     let brokersApiV1FallbackNotified = false;
+    let brokersSummaryFallbackNotified = false;
     const enableMovementSeriesV2 = featureFlags.FF_MOVEMENT_SERIES_V2 !== false;
     const enableLineLabelSmartLayout = featureFlags.FF_LINE_LABELS_SMART_LAYOUT !== false;
     const useApiAnalisisCartera = featureFlags.FF_API_ANALISIS_CARTERA !== false;
@@ -4844,6 +4845,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         return await legacyRes.json();
     }
 
+    async function fetchBrokersServerSummary(filters) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        let res;
+        try {
+            res = await fetch('/api/brokers/summary', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(filters || {}),
+                signal: controller.signal
+            });
+        } finally {
+            clearTimeout(timeout);
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+    }
+
     // --- BROKERS DASHBOARD LOGIC ---
     function updateBrokersSelectionSummary(selSuper, selUn, selAnio, selFecha, selVia) {
         const el = document.getElementById('br-selection-summary');
@@ -5685,6 +5704,42 @@ document.addEventListener('DOMContentLoaded', async () => {
         const enabledSupervisorSet = getEnabledBrokersSupervisorSet();
 
         updateBrokersSelectionSummary(selSuper, selUn, selAnio, selFecha, selVia);
+
+        try {
+            const serverPayload = {
+                supervisors: [...selSuper],
+                uns: [...selUn],
+                years: [...selAnio],
+                months: [...selFecha],
+                vias: [...selVia]
+            };
+            const serverData = await fetchBrokersServerSummary(serverPayload);
+            if (serverData && Array.isArray(serverData.rows)) {
+                const summary = serverData.summary || {};
+                if (summary && typeof summary.totalContracts === 'number' && typeof summary.totalSupervisors === 'number') {
+                    updateBrokersUI({
+                        totalContracts: summary.totalContracts,
+                        totalSupervisors: summary.totalSupervisors
+                    });
+                } else {
+                    const supSet = new Set(serverData.rows.map(r => normalizeSupervisorName(r.supervisor || 'S/D')));
+                    const totalContracts = serverData.rows.reduce((acc, r) => acc + (parseInt(r.count, 10) || 0), 0);
+                    updateBrokersUI({ totalContracts, totalSupervisors: supSet.size });
+                }
+                renderBrokersTables({
+                    rows: serverData.rows,
+                    prizeByMonthSup: serverData.prizeByMonthSup || {},
+                    unifiedPrizeByMonthSup: serverData.unifiedPrizeByMonthSup || {}
+                });
+                loading.classList.add('hidden');
+                return;
+            }
+        } catch (e) {
+            if (!brokersSummaryFallbackNotified) {
+                brokersSummaryFallbackNotified = true;
+                showWarning(`Brokers server summary no disponible, usando cálculo local (${e.message || e}).`);
+            }
+        }
 
         const viaById = getViaByContractId();
         const bySupervisor = {};
