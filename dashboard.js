@@ -38,6 +38,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     let prizeScaleDraft = [];
     let brokersEnabledSupervisors = [];
     let brokersEnabledSupervisorsLoaded = false;
+    let brokersApiV1Token = '';
+    let brokersApiV1Disabled = false;
+    let brokersApiV1FallbackNotified = false;
     const enableMovementSeriesV2 = featureFlags.FF_MOVEMENT_SERIES_V2 !== false;
     const enableLineLabelSmartLayout = featureFlags.FF_LINE_LABELS_SMART_LAYOUT !== false;
     const useApiAnalisisCartera = featureFlags.FF_API_ANALISIS_CARTERA !== false;
@@ -4812,6 +4815,66 @@ document.addEventListener('DOMContentLoaded', async () => {
         loading.classList.add('hidden');
     }
 
+    function getApiV1BaseUrl() {
+        const proto = window.location.protocol || 'http:';
+        const host = window.location.hostname || 'localhost';
+        return `${proto}//${host}:8000/api/v1`;
+    }
+
+    function getBrokersApiV1Path(legacyPath) {
+        const map = {
+            '/api/brokers-supervisors': '/brokers/supervisors-scope',
+            '/api/commissions': '/brokers/commissions',
+            '/api/prizes': '/brokers/prizes'
+        };
+        return map[legacyPath] || null;
+    }
+
+    async function ensureBrokersApiV1Token(forceRefresh) {
+        if (!forceRefresh && brokersApiV1Token) return brokersApiV1Token;
+        const url = `${getApiV1BaseUrl()}/auth/login`;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: 'admin', password: 'admin123' })
+        });
+        if (!res.ok) throw new Error(`auth HTTP ${res.status}`);
+        const payload = await res.json();
+        const token = String(payload.access_token || '');
+        if (!token) throw new Error('auth token vacío');
+        brokersApiV1Token = token;
+        return token;
+    }
+
+    async function fetchBrokersConfigJson(legacyPath, init) {
+        const v1Path = getBrokersApiV1Path(legacyPath);
+        if (!brokersApiV1Disabled && v1Path) {
+            try {
+                let token = await ensureBrokersApiV1Token(false);
+                const url = `${getApiV1BaseUrl()}${v1Path}`;
+                const reqHeaders = { ...(init && init.headers ? init.headers : {}), Authorization: `Bearer ${token}` };
+                let res = await fetch(url, { ...(init || {}), headers: reqHeaders });
+                if (res.status === 401) {
+                    token = await ensureBrokersApiV1Token(true);
+                    const retryHeaders = { ...(init && init.headers ? init.headers : {}), Authorization: `Bearer ${token}` };
+                    res = await fetch(url, { ...(init || {}), headers: retryHeaders });
+                }
+                if (res.ok) return await res.json();
+                throw new Error(`v1 HTTP ${res.status}`);
+            } catch (e) {
+                brokersApiV1Disabled = true;
+                if (!brokersApiV1FallbackNotified) {
+                    brokersApiV1FallbackNotified = true;
+                    showWarning(`Brokers API v1 no disponible, usando fallback legacy (${e.message || e}).`);
+                }
+            }
+        }
+
+        const legacyRes = await fetch(legacyPath, init || {});
+        if (!legacyRes.ok) throw new Error(`legacy HTTP ${legacyRes.status}`);
+        return await legacyRes.json();
+    }
+
     // --- BROKERS DASHBOARD LOGIC ---
     function updateBrokersSelectionSummary(selSuper, selUn, selAnio, selFecha, selVia) {
         const el = document.getElementById('br-selection-summary');
@@ -4848,9 +4911,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function loadBrokersEnabledSupervisors() {
         try {
-            const res = await fetch('/api/brokers-supervisors');
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const payload = await res.json();
+            const payload = await fetchBrokersConfigJson('/api/brokers-supervisors');
             const supervisors = Array.isArray(payload.supervisors) ? payload.supervisors : [];
             brokersEnabledSupervisors = supervisors.map(v => normalizeSupervisorName(v));
             brokersEnabledSupervisorsLoaded = true;
@@ -4861,13 +4922,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function saveBrokersEnabledSupervisors(supervisors) {
         try {
-            const res = await fetch('/api/brokers-supervisors', {
+            const payload = await fetchBrokersConfigJson('/api/brokers-supervisors', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ supervisors })
             });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            brokersEnabledSupervisors = supervisors.map(v => normalizeSupervisorName(v));
+            const saved = Array.isArray(payload.supervisors) ? payload.supervisors : supervisors;
+            brokersEnabledSupervisors = saved.map(v => normalizeSupervisorName(v));
             brokersEnabledSupervisorsLoaded = true;
             return true;
         } catch (e) {
@@ -5006,9 +5067,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function loadCommissionRules() {
         try {
-            const res = await fetch('/api/commissions');
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const payload = await res.json();
+            const payload = await fetchBrokersConfigJson('/api/commissions');
             const rules = Array.isArray(payload.rules) ? payload.rules : [];
             commissionRules = rules.map(r => ({
                 supervisors: Array.isArray(r.supervisors) ? r.supervisors.map(v => String(v)) : (r.supervisor ? [String(r.supervisor)] : []),
@@ -5125,9 +5184,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function loadPrizeRules() {
         try {
-            const res = await fetch('/api/prizes');
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const payload = await res.json();
+            const payload = await fetchBrokersConfigJson('/api/prizes');
             const rules = Array.isArray(payload.rules) ? payload.rules : [];
             prizeRules = rules.map(r => ({
                 supervisors: Array.isArray(r.supervisors) ? r.supervisors.map(v => String(v)) : (r.supervisor ? [String(r.supervisor)] : []),
@@ -5148,12 +5205,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function savePrizeRules() {
         try {
-            const res = await fetch('/api/prizes', {
+            await fetchBrokersConfigJson('/api/prizes', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ rules: prizeRules })
             });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return true;
         } catch (e) {
             showError('No se pudieron guardar reglas de premios.', e);
@@ -5277,12 +5333,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function saveCommissionRules() {
         try {
-            const res = await fetch('/api/commissions', {
+            await fetchBrokersConfigJson('/api/commissions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ rules: commissionRules })
             });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return true;
         } catch (e) {
             showError('No se pudieron guardar reglas de comisiones.', e);
