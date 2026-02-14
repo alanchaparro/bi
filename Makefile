@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: docker-build docker-up docker-down docker-logs docker-test docker-compile docker-smoke docker-validate docker-up-dev docker-up-prod docker-api-test docker-openapi-export frontend-generate-types frontend-build frontend-test docker-smoke-v1 docker-perf-smoke-v1 docker-ci
+.PHONY: docker-build docker-up docker-down docker-logs docker-test docker-compile docker-smoke docker-validate docker-up-dev docker-up-prod docker-api-test docker-openapi-export frontend-generate-types frontend-build frontend-test docker-smoke-v1 docker-perf-smoke-v1 docker-parity-v1 docker-ci
 
 docker-build:
 	docker compose build --no-cache
@@ -43,6 +43,11 @@ docker-smoke-v1:
 docker-perf-smoke-v1:
 	docker compose --profile dev up -d api-v1 dashboard
 	docker compose --profile dev run --rm -e PERF_API_BASE=http://api-v1:8000/api/v1 dashboard python scripts/perf_smoke_api_v1.py
+
+docker-parity-v1:
+	docker compose --profile dev up -d api-v1 dashboard
+	docker compose --profile dev run --rm dashboard python scripts/bootstrap_auth_users.py
+	docker compose --profile dev run --rm -e PARITY_API_V1_BASE=http://api-v1:8000/api/v1 -e PARITY_LEGACY_BASE=http://dashboard:5000 dashboard python scripts/parity_check_analytics_v1.py
 
 docker-test:
 	docker compose run --rm dashboard python -m unittest discover -s tests -p "test_*.py"

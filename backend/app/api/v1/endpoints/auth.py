@@ -11,7 +11,7 @@ from app.core.auth_refresh import (
     rotate_refresh_session,
     save_refresh_session,
 )
-from app.core.security import ROLE_PERMISSIONS, authenticate_user, create_access_token
+from app.core.security import authenticate_user_with_db, create_access_token, resolve_identity
 from app.db.session import get_db
 from app.schemas.brokers import LoginIn, RefreshIn, RevokeIn, TokenOut
 
@@ -21,7 +21,7 @@ router = APIRouter()
 @router.post('/login', response_model=TokenOut)
 def login(payload: LoginIn, db: Session = Depends(get_db)):
     assert_not_blocked(db, payload.username)
-    user = authenticate_user(payload.username, payload.password)
+    user = authenticate_user_with_db(db, payload.username, payload.password)
     if not user:
         register_login_failure(db, payload.username)
         raise HTTPException(
@@ -53,8 +53,15 @@ def refresh(payload: RefreshIn, db: Session = Depends(get_db)):
             detail={'error_code': 'UNAUTHORIZED', 'message': 'Refresh token inválido', 'details': None},
         )
 
-    role = 'admin' if username == 'admin' else 'analyst'
-    permissions = ROLE_PERMISSIONS.get(role, ['brokers:read', 'analytics:read'])
+    identity = resolve_identity(username, db)
+    if not identity:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={'error_code': 'UNAUTHORIZED', 'message': 'Usuario inválido', 'details': None},
+        )
+
+    role = identity['role']
+    permissions = identity['permissions']
     new_refresh = rotate_refresh_session(db, payload.refresh_token, username)
     new_access = create_access_token({'sub': username, 'role': role, 'permissions': permissions})
     return TokenOut(

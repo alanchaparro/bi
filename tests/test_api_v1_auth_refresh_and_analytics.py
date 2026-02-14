@@ -14,6 +14,9 @@ os.environ.setdefault('JWT_SECRET_KEY', 'test_secret_key')
 os.environ.setdefault('JWT_REFRESH_SECRET_KEY', 'test_refresh_secret')
 
 from app.main import app  # noqa: E402
+from app.core.security import hash_password  # noqa: E402
+from app.db.session import SessionLocal  # noqa: E402
+from app.models.brokers import AuthUser  # noqa: E402
 
 
 class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
@@ -36,6 +39,29 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
         revoke = self.client.post('/api/v1/auth/revoke', json={'refresh_token': refreshed['refresh_token']})
         self.assertEqual(revoke.status_code, 200)
         self.assertTrue(revoke.json().get('ok'))
+
+    def test_login_with_db_user(self):
+        db = SessionLocal()
+        try:
+            row = db.query(AuthUser).filter(AuthUser.username == 'db_admin').first()
+            if row is None:
+                db.add(
+                    AuthUser(
+                        username='db_admin',
+                        password_hash=hash_password('db_admin_123'),
+                        role='admin',
+                        is_active=True,
+                    )
+                )
+                db.commit()
+        finally:
+            db.close()
+
+        login = self.client.post('/api/v1/auth/login', json={'username': 'db_admin', 'password': 'db_admin_123'})
+        self.assertEqual(login.status_code, 200)
+        payload = login.json()
+        self.assertEqual(payload.get('role'), 'admin')
+        self.assertIn('brokers:write_config', payload.get('permissions', []))
 
     def test_analytics_portfolio_summary(self):
         login = self.client.post('/api/v1/auth/login', json={'username': 'admin', 'password': 'admin123'})

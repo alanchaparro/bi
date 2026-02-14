@@ -4,10 +4,12 @@ from typing import Dict, List
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.models.brokers import AuthUser
 
-pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
+pwd_context = CryptContext(schemes=['pbkdf2_sha256'], deprecated='auto')
 
 ROLE_PERMISSIONS: Dict[str, List[str]] = {
     'admin': ['brokers:read', 'brokers:write_config', 'analytics:read', 'analytics:export', 'system:read'],
@@ -29,6 +31,52 @@ def authenticate_user(username: str, password: str):
     return {'username': username, 'role': role, 'permissions': ROLE_PERMISSIONS.get(role, [])}
 
 
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        return pwd_context.verify(password, password_hash)
+    except Exception:
+        return False
+
+
+def resolve_identity(username: str, db: Session | None = None):
+    name = str(username or '').strip()
+    if not name:
+        return None
+
+    if db is not None:
+        row = db.query(AuthUser).filter(AuthUser.username == name, AuthUser.is_active == True).first()  # noqa: E712
+        if row:
+            role = str(row.role or 'viewer').strip().lower() or 'viewer'
+            return {'username': row.username, 'role': role, 'permissions': ROLE_PERMISSIONS.get(role, [])}
+
+    demo = DEMO_USERS.get(name)
+    if demo:
+        role = demo['role']
+        return {'username': name, 'role': role, 'permissions': ROLE_PERMISSIONS.get(role, [])}
+
+    return None
+
+
+def authenticate_user_with_db(db: Session | None, username: str, password: str):
+    name = str(username or '').strip()
+    if not name:
+        return None
+
+    if db is not None:
+        row = db.query(AuthUser).filter(AuthUser.username == name, AuthUser.is_active == True).first()  # noqa: E712
+        if row and verify_password(password, row.password_hash):
+            role = str(row.role or 'viewer').strip().lower() or 'viewer'
+            return {'username': row.username, 'role': role, 'permissions': ROLE_PERMISSIONS.get(role, [])}
+        if row:
+            return None
+
+    return authenticate_user(name, password)
+
+
 def create_access_token(data: dict, expires_minutes: int | None = None):
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes or settings.jwt_expire_minutes)
@@ -43,7 +91,7 @@ def decode_token(token: str):
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={'error_code': 'UNAUTHORIZED', 'message': 'Token inválido', 'details': None},
+            detail={'error_code': 'UNAUTHORIZED', 'message': 'Token invalido', 'details': None},
         )
 
 

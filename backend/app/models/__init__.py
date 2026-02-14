@@ -2,6 +2,7 @@ from app.models.brokers import (
     AnalyticsContractSnapshot,
     AuditLog,
     AuthSession,
+    AuthUser,
     AuthUserState,
     BrokersSupervisorScope,
     CommissionRules,
@@ -14,6 +15,7 @@ __all__ = [
     'CommissionRules',
     'PrizeRules',
     'AuthSession',
+    'AuthUser',
     'AuthUserState',
     'AnalyticsContractSnapshot',
 ]
