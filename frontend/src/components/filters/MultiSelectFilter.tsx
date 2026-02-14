@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react'
+import { filterOptions } from './filterOptions'
 
 type Props = {
   label: string
@@ -9,10 +10,7 @@ type Props = {
 
 export function MultiSelectFilter({ label, options, selected, onChange }: Props) {
   const [q, setQ] = useState('')
-  const filtered = useMemo(
-    () => options.filter((o) => o.toLowerCase().includes(q.toLowerCase())),
-    [options, q]
-  )
+  const filtered = useMemo(() => filterOptions(options, q), [options, q])
 
   const toggle = (value: string) => {
     const has = selected.includes(value)

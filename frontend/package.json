@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "generate:types": "openapi-typescript ../docs/openapi-v1.json -o src/shared/api-types.ts",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "vitest run"
   },
   "dependencies": {
     "axios": "^1.7.9",

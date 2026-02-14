@@ -27,6 +27,9 @@ jobs:
       - name: Backend Tests
         run: docker compose --profile dev run --rm dashboard python -m unittest discover -s tests -p "test_*.py"
 
+      - name: Perf Smoke API v1
+        run: docker compose --profile dev run --rm -e PERF_API_BASE=http://api-v1:8000/api/v1 dashboard python scripts/perf_smoke_api_v1.py
+
       - name: Export OpenAPI
         run: docker compose --profile dev run --rm dashboard python scripts/export_openapi_v1.py
 
@@ -40,6 +43,7 @@ jobs:
         run: |
           npm ci
           npm run generate:types
+          npm run test
           npm run typecheck
           npm run build
 
