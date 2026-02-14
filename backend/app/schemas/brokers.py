@@ -8,9 +8,18 @@ class LoginIn(BaseModel):
 
 class TokenOut(BaseModel):
     access_token: str
+    refresh_token: str | None = None
     token_type: str = 'bearer'
     role: str
     permissions: list[str]
+
+
+class RefreshIn(BaseModel):
+    refresh_token: str = Field(min_length=10, max_length=1024)
+
+
+class RevokeIn(BaseModel):
+    refresh_token: str = Field(min_length=10, max_length=1024)
 
 
 class SupervisorsScopeIn(BaseModel):

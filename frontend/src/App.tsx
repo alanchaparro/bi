@@ -1,57 +1,103 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from 'react'
 import {
+  api,
   getCommissionsRules,
   getPrizesRules,
-  getSupervisorsScope,
   login,
   setAuthToken,
-} from "./shared/api";
+} from './shared/api'
+import { BrokersView } from './modules/brokers/BrokersView'
+import { BrokersCommissionsView } from './modules/brokersCommissions/BrokersCommissionsView'
+import { BrokersPrizesView } from './modules/brokersPrizes/BrokersPrizesView'
+import { BrokersSupervisorsView } from './modules/brokersSupervisors/BrokersSupervisorsView'
+import { BrokersMoraView } from './modules/brokersMora/BrokersMoraView'
+import { loadBrokersPreferences } from './store/userPreferences'
 
 export default function App() {
-  const [scope, setScope] = useState<string[]>([]);
-  const [commissionsCount, setCommissionsCount] = useState(0);
-  const [prizesCount, setPrizesCount] = useState(0);
-  const [role, setRole] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [role, setRole] = useState('')
+  const [supervisors, setSupervisors] = useState<string[]>([])
+  const [selectedSupervisors, setSelectedSupervisors] = useState<string[]>([])
+  const [rows, setRows] = useState<any[]>([])
+  const [commissionRules, setCommissionRules] = useState<any[]>([])
+  const [prizeRules, setPrizeRules] = useState<any[]>([])
+
+  const supervisorsOptions = useMemo(() => {
+    const set = new Set<string>([...supervisors, ...selectedSupervisors])
+    return Array.from(set).sort()
+  }, [supervisors, selectedSupervisors])
+
+  async function loadBrokersSummary(supervisorFilter: string[]) {
+    const res = await api.post('/analytics/brokers/summary', {
+      supervisor: supervisorFilter,
+      gestion_month: [],
+      anio: [],
+      un: [],
+      via_cobro: [],
+      via_pago: [],
+      categoria: [],
+      tramo: [],
+      contract_month: [],
+    })
+    setRows(res.data?.rows || [])
+  }
 
   useEffect(() => {
-    const load = async () => {
+    const boot = async () => {
       try {
-        const auth = await login({ username: "admin", password: "admin123" });
-        setAuthToken(auth.access_token);
-        setRole(auth.role);
+        const auth = await login({ username: 'admin', password: 'admin123' })
+        setAuthToken(auth.access_token)
+        setRole(auth.role)
 
-        const [scopeRes, commRes, prizeRes] = await Promise.all([
-          getSupervisorsScope(),
+        const [prefs, commRes, prizeRes] = await Promise.all([
+          loadBrokersPreferences(),
           getCommissionsRules(),
           getPrizesRules(),
-        ]);
-
-        setScope(scopeRes.supervisors || []);
-        setCommissionsCount((commRes.rules || []).length);
-        setPrizesCount((prizeRes.rules || []).length);
+        ])
+        const enabled = prefs.supervisors || []
+        setSupervisors(enabled)
+        setSelectedSupervisors(enabled)
+        setCommissionRules(commRes.rules || [])
+        setPrizeRules(prizeRes.rules || [])
+        await loadBrokersSummary(enabled)
       } catch (e: any) {
-        setError(e?.response?.data?.message || "No se pudo cargar Brokers v1");
+        setError(e?.response?.data?.message || 'No se pudo cargar frontend v1')
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
-    };
-    load();
-  }, []);
+    }
+    boot()
+  }, [])
+
+  useEffect(() => {
+    if (!loading) {
+      loadBrokersSummary(selectedSupervisors).catch((e: any) =>
+        setError(e?.response?.data?.message || 'No se pudo refrescar brokers')
+      )
+    }
+  }, [selectedSupervisors])
 
   return (
-    <main style={{ fontFamily: "Outfit, sans-serif", padding: 24 }}>
+    <main style={{ fontFamily: 'Outfit, sans-serif', padding: 24 }}>
       <h1>Frontend v1 - Brokers</h1>
-      <p>Base React/TS para migracion progresiva de modulos Brokers con contratos tipados OpenAPI.</p>
-      {loading ? <p>Cargando...</p> : null}
-      {error ? <p style={{ color: "crimson" }}>{error}</p> : null}
-      <h2>Sesion</h2>
-      <pre>{JSON.stringify({ role }, null, 2)}</pre>
-      <h2>Supervisores habilitados</h2>
-      <pre>{JSON.stringify(scope, null, 2)}</pre>
-      <h2>Resumen reglas</h2>
-      <pre>{JSON.stringify({ commissionsCount, prizesCount }, null, 2)}</pre>
+      <p>Migración progresiva React/TS con paridad funcional incremental.</p>
+      {loading ? <p>loading...</p> : null}
+      {error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
+      <p>Rol: {role || '-'}</p>
+
+      <BrokersView
+        supervisors={supervisorsOptions}
+        selectedSupervisors={selectedSupervisors}
+        onSupervisorsChange={setSelectedSupervisors}
+        rows={rows}
+        loading={loading}
+        error={error}
+      />
+      <BrokersCommissionsView rules={commissionRules} />
+      <BrokersPrizesView rules={prizeRules} />
+      <BrokersSupervisorsView supervisors={supervisors} />
+      <BrokersMoraView rows={rows.filter((r) => Number(r.mora3m || 0) > 0)} />
     </main>
-  );
+  )
 }

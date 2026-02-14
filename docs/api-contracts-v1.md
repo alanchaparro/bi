@@ -1,99 +1,62 @@
 # API Contracts v1
 
-Base paths:
-- Legacy analytics: `/analytics/*`
-- New config API: `/api/v1/*`
+Base path: `/api/v1`
 
-## Common filters (repeatable query params)
-- `un`
-- `gestion_month` (`MM/YYYY`)
-- `via_cobro` (`COBRADOR|DEBITO`)
-- `categoria` (`VIGENTE|MOROSO`)
-- `supervisor`
-- `tramo`
-- `via_pago`
-
-## Error format (v1 estándar)
+## Error contract estándar
 ```json
-{ "error_code": "INVALID_FILTER", "message": "...", "details": null, "trace_id": "..." }
+{ "error_code": "...", "message": "...", "details": null, "trace_id": "..." }
 ```
 
 ## Auth
-### POST /api/v1/auth/login
-Request:
+### `POST /api/v1/auth/login`
 ```json
 { "username": "admin", "password": "admin123" }
 ```
 Response:
 ```json
-{ "access_token": "...", "token_type": "bearer", "role": "admin", "permissions": ["brokers:read"] }
+{
+  "access_token": "...",
+  "refresh_token": "...",
+  "token_type": "bearer",
+  "role": "admin",
+  "permissions": ["brokers:read", "brokers:write_config", "analytics:read", "analytics:export"]
+}
+```
+
+### `POST /api/v1/auth/refresh`
+```json
+{ "refresh_token": "..." }
+```
+
+### `POST /api/v1/auth/revoke`
+```json
+{ "refresh_token": "..." }
 ```
 
 ## Brokers config
-### GET /api/v1/brokers/supervisors-scope
-### POST /api/v1/brokers/supervisors-scope
-```json
-{ "supervisors": ["FVBROKEREAS", "FVBROKEREASCDE"] }
-```
+- `GET/POST /api/v1/brokers/supervisors-scope`
+- `GET/POST /api/v1/brokers/commissions`
+- `GET/POST /api/v1/brokers/prizes`
 
-### GET /api/v1/brokers/commissions
-### POST /api/v1/brokers/commissions
-```json
-{ "rules": [] }
-```
-
-### GET /api/v1/brokers/prizes
-### POST /api/v1/brokers/prizes
-```json
-{ "rules": [] }
-```
-
-## GET /analytics/portfolio/summary
-Response:
+## Analytics v1 (dual-run via legacy backend)
+Todos reciben body `AnalyticsFilters` (POST):
 ```json
 {
-  "total": 0,
-  "vigente": 0,
-  "moroso": 0,
-  "cobrador": 0,
-  "debito": 0,
-  "totalDebt": 0.0,
-  "totalPaid": 0.0
+  "un": [],
+  "anio": [],
+  "gestion_month": [],
+  "contract_month": [],
+  "via_cobro": [],
+  "via_pago": [],
+  "categoria": [],
+  "supervisor": [],
+  "tramo": []
 }
 ```
 
-## GET /analytics/portfolio/trend
-Response:
-```json
-{
-  "byGestion": {
-    "02/2025": {
-      "total": 0,
-      "vigente": 0,
-      "moroso": 0,
-      "cobrador": 0,
-      "debito": 0,
-      "debt": 0.0,
-      "paid": 0.0,
-      "paidContracts": 0
-    }
-  }
-}
-```
-
-## GET /analytics/performance/by-management-month
-Response mirrors `updatePerformanceUI` expected shape:
-```json
-{
-  "totalDebt": 0.0,
-  "totalPaid": 0.0,
-  "totalContracts": 0,
-  "totalContractsPaid": 0,
-  "tramoStats": {},
-  "unStats": {},
-  "viaCStats": {},
-  "gestorStats": {},
-  "matrixStats": {},
-  "trendStats": {}
-}
-```
+Endpoints:
+- `POST /api/v1/analytics/portfolio/summary`
+- `POST /api/v1/analytics/rendimiento/summary`
+- `POST /api/v1/analytics/mora/summary`
+- `POST /api/v1/analytics/brokers/summary`
+- `POST /api/v1/analytics/export` (`format`: `csv|pdf`, `endpoint`: `portfolio|rendimiento|mora|brokers`)

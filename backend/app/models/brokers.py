@@ -1,5 +1,6 @@
-﻿from datetime import datetime
-from sqlalchemy import Column, DateTime, Integer, String, Text
+from datetime import datetime
+
+from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String, Text
 
 from app.db.base import Base
 
@@ -37,3 +38,49 @@ class AuditLog(Base):
     actor = Column(String(64), nullable=False, default='system')
     payload_json = Column(Text, nullable=False, default='{}')
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class AuthSession(Base):
+    __tablename__ = 'auth_sessions'
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(128), nullable=False, index=True)
+    refresh_token_hash = Column(String(255), nullable=False, unique=True)
+    revoked = Column(Boolean, nullable=False, default=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    rotated_at = Column(DateTime, nullable=True)
+
+
+class AuthUserState(Base):
+    __tablename__ = 'auth_user_state'
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(128), nullable=False, unique=True, index=True)
+    failed_attempts = Column(Integer, nullable=False, default=0)
+    blocked_until = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class AnalyticsContractSnapshot(Base):
+    __tablename__ = 'analytics_contract_snapshot'
+
+    id = Column(Integer, primary_key=True, index=True)
+    contract_id = Column(String(32), nullable=False)
+    sale_month = Column(String(7), nullable=False)
+    close_month = Column(String(7), nullable=False)
+    supervisor = Column(String(128), nullable=False)
+    un = Column(String(128), nullable=False)
+    via = Column(String(32), nullable=False)
+    tramo = Column(Integer, nullable=False, default=0)
+    debt = Column(Float, nullable=False, default=0.0)
+    paid = Column(Float, nullable=False, default=0.0)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+Index('ix_acs_contract_id', AnalyticsContractSnapshot.contract_id)
+Index('ix_acs_sale_month', AnalyticsContractSnapshot.sale_month)
+Index('ix_acs_close_month', AnalyticsContractSnapshot.close_month)
+Index('ix_acs_supervisor', AnalyticsContractSnapshot.supervisor)
+Index('ix_acs_un', AnalyticsContractSnapshot.un)
+Index('ix_acs_via', AnalyticsContractSnapshot.via)

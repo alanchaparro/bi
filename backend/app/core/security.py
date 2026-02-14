@@ -10,7 +10,7 @@ from app.core.config import settings
 pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
 
 ROLE_PERMISSIONS: Dict[str, List[str]] = {
-    'admin': ['brokers:read', 'brokers:write_config', 'analytics:read', 'system:read'],
+    'admin': ['brokers:read', 'brokers:write_config', 'analytics:read', 'analytics:export', 'system:read'],
     'analyst': ['brokers:read', 'analytics:read', 'system:read'],
     'viewer': ['brokers:read', 'analytics:read'],
 }
