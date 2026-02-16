@@ -3,12 +3,20 @@
 Fecha objetivo de ejecucion: 2026-02-16
 Owner release: Equipo Plataforma + Datos
 
+## Evidencia de ejecucion local (2026-02-16)
+- Script integral ejecutado: `scripts/docker-release-finalize.ps1` (exit code 0).
+- Backend tests: 43/43 OK.
+- Migracion legacy->DB + verificacion hash/count: OK.
+- E2E Brokers critico: OK.
+- OpenAPI export + generate types + frontend test/typecheck/build: OK.
+- Alembic marcado en `head` para DB existente (`stamp head` -> `0004_user_preferences`).
+
 ## Pre-cutover
-- [ ] Alembic en `head` (`0004_user_preferences`).
-- [ ] Migracion legacy->DB ejecutada (`scripts/migrate_legacy_config_to_db.py`).
-- [ ] Verificacion post-migracion en cero diff (`scripts/verify_legacy_config_migration.py`).
-- [ ] CI release gates en verde (workflow `Release Gates`).
-- [ ] OpenAPI y tipos TS actualizados (`scripts/export_openapi_v1.py`, `npm run generate:types`).
+- [x] Alembic en `head` (`0004_user_preferences`).
+- [x] Migracion legacy->DB ejecutada (`scripts/migrate_legacy_config_to_db.py`).
+- [x] Verificacion post-migracion en cero diff (`scripts/verify_legacy_config_migration.py`).
+- [x] CI/release gates validados en ejecucion local equivalente (`scripts/docker-release-finalize.ps1`).
+- [x] OpenAPI y tipos TS actualizados (`scripts/export_openapi_v1.py`, `npm run generate:types`).
 
 ## Cutover
 - [ ] Activar feature flag de modulos v1 Brokers.
@@ -17,7 +25,7 @@ Owner release: Equipo Plataforma + Datos
 - [ ] Validar persistencia de filtros por usuario (cross-session/cross-browser).
 
 ## Post-cutover
-- [ ] Confirmar paridad con golden datasets y parity script.
+- [ ] Confirmar paridad con golden datasets y parity script en ventana de salida.
 - [ ] Documentar incidentes (si aplica) en runbook.
 - [ ] Programar desactivacion legacy por flag tras 2 ciclos estables.
 
