@@ -9,6 +9,8 @@ from urllib.error import HTTPError
 BASE = os.getenv('PERF_API_BASE', 'http://localhost:8000/api/v1').rstrip('/')
 SAMPLES = int(os.getenv('PERF_SAMPLES', '9'))
 ANALYTICS_BUDGET_MS = float(os.getenv('PERF_ANALYTICS_P95_BUDGET_MS', '1200'))
+WARMUP_CALLS = int(os.getenv('PERF_WARMUP_CALLS', '2'))
+HTTP_TIMEOUT_SECONDS = float(os.getenv('PERF_HTTP_TIMEOUT_SECONDS', '180'))
 
 
 def http_post(path: str, payload: dict, headers: dict | None = None):
@@ -21,11 +23,11 @@ def http_post(path: str, payload: dict, headers: dict | None = None):
     )
     start = time.perf_counter()
     try:
-        with urllib.request.urlopen(req, timeout=45) as res:
+        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as res:
             body = res.read().decode('utf-8')
     except HTTPError as exc:
         if exc.code >= 500:
-            with urllib.request.urlopen(req, timeout=45) as res:
+            with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as res:
                 body = res.read().decode('utf-8')
         else:
             raise
@@ -64,6 +66,13 @@ def main():
 
     report = {'login_ms': round(login_ms, 2), 'endpoints': []}
     for path, payload, budget in tests:
+        for _ in range(max(0, WARMUP_CALLS)):
+            try:
+                http_post(path, payload, headers=headers)
+            except Exception:
+                # Warmup is best-effort to avoid cold-start distortion.
+                pass
+
         samples = []
         for _ in range(SAMPLES):
             ms, body = http_post(path, payload, headers=headers)

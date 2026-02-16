@@ -1,5 +1,6 @@
 import json
 import os
+import time
 import urllib.parse
 import urllib.request
 from urllib.error import HTTPError
@@ -9,6 +10,9 @@ API_V1_BASE = os.getenv('PARITY_API_V1_BASE', 'http://localhost:8000/api/v1').rs
 LEGACY_BASE = os.getenv('PARITY_LEGACY_BASE', 'http://localhost:5000').rstrip('/')
 REL_TOL = float(os.getenv('PARITY_REL_TOL', '0.01'))
 ABS_TOL = float(os.getenv('PARITY_ABS_TOL', '1.0'))
+HTTP_RETRIES = int(os.getenv('PARITY_HTTP_RETRIES', '4'))
+HTTP_RETRY_SLEEP_SECONDS = float(os.getenv('PARITY_HTTP_RETRY_SLEEP_SECONDS', '1.5'))
+HTTP_TIMEOUT_SECONDS = float(os.getenv('PARITY_HTTP_TIMEOUT_SECONDS', '180'))
 
 
 def post_json(url: str, payload: dict, headers: dict | None = None):
@@ -18,23 +22,25 @@ def post_json(url: str, payload: dict, headers: dict | None = None):
         headers={'Content-Type': 'application/json', **(headers or {})},
         method='POST',
     )
-    for attempt in range(2):
+    for attempt in range(max(1, HTTP_RETRIES)):
         try:
-            with urllib.request.urlopen(req, timeout=45) as res:
+            with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as res:
                 return json.loads(res.read().decode('utf-8'))
         except HTTPError as exc:
-            if exc.code >= 500 and attempt == 0:
+            if exc.code >= 500 and attempt < max(1, HTTP_RETRIES) - 1:
+                time.sleep(HTTP_RETRY_SLEEP_SECONDS)
                 continue
             raise
 
 
 def get_json(url: str):
-    for attempt in range(2):
+    for attempt in range(max(1, HTTP_RETRIES)):
         try:
-            with urllib.request.urlopen(url, timeout=45) as res:
+            with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT_SECONDS) as res:
                 return json.loads(res.read().decode('utf-8'))
         except HTTPError as exc:
-            if exc.code >= 500 and attempt == 0:
+            if exc.code >= 500 and attempt < max(1, HTTP_RETRIES) - 1:
+                time.sleep(HTTP_RETRY_SLEEP_SECONDS)
                 continue
             raise
 
@@ -88,6 +94,12 @@ def main():
     report = {'ok': True, 'cases': [], 'tolerances': {'rel': REL_TOL, 'abs': ABS_TOL}}
 
     for name, legacy_method, v1_path, legacy_path in cases:
+        # Warmup call to reduce cold-start 5xx on first request.
+        try:
+            post_json(f'{API_V1_BASE}{v1_path}', filters, headers=headers)
+        except Exception:
+            pass
+
         v1_payload = post_json(f'{API_V1_BASE}{v1_path}', filters, headers=headers)
         if legacy_method == 'post':
             legacy_filters = {

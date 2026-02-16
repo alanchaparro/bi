@@ -134,7 +134,8 @@ class AnalyticsService:
         url = f'{base}{endpoint}'
         if query:
             url = f'{url}?{query}'
-        with httpx.Client(timeout=30.0) as client:
+        timeout = float(max(5, int(settings.analytics_legacy_timeout_seconds)))
+        with httpx.Client(timeout=timeout) as client:
             res = client.get(url)
             res.raise_for_status()
             return res.json()
@@ -249,6 +250,18 @@ class AnalyticsService:
                 'source': 'api-v1',
                 'generated_at': datetime.utcnow().isoformat(),
                 'count': len(out_rows),
+            },
+        }
+
+    @staticmethod
+    def empty_mora_summary_v1(filters: AnalyticsFilters, reason: str = 'legacy_unavailable') -> dict:
+        return {
+            'rows': [],
+            'meta': {
+                'source': 'api-v1-fallback',
+                'reason': reason,
+                'generated_at': datetime.utcnow().isoformat(),
+                'filters': filters.model_dump(),
             },
         }
 

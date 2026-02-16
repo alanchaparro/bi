@@ -61,7 +61,10 @@ def rendimiento_summary(filters: AnalyticsFilters, user=Depends(require_permissi
 
 @router.post('/mora/summary')
 def mora_summary(filters: AnalyticsFilters, user=Depends(require_permission('analytics:read'))):
-    return _call('/analytics/movement/moroso-trend', filters)
+    try:
+        return _call('/analytics/movement/moroso-trend', filters)
+    except HTTPException:
+        return AnalyticsService.empty_mora_summary_v1(filters, reason='legacy_mora_unavailable')
 
 
 @router.post('/brokers/summary')

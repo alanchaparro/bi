@@ -70,6 +70,65 @@
         "title": "AnalyticsFilters",
         "type": "object"
       },
+      "BrokersFilters": {
+        "properties": {
+          "months": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Months",
+            "type": "array"
+          },
+          "supervisors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supervisors",
+            "type": "array"
+          },
+          "uns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Uns",
+            "type": "array"
+          },
+          "vias": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Vias",
+            "type": "array"
+          },
+          "years": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Years",
+            "type": "array"
+          }
+        },
+        "title": "BrokersFilters",
+        "type": "object"
+      },
+      "BrokersPreferencesIn": {
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/BrokersFilters"
+          }
+        },
+        "title": "BrokersPreferencesIn",
+        "type": "object"
+      },
+      "BrokersPreferencesOut": {
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/BrokersFilters"
+          }
+        },
+        "title": "BrokersPreferencesOut",
+        "type": "object"
+      },
       "ExportRequest": {
         "properties": {
           "endpoint": {
@@ -82,13 +141,19 @@
             "$ref": "#/components/schemas/AnalyticsFilters"
           },
           "format": {
-            "pattern": "^(csv|pdf)$",
-            "title": "Format",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^(csv|pdf)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
           }
         },
         "required": [
-          "format",
           "endpoint"
         ],
         "title": "ExportRequest",
@@ -355,7 +420,7 @@
     },
     "/api/v1/analytics/export": {
       "post": {
-        "operationId": "analytics_export_api_v1_analytics_export_post",
+        "operationId": "analytics_export_legacy_api_v1_analytics_export_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -391,7 +456,95 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Analytics Export",
+        "summary": "Analytics Export Legacy",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/export/csv": {
+      "post": {
+        "operationId": "analytics_export_csv_api_v1_analytics_export_csv_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Analytics Export Csv",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/export/pdf": {
+      "post": {
+        "operationId": "analytics_export_pdf_api_v1_analytics_export_pdf_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Analytics Export Pdf",
         "tags": [
           "analytics"
         ]
@@ -715,6 +868,76 @@
           }
         ],
         "summary": "Save Commissions",
+        "tags": [
+          "brokers"
+        ]
+      }
+    },
+    "/api/v1/brokers/preferences": {
+      "get": {
+        "operationId": "get_preferences_api_v1_brokers_preferences_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokersPreferencesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Preferences",
+        "tags": [
+          "brokers"
+        ]
+      },
+      "post": {
+        "operationId": "save_preferences_api_v1_brokers_preferences_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrokersPreferencesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokersPreferencesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Preferences",
         "tags": [
           "brokers"
         ]

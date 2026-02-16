@@ -30,8 +30,42 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Analytics Export */
-        post: operations["analytics_export_api_v1_analytics_export_post"];
+        /** Analytics Export Legacy */
+        post: operations["analytics_export_legacy_api_v1_analytics_export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/export/csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Analytics Export Csv */
+        post: operations["analytics_export_csv_api_v1_analytics_export_csv_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/export/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Analytics Export Pdf */
+        post: operations["analytics_export_pdf_api_v1_analytics_export_pdf_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -158,6 +192,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/brokers/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Preferences */
+        get: operations["get_preferences_api_v1_brokers_preferences_get"];
+        put?: never;
+        /** Save Preferences */
+        post: operations["save_preferences_api_v1_brokers_preferences_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/brokers/prizes": {
         parameters: {
             query?: never;
@@ -236,13 +288,34 @@ export interface components {
             /** Via Pago */
             via_pago?: string[];
         };
+        /** BrokersFilters */
+        BrokersFilters: {
+            /** Months */
+            months?: string[];
+            /** Supervisors */
+            supervisors?: string[];
+            /** Uns */
+            uns?: string[];
+            /** Vias */
+            vias?: string[];
+            /** Years */
+            years?: string[];
+        };
+        /** BrokersPreferencesIn */
+        BrokersPreferencesIn: {
+            filters?: components["schemas"]["BrokersFilters"];
+        };
+        /** BrokersPreferencesOut */
+        BrokersPreferencesOut: {
+            filters?: components["schemas"]["BrokersFilters"];
+        };
         /** ExportRequest */
         ExportRequest: {
             /** Endpoint */
             endpoint: string;
             filters?: components["schemas"]["AnalyticsFilters"];
             /** Format */
-            format: string;
+            format?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -361,7 +434,73 @@ export interface operations {
             };
         };
     };
-    analytics_export_api_v1_analytics_export_post: {
+    analytics_export_legacy_api_v1_analytics_export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analytics_export_csv_api_v1_analytics_export_csv_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analytics_export_pdf_api_v1_analytics_export_pdf_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -632,6 +771,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RulesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_preferences_api_v1_brokers_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrokersPreferencesOut"];
+                };
+            };
+        };
+    };
+    save_preferences_api_v1_brokers_preferences_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrokersPreferencesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrokersPreferencesOut"];
                 };
             };
             /** @description Validation Error */
