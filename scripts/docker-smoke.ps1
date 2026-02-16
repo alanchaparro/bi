@@ -1,9 +1,30 @@
 $ErrorActionPreference = "Stop"
 
-docker compose up -d
+function Assert-DockerHealthy {
+    $ok = $false
+    for ($i = 0; $i -lt 20; $i++) {
+        try {
+            docker info | Out-Null
+            $ok = $true
+            break
+        } catch {
+            Start-Sleep -Seconds 2
+        }
+    }
+    if (-not $ok) {
+        throw "Docker daemon no esta saludable. Abre Docker Desktop y reintenta."
+    }
+}
+
+Assert-DockerHealthy
+
+docker compose --profile dev up -d dashboard api-v1
 Start-Sleep -Seconds 3
 
-$check = Invoke-RestMethod -Uri "http://localhost:5000/api/check-files" -Method Get
+$dashPort = if ($env:DASHBOARD_PORT) { $env:DASHBOARD_PORT } else { "5000" }
+$base = "http://localhost:$dashPort"
+
+$check = Invoke-RestMethod -Uri "$base/api/check-files" -Method Get
 $check | ConvertTo-Json -Compress | Write-Output
 
 function Assert-FilterRequired {
@@ -28,5 +49,5 @@ function Assert-FilterRequired {
     }
 }
 
-Assert-FilterRequired -Url "http://localhost:5000/analytics/movement/moroso-trend"
-Assert-FilterRequired -Url "http://localhost:5000/analytics/anuales/summary"
+Assert-FilterRequired -Url "$base/analytics/movement/moroso-trend"
+Assert-FilterRequired -Url "$base/analytics/anuales/summary"

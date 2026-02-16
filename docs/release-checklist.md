@@ -5,7 +5,7 @@
 - [ ] No recursive or stack overflow errors.
 - [ ] Config tab sync works for available CSV files.
 - [ ] Docker validation pipeline executed (`.\scripts\docker-validate.ps1`).
-- [ ] Release finalize pipeline executed (`make docker-release-finalize`).
+- [ ] Release finalize pipeline executed (`make docker-release-finalize` o `.\scripts\docker-release-finalize.ps1`).
 
 ## Navigation
 - [ ] Sidebar opens/closes with menu button.
