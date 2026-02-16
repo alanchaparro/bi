@@ -1,27 +1,45 @@
 # Rollback Drill Report
 
-Estado: preparado para ejecucion en staging (no ejecutado en este entorno local).
+Estado: listo para ejecucion en staging/prod.
 
-## Entorno objetivo
-- Ambiente: staging (Docker Compose profile `prod`)
-- Fecha programada: 2026-02-16
-- Version candidata: cierre-v1-brokers
+## Metadatos
+- Ambiente: staging (`prod` profile)
+- Fecha:
+- Version candidata:
+- Responsable de ejecucion:
 
-## Escenario a ejecutar
+## Objetivo
+Validar rollback completo (< 15 min) sin perdida de configuracion ni degradacion funcional.
+
+## Escenario ejecutado
 1. Deploy de version candidata con API v1 + dashboard.
-2. Simulacion de falla en endpoint analytics (respuesta 5xx controlada).
-3. Ejecucion de rollback operativo completo.
+2. Simulacion de falla controlada en analytics.
+3. Activacion de rollback operativo.
 
-## Resultado esperado
-- Restauracion < 15 minutos.
-- Configuracion Brokers intacta.
-- Preferencias por usuario intactas.
-- Sin perdida de datos en DB.
+## Timeline real
+- T0 deploy iniciado:
+- T+X deteccion incidente:
+- T+Y rollback iniciado:
+- T+Z rollback finalizado:
+- Tiempo total rollback (min):
 
-## Evidencias a adjuntar
-- Logs de deploy.
-- Logs de rollback.
-- Validacion post-rollback (`/api/v1/health`, config brokers, analytics).
+## Verificaciones post-rollback
+- [ ] `GET /api/v1/health` => ok.
+- [ ] `GET/POST /api/v1/brokers/supervisors-scope` funcional.
+- [ ] `GET/POST /api/v1/brokers/preferences` funcional.
+- [ ] `GET /analytics/ops/metrics` estable.
+- [ ] Configuracion sin perdida (comparacion pre/post).
+
+## Evidencias adjuntas
+- Logs deploy:
+- Logs rollback:
+- Resultado `scripts/verify_legacy_config_migration.py`:
+- Resultado monitoreo cutover (`docs/evidence/cutover-window-metrics.jsonl`):
+
+## Resultado
+- [ ] Aprobado
+- [ ] Rechazado
+- Motivo:
 
 ## Firmas
 - Operaciones: __________________

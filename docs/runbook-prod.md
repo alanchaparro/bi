@@ -7,7 +7,7 @@
 - `GET /api/check-files`
 
 ## Migraciones
-1. `alembic -c backend/alembic.ini upgrade head`
+1. `PYTHONPATH=/app/backend alembic -c backend/alembic.ini stamp head` (solo si DB existente ya contiene tablas y no hay tabla alembic_version).
 2. `python scripts/migrate_legacy_config_to_db.py`
 3. `python scripts/verify_legacy_config_migration.py`
 
@@ -23,26 +23,56 @@
 - `/api/v1/analytics/export/csv`
 - `/api/v1/analytics/export/pdf`
 
-## Release gates de cierre
+## Gates de cierre tecnico
 1. `python scripts/e2e_brokers_critical.py`
 2. `python scripts/perf_smoke_api_v1.py`
 3. `python scripts/parity_check_analytics_v1.py`
 4. `python scripts/smoke_deploy_v1.py`
 
-## Monitoreo cutover (30-60 min)
-- Revisar `p95_ms`, `error_rate_pct`, `cache_hit_rate_pct` en `/analytics/ops/metrics`.
-- Mantener dual-run habilitado hasta 2 ciclos de paridad/performance exitosos.
+## Ejecucion de cutover (minuto a minuto)
+### T-15
+1. Confirmar snapshot DB y backup de configuracion.
+2. Confirmar flags listas para rollback rapido.
+3. Confirmar responsables en war-room (Backend, Frontend, Ops, QA).
+
+### T-5
+1. Ejecutar `scripts/migrate_legacy_config_to_db.py` + `scripts/verify_legacy_config_migration.py`.
+2. Validar `/api/v1/health` y `/api/check-files`.
+
+### T0
+1. Activar feature flag de modulos v1 Brokers.
+2. Ejecutar smoke rapido:
+- login
+- brokers summary
+- brokers preferences roundtrip
+
+### T+0 a T+30
+1. Ejecutar monitoreo continuo:
+- `python scripts/cutover_window_monitor.py`
+2. Umbrales de salida:
+- `error_rate_pct <= 2.0`
+- `p95_ms <= 1200`
+3. Si se incumple umbral en endpoint critico, desactivar flag y pasar a rollback.
+
+### T+30
+1. Ejecutar `scripts/parity_check_analytics_v1.py`.
+2. Ejecutar `scripts/perf_smoke_api_v1.py`.
+3. Registrar evidencia en `docs/cutover-checklist-final.md`.
+
+### T+60
+1. Repetir paridad/perf (segundo ciclo estable).
+2. Si cumple, programar apagado legacy por flag.
 
 ## Rollback
 1. Tomar/confirmar snapshot DB previa.
-2. `docker compose --profile prod down`
-3. Restaurar snapshot DB.
-4. Levantar version anterior.
-5. Validar:
+2. Desactivar feature flag de modulos v1.
+3. `docker compose --profile prod down`
+4. Restaurar snapshot DB.
+5. Levantar version anterior.
+6. Validar:
 - `/api/v1/health`
 - endpoints de brokers config
 - consistencia de preferencias por usuario
 
 ## Recuperacion rapida
-- Si falla analytics v1, desactivar flag de modulo afectado y mantener fallback legacy.
-- Reintentar despliegue por slices cuando `error_rate_pct <= 2` y `p95_ms` dentro de umbral.
+- Si falla analytics v1, mantener fallback legacy y reintentar por slices cuando `error_rate_pct <= 2` y `p95_ms` en umbral.

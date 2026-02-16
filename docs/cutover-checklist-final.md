@@ -20,7 +20,7 @@ Owner release: Equipo Plataforma + Datos
 
 ## Cutover
 - [ ] Activar feature flag de modulos v1 Brokers.
-- [ ] Monitorear p95/error rate 30-60 min (`/analytics/ops/metrics`).
+- [ ] Monitorear p95/error rate 30-60 min (`/analytics/ops/metrics`) con `python scripts/cutover_window_monitor.py`.
 - [ ] Validar KPIs criticos (Brokers/Mora) vs referencia legacy.
 - [ ] Validar persistencia de filtros por usuario (cross-session/cross-browser).
 
