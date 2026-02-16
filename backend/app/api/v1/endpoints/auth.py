@@ -11,6 +11,7 @@ from app.core.auth_refresh import (
     rotate_refresh_session,
     save_refresh_session,
 )
+from app.core.deps import login_rate_limiter, write_rate_limiter
 from app.core.security import authenticate_user_with_db, create_access_token, resolve_identity
 from app.db.session import get_db
 from app.schemas.brokers import LoginIn, RefreshIn, RevokeIn, TokenOut
@@ -19,7 +20,7 @@ router = APIRouter()
 
 
 @router.post('/login', response_model=TokenOut)
-def login(payload: LoginIn, db: Session = Depends(get_db)):
+def login(payload: LoginIn, _rl=Depends(login_rate_limiter), db: Session = Depends(get_db)):
     assert_not_blocked(db, payload.username)
     user = authenticate_user_with_db(db, payload.username, payload.password)
     if not user:
@@ -44,7 +45,7 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
 
 
 @router.post('/refresh', response_model=TokenOut)
-def refresh(payload: RefreshIn, db: Session = Depends(get_db)):
+def refresh(payload: RefreshIn, _rl=Depends(write_rate_limiter), db: Session = Depends(get_db)):
     token_payload = decode_refresh_token(payload.refresh_token)
     username = str(token_payload.get('sub') or '').strip()
     if not username:
@@ -73,6 +74,6 @@ def refresh(payload: RefreshIn, db: Session = Depends(get_db)):
 
 
 @router.post('/revoke')
-def revoke(payload: RevokeIn, db: Session = Depends(get_db)):
+def revoke(payload: RevokeIn, _rl=Depends(write_rate_limiter), db: Session = Depends(get_db)):
     ok = revoke_refresh_session(db, payload.refresh_token)
     return {'ok': ok}

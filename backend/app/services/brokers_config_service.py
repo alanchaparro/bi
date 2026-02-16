@@ -26,3 +26,11 @@ class BrokersConfigService:
     @staticmethod
     def save_prizes(db, rules: list[dict], actor: str):
         return brokers_config.save_prize_rules(db, rules, actor)
+
+    @staticmethod
+    def get_brokers_preferences(db, username: str):
+        return brokers_config.get_user_preferences(db, username, 'brokers.filters')
+
+    @staticmethod
+    def save_brokers_preferences(db, username: str, value: dict):
+        return brokers_config.save_user_preferences(db, username, 'brokers.filters', value)

@@ -2,7 +2,7 @@
 
 Base path: `/api/v1`
 
-## Error contract estándar
+## Error contract estandar
 ```json
 { "error_code": "...", "message": "...", "details": null, "trace_id": "..." }
 ```
@@ -37,6 +37,7 @@ Response:
 - `GET/POST /api/v1/brokers/supervisors-scope`
 - `GET/POST /api/v1/brokers/commissions`
 - `GET/POST /api/v1/brokers/prizes`
+- `GET/POST /api/v1/brokers/preferences` (persistencia de filtros server-side por usuario)
 
 ## Analytics v1 (dual-run via legacy backend)
 Todos reciben body `AnalyticsFilters` (POST):
@@ -59,4 +60,8 @@ Endpoints:
 - `POST /api/v1/analytics/rendimiento/summary`
 - `POST /api/v1/analytics/mora/summary`
 - `POST /api/v1/analytics/brokers/summary`
-- `POST /api/v1/analytics/export` (`format`: `csv|pdf`, `endpoint`: `portfolio|rendimiento|mora|brokers`)
+- `POST /api/v1/analytics/export/csv` (`endpoint`: `portfolio|rendimiento|mora|brokers`)
+- `POST /api/v1/analytics/export/pdf` (`endpoint`: `portfolio|rendimiento|mora|brokers`)
+
+Compatibilidad temporal:
+- `POST /api/v1/analytics/export` (legacy alias)

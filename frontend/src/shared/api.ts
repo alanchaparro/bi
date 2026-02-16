@@ -62,3 +62,27 @@ export async function savePrizesRules(payload: RulesRequest): Promise<RulesRespo
   const response = await api.post<RulesResponse>("/brokers/prizes", payload);
   return response.data;
 }
+
+export type BrokersFilters = {
+  supervisors: string[];
+  uns: string[];
+  vias: string[];
+  years: string[];
+  months: string[];
+};
+
+export type BrokersPreferences = {
+  filters: BrokersFilters;
+};
+
+export async function getBrokersPreferences(): Promise<BrokersPreferences> {
+  const response = await api.get<BrokersPreferences>("/brokers/preferences");
+  return response.data;
+}
+
+export async function saveBrokersPreferences(
+  payload: BrokersPreferences
+): Promise<BrokersPreferences> {
+  const response = await api.post<BrokersPreferences>("/brokers/preferences", payload);
+  return response.data;
+}

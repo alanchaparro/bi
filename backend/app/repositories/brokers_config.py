@@ -3,7 +3,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.models.brokers import AuditLog, BrokersSupervisorScope, CommissionRules, PrizeRules
+from app.models.brokers import AuditLog, BrokersSupervisorScope, CommissionRules, PrizeRules, UserPreference
 
 
 def _upsert_singleton(db: Session, model, field_name: str, value_json: str):
@@ -67,3 +67,33 @@ def add_audit(db: Session, entity: str, action: str, actor: str, payload: dict):
     row = AuditLog(entity=entity, action=action, actor=actor, payload_json=json.dumps(payload, ensure_ascii=False))
     db.add(row)
     db.commit()
+
+
+def get_user_preferences(db: Session, username: str, pref_key: str) -> dict:
+    row = (
+        db.query(UserPreference)
+        .filter(UserPreference.username == username, UserPreference.pref_key == pref_key)
+        .first()
+    )
+    if not row:
+        return {}
+    data = json.loads(row.value_json or '{}')
+    return data if isinstance(data, dict) else {}
+
+
+def save_user_preferences(db: Session, username: str, pref_key: str, value: dict):
+    payload = json.dumps(value, ensure_ascii=False)
+    row = (
+        db.query(UserPreference)
+        .filter(UserPreference.username == username, UserPreference.pref_key == pref_key)
+        .first()
+    )
+    if row is None:
+        row = UserPreference(username=username, pref_key=pref_key, value_json=payload)
+        db.add(row)
+    else:
+        row.value_json = payload
+        row.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return json.loads(row.value_json or '{}')

@@ -1,6 +1,8 @@
-﻿import time
+import time
 import uuid
+
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -27,6 +29,7 @@ app.add_middleware(
 @app.middleware('http')
 async def trace_and_logging(request: Request, call_next):
     trace_id = request.headers.get('x-trace-id') or str(uuid.uuid4())
+    request.state.trace_id = trace_id
     start = time.time()
     try:
         response = await call_next(request)
@@ -43,10 +46,29 @@ async def trace_and_logging(request: Request, call_next):
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    trace_id = request.headers.get('x-trace-id') or str(uuid.uuid4())
-    details = exc.detail if isinstance(exc.detail, dict) else {'error_code': 'HTTP_ERROR', 'message': str(exc.detail), 'details': None}
-    details['trace_id'] = trace_id
-    return JSONResponse(status_code=exc.status_code, content=details)
+    trace_id = getattr(request.state, 'trace_id', None) or request.headers.get('x-trace-id') or str(uuid.uuid4())
+    if isinstance(exc.detail, dict):
+        body = {
+            'error_code': str(exc.detail.get('error_code') or 'HTTP_ERROR'),
+            'message': str(exc.detail.get('message') or 'HTTP Error'),
+            'details': exc.detail.get('details'),
+            'trace_id': trace_id,
+        }
+    else:
+        body = {'error_code': 'HTTP_ERROR', 'message': str(exc.detail), 'details': None, 'trace_id': trace_id}
+    return JSONResponse(status_code=exc.status_code, content=body)
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+    trace_id = getattr(request.state, 'trace_id', None) or request.headers.get('x-trace-id') or str(uuid.uuid4())
+    body = {
+        'error_code': 'INVALID_PAYLOAD',
+        'message': 'Payload invalido',
+        'details': {'errors': exc.errors()},
+        'trace_id': trace_id,
+    }
+    return JSONResponse(status_code=422, content=body)
 
 
 app.include_router(v1_router)

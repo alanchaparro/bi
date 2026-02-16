@@ -74,6 +74,16 @@ class AuthUserState(Base):
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
+class UserPreference(Base):
+    __tablename__ = 'user_preferences'
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(128), nullable=False, index=True)
+    pref_key = Column(String(64), nullable=False, index=True)
+    value_json = Column(Text, nullable=False, default='{}')
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class AnalyticsContractSnapshot(Base):
     __tablename__ = 'analytics_contract_snapshot'
 
@@ -96,3 +106,4 @@ Index('ix_acs_close_month', AnalyticsContractSnapshot.close_month)
 Index('ix_acs_supervisor', AnalyticsContractSnapshot.supervisor)
 Index('ix_acs_un', AnalyticsContractSnapshot.un)
 Index('ix_acs_via', AnalyticsContractSnapshot.via)
+Index('ux_user_preferences_username_key', UserPreference.username, UserPreference.pref_key, unique=True)

@@ -1,4 +1,4 @@
-﻿import json
+import json
 import os
 import urllib.parse
 import urllib.request
@@ -73,20 +73,32 @@ def main():
         'gestion_month': ['01/2026'],
         'contract_month': ['01/2026'],
         'supervisor': ['FVBROKEREAS', 'FVBROKEREASCDE'],
+        'un': ['MEDICINA ESTETICA'],
+        'via_cobro': ['COBRADOR'],
     }
 
     cases = [
-        ('portfolio', '/analytics/portfolio/summary', '/analytics/portfolio/summary'),
-        ('rendimiento', '/analytics/rendimiento/summary', '/analytics/performance/by-management-month'),
-        ('mora', '/analytics/mora/summary', '/analytics/movement/moroso-trend'),
+        ('portfolio', 'get', '/analytics/portfolio/summary', '/analytics/portfolio/summary'),
+        ('rendimiento', 'get', '/analytics/rendimiento/summary', '/analytics/performance/by-management-month'),
+        ('mora', 'get', '/analytics/mora/summary', '/analytics/movement/moroso-trend'),
+        ('brokers', 'post', '/analytics/brokers/summary', '/api/brokers/summary'),
     ]
 
     query = urllib.parse.urlencode([(k, v) for k, vals in filters.items() for v in vals])
     report = {'ok': True, 'cases': [], 'tolerances': {'rel': REL_TOL, 'abs': ABS_TOL}}
 
-    for name, v1_path, legacy_path in cases:
+    for name, legacy_method, v1_path, legacy_path in cases:
         v1_payload = post_json(f'{API_V1_BASE}{v1_path}', filters, headers=headers)
-        legacy_payload = get_json(f'{LEGACY_BASE}{legacy_path}?{query}')
+        if legacy_method == 'post':
+            legacy_filters = {
+                'supervisors': filters.get('supervisor', []),
+                'months': filters.get('contract_month', []),
+                'uns': filters.get('un', []),
+                'vias': filters.get('via_cobro', []),
+            }
+            legacy_payload = post_json(f'{LEGACY_BASE}{legacy_path}', legacy_filters)
+        else:
+            legacy_payload = get_json(f'{LEGACY_BASE}{legacy_path}?{query}')
 
         v1_nums = flatten_numbers(v1_payload)
         legacy_nums = flatten_numbers(legacy_payload)

@@ -1,20 +1,29 @@
 # Rollback Drill Report
 
-## Entorno
-- Docker Compose profile: `prod`
-- Fecha ensayo: pendiente
+Estado: preparado para ejecucion en staging (no ejecutado en este entorno local).
 
-## Escenario
-1. Deploy versión candidata.
-2. Simular falla en endpoint analytics.
-3. Ejecutar rollback completo.
+## Entorno objetivo
+- Ambiente: staging (Docker Compose profile `prod`)
+- Fecha programada: 2026-02-16
+- Version candidata: cierre-v1-brokers
+
+## Escenario a ejecutar
+1. Deploy de version candidata con API v1 + dashboard.
+2. Simulacion de falla en endpoint analytics (respuesta 5xx controlada).
+3. Ejecucion de rollback operativo completo.
 
 ## Resultado esperado
-- Restauración de servicio < 15 min.
-- Configuración de Brokers intacta.
-- No pérdida de reglas en DB.
+- Restauracion < 15 minutos.
+- Configuracion Brokers intacta.
+- Preferencias por usuario intactas.
+- Sin perdida de datos en DB.
 
-## Evidencias
-- Logs de deploy
-- Logs de rollback
-- Validación post-rollback (health + brokers config + analytics)
+## Evidencias a adjuntar
+- Logs de deploy.
+- Logs de rollback.
+- Validacion post-rollback (`/api/v1/health`, config brokers, analytics).
+
+## Firmas
+- Operaciones: __________________
+- QA: __________________
+- Lider tecnico: __________________

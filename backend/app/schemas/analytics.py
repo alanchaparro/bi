@@ -40,6 +40,6 @@ class AnalyticsFilters(BaseModel):
 
 
 class ExportRequest(BaseModel):
-    format: str = Field(pattern='^(csv|pdf)$')
+    format: str | None = Field(default=None, pattern='^(csv|pdf)$')
     endpoint: str = Field(min_length=3, max_length=64)
     filters: AnalyticsFilters = Field(default_factory=AnalyticsFilters)

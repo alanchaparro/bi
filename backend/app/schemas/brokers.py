@@ -36,3 +36,19 @@ class RulesIn(BaseModel):
 
 class RulesOut(BaseModel):
     rules: list[dict] = Field(default_factory=list)
+
+
+class BrokersFilters(BaseModel):
+    supervisors: list[str] = Field(default_factory=list)
+    uns: list[str] = Field(default_factory=list)
+    vias: list[str] = Field(default_factory=list)
+    years: list[str] = Field(default_factory=list)
+    months: list[str] = Field(default_factory=list)
+
+
+class BrokersPreferencesIn(BaseModel):
+    filters: BrokersFilters = Field(default_factory=BrokersFilters)
+
+
+class BrokersPreferencesOut(BaseModel):
+    filters: BrokersFilters = Field(default_factory=BrokersFilters)

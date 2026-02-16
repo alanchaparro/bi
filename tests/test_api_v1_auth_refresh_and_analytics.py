@@ -79,11 +79,21 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
         token = login.json()['access_token']
         headers = {'Authorization': f'Bearer {token}'}
         r = self.client.post(
-            '/api/v1/analytics/export',
-            json={'format': 'csv', 'endpoint': 'portfolio', 'filters': {}},
+            '/api/v1/analytics/export/csv',
+            json={'endpoint': 'portfolio', 'filters': {}},
             headers=headers,
         )
         self.assertEqual(r.status_code, 403)
+
+    def test_invalid_payload_includes_trace_id(self):
+        login = self.client.post('/api/v1/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        token = login.json()['access_token']
+        headers = {'Authorization': f'Bearer {token}'}
+        r = self.client.post('/api/v1/auth/revoke', json={'refresh_token': 'a'}, headers=headers)
+        self.assertEqual(r.status_code, 422)
+        payload = r.json()
+        self.assertEqual(payload.get('error_code'), 'INVALID_PAYLOAD')
+        self.assertTrue(payload.get('trace_id'))
 
 
 if __name__ == '__main__':

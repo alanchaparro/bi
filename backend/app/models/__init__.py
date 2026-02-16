@@ -7,6 +7,7 @@ from app.models.brokers import (
     BrokersSupervisorScope,
     CommissionRules,
     PrizeRules,
+    UserPreference,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     'AuthUser',
     'AuthUserState',
     'AnalyticsContractSnapshot',
+    'UserPreference',
 ]

@@ -10,7 +10,7 @@ on:
 jobs:
   quality-gates:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 70
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,17 +24,31 @@ jobs:
       - name: Start Services
         run: docker compose --profile dev up -d dashboard api-v1
 
-      - name: Backend Tests
+      - name: Backend Lint (compile/static)
+        run: docker compose --profile dev run --rm dashboard python -m py_compile start_dashboard.py backend/app/main.py
+
+      - name: Backend Unit + Integration Tests
         run: docker compose --profile dev run --rm dashboard python -m unittest discover -s tests -p "test_*.py"
 
       - name: Bootstrap Auth Users
         run: docker compose --profile dev run --rm dashboard python scripts/bootstrap_auth_users.py
 
+      - name: Verify Legacy Config Migration
+        run: |
+          docker compose --profile dev run --rm dashboard python scripts/migrate_legacy_config_to_db.py
+          docker compose --profile dev run --rm dashboard python scripts/verify_legacy_config_migration.py
+
+      - name: E2E Brokers Critical Flow
+        run: docker compose --profile dev run --rm -e E2E_API_BASE=http://api-v1:8000/api/v1 dashboard python scripts/e2e_brokers_critical.py
+
       - name: Perf Smoke API v1
-        run: docker compose --profile dev run --rm -e PERF_API_BASE=http://api-v1:8000/api/v1 dashboard python scripts/perf_smoke_api_v1.py
+        run: docker compose --profile dev run --rm -e PERF_API_BASE=http://api-v1:8000/api/v1 -e PERF_ANALYTICS_P95_BUDGET_MS=1200 dashboard python scripts/perf_smoke_api_v1.py
 
       - name: Parity Check Analytics v1 vs Legacy
         run: docker compose --profile dev run --rm -e PARITY_API_V1_BASE=http://api-v1:8000/api/v1 -e PARITY_LEGACY_BASE=http://dashboard:5000 dashboard python scripts/parity_check_analytics_v1.py
+
+      - name: Smoke Deploy
+        run: docker compose --profile dev run --rm -e SMOKE_API_V1_BASE=http://api-v1:8000/api/v1 -e SMOKE_LEGACY_BASE=http://dashboard:5000 dashboard python scripts/smoke_deploy_v1.py
 
       - name: Export OpenAPI
         run: docker compose --profile dev run --rm dashboard python scripts/export_openapi_v1.py
@@ -44,14 +58,25 @@ jobs:
         with:
           node-version: 20
 
+      - name: Frontend Install
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend Generate API Types
+        working-directory: frontend
+        run: npm run generate:types
+
+      - name: Frontend Unit + Integration
+        working-directory: frontend
+        run: npm run test
+
+      - name: Frontend Typecheck
+        working-directory: frontend
+        run: npm run typecheck
+
       - name: Frontend Build
         working-directory: frontend
-        run: |
-          npm ci
-          npm run generate:types
-          npm run test
-          npm run typecheck
-          npm run build
+        run: npm run build
 
       - name: Cleanup
         if: always()

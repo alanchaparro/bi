@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     jwt_refresh_expire_minutes: int = Field(default=60 * 24 * 30, alias='JWT_REFRESH_EXPIRE_MINUTES')
     auth_max_failed_attempts: int = Field(default=5, alias='AUTH_MAX_FAILED_ATTEMPTS')
     auth_lock_minutes: int = Field(default=15, alias='AUTH_LOCK_MINUTES')
+    auth_login_rate_limit: int = Field(default=10, alias='AUTH_LOGIN_RATE_LIMIT')
+    auth_login_rate_window_seconds: int = Field(default=60, alias='AUTH_LOGIN_RATE_WINDOW_SECONDS')
+    write_rate_limit: int = Field(default=30, alias='WRITE_RATE_LIMIT')
+    write_rate_window_seconds: int = Field(default=60, alias='WRITE_RATE_WINDOW_SECONDS')
 
     cors_origins: str = Field(default='*', alias='CORS_ORIGINS')
     analytics_legacy_base_url: str = Field(default='http://dashboard:5000', alias='ANALYTICS_LEGACY_BASE_URL')
