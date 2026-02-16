@@ -3,7 +3,7 @@ import os
 import statistics
 import time
 import urllib.request
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 
 BASE = os.getenv('PERF_API_BASE', 'http://localhost:8000/api/v1').rstrip('/')
@@ -11,28 +11,40 @@ SAMPLES = int(os.getenv('PERF_SAMPLES', '9'))
 ANALYTICS_BUDGET_MS = float(os.getenv('PERF_ANALYTICS_P95_BUDGET_MS', '1200'))
 WARMUP_CALLS = int(os.getenv('PERF_WARMUP_CALLS', '2'))
 HTTP_TIMEOUT_SECONDS = float(os.getenv('PERF_HTTP_TIMEOUT_SECONDS', '180'))
+HTTP_RETRIES = int(os.getenv('PERF_HTTP_RETRIES', '4'))
+HTTP_RETRY_SLEEP_SECONDS = float(os.getenv('PERF_HTTP_RETRY_SLEEP_SECONDS', '2'))
 
 
 def http_post(path: str, payload: dict, headers: dict | None = None):
     data = json.dumps(payload).encode('utf-8')
-    req = urllib.request.Request(
-        f'{BASE}{path}',
-        data=data,
-        headers={'Content-Type': 'application/json', **(headers or {})},
-        method='POST',
-    )
-    start = time.perf_counter()
-    try:
-        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as res:
-            body = res.read().decode('utf-8')
-    except HTTPError as exc:
-        if exc.code >= 500:
+    last_error = None
+
+    for attempt in range(max(1, HTTP_RETRIES)):
+        req = urllib.request.Request(
+            f'{BASE}{path}',
+            data=data,
+            headers={'Content-Type': 'application/json', **(headers or {})},
+            method='POST',
+        )
+        start = time.perf_counter()
+        try:
             with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as res:
                 body = res.read().decode('utf-8')
-        else:
-            raise
-    elapsed_ms = (time.perf_counter() - start) * 1000
-    return elapsed_ms, json.loads(body)
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            return elapsed_ms, json.loads(body)
+        except HTTPError as exc:
+            # Retry only transient 5xx server-side errors.
+            if exc.code >= 500:
+                last_error = exc
+            else:
+                raise
+        except (URLError, TimeoutError, json.JSONDecodeError) as exc:
+            last_error = exc
+
+        if attempt < HTTP_RETRIES - 1:
+            time.sleep(max(0.0, HTTP_RETRY_SLEEP_SECONDS))
+
+    raise RuntimeError(f'HTTP POST failed after {max(1, HTTP_RETRIES)} attempts for {path}: {last_error}')
 
 
 def p95(values):

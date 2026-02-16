@@ -29,6 +29,9 @@
 3. `python scripts/parity_check_analytics_v1.py`
 4. `python scripts/smoke_deploy_v1.py`
 
+Nota operativa Docker:
+- Para ejecuciones largas en entorno containerizado, preferir `docker exec <container> ...` sobre `docker compose run --rm ...` para evitar reinicios/recreaciones del servicio durante el cutover.
+
 ## Ejecucion de cutover (minuto a minuto)
 ### T-15
 1. Confirmar snapshot DB y backup de configuracion.
@@ -49,6 +52,7 @@
 ### T+0 a T+30
 1. Ejecutar monitoreo continuo:
 - `python scripts/cutover_window_monitor.py`
+- Ejemplo recomendado en Compose: `docker exec <dashboard-container> sh -lc "CUTOVER_METRICS_URL=http://localhost:5000/analytics/ops/metrics CUTOVER_WINDOW_MINUTES=30 CUTOVER_INTERVAL_SECONDS=60 python /app/scripts/cutover_window_monitor.py"`
 2. Umbrales de salida:
 - `error_rate_pct <= 2.0`
 - `p95_ms <= 1200`
