@@ -60,6 +60,7 @@ python start_dashboard.py
 - If stale frontend code appears, hard refresh (`Ctrl+F5`).
 - If CSV load fails, check validation messages and required columns.
 - If export endpoint fails, inspect server terminal output.
+- **Brokers sin datos**: La vista Brokers depende de `analytics_contract_snapshot`. Ver [analytics-data-dependencies.md](analytics-data-dependencies.md) para poblar la tabla (seed, ETL) y configurar `VITE_API_BASE_URL`.
 
 ## Tests
 ```powershell

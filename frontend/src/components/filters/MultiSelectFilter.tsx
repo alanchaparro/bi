@@ -20,24 +20,32 @@ export function MultiSelectFilter({ label, options, selected, onChange }: Props)
 
   return (
     <div aria-label={label}>
-      <label>{label}</label>
+      <label className="input-label">{label}</label>
       <input
+        className="input"
         aria-label={`${label} buscar`}
-        placeholder="Buscar..."
+        placeholder="Buscar…"
         value={q}
         onChange={(e) => setQ(e.target.value)}
+        style={{ marginBottom: '0.5rem' }}
       />
-      <div style={{ maxHeight: 120, overflow: 'auto', border: '1px solid #334155', padding: 8 }}>
-        {filtered.map((v) => (
-          <label key={v} style={{ display: 'block' }}>
-            <input
-              type="checkbox"
-              checked={selected.includes(v)}
-              onChange={() => toggle(v)}
-            />
-            {v}
-          </label>
-        ))}
+      <div style={{ maxHeight: 140, overflow: 'auto', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '0.5rem', background: 'var(--color-surface)' }}>
+        {options.length === 0 ? (
+          <span style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+            Sin opciones (no hay datos cargados)
+          </span>
+        ) : (
+          filtered.map((v) => (
+            <label key={v} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.25rem 0', cursor: 'pointer', fontSize: '0.875rem' }}>
+              <input
+                type="checkbox"
+                checked={selected.includes(v)}
+                onChange={() => toggle(v)}
+              />
+              {v}
+            </label>
+          ))
+        )}
       </div>
     </div>
   )

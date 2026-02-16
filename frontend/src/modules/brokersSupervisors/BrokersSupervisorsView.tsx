@@ -40,25 +40,29 @@ export function BrokersSupervisorsView({ allSupervisors, enabledSupervisors, can
   }
 
   return (
-    <section>
+    <section className="card">
       <h2>Supervisores habilitados</h2>
-      {error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
-      <div style={{ border: '1px solid #cbd5e1', padding: 8, maxHeight: 200, overflow: 'auto' }}>
-        {options.map((v) => (
-          <label key={v} style={{ display: 'block' }}>
-            <input
-              type="checkbox"
-              checked={selected.includes(v)}
-              disabled={!canEdit}
-              onChange={() => toggle(v)}
-            />{' '}
-            {v}
-          </label>
-        ))}
+      {error ? <div className="alert-error">{error}</div> : null}
+      <div className="table-wrap" style={{ maxHeight: 220, overflow: 'auto', padding: '0.75rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.25rem' }}>
+          {options.map((v) => (
+            <label key={v} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: canEdit ? 'pointer' : 'default' }}>
+              <input
+                type="checkbox"
+                checked={selected.includes(v)}
+                disabled={!canEdit}
+                onChange={() => toggle(v)}
+              />
+              <span>{v}</span>
+            </label>
+          ))}
+        </div>
       </div>
-      <button style={{ marginTop: 8 }} onClick={save} disabled={!canEdit || saving}>
-        {saving ? 'Guardando...' : 'Guardar supervisores'}
-      </button>
+      <div style={{ marginTop: '1rem' }}>
+        <button type="button" className="btn btn-primary" onClick={save} disabled={!canEdit || saving}>
+          {saving ? 'Guardando…' : 'Guardar supervisores'}
+        </button>
+      </div>
     </section>
   )
 }

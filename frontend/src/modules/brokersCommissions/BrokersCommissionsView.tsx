@@ -53,11 +53,12 @@ export function BrokersCommissionsView({ rules, canEdit, loading, error, onSave 
   }
 
   return (
-    <section>
-      <h2>Configuracion de Comisiones</h2>
-      {loading ? <p>loading...</p> : null}
-      {error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
-      {localError ? <p style={{ color: 'crimson' }}>{localError}</p> : null}
+    <section className="card">
+      <h2>Configuración de Comisiones</h2>
+      {loading ? <p style={{ color: 'var(--color-text-muted)' }}>Cargando…</p> : null}
+      {error ? <div className="alert-error">{error}</div> : null}
+      {localError ? <div className="alert-error">{localError}</div> : null}
+      <div className="table-wrap">
       <table>
         <thead>
           <tr>
@@ -74,55 +75,66 @@ export function BrokersCommissionsView({ rules, canEdit, loading, error, onSave 
             <tr key={idx}>
               <td>
                 <input
+                  className="input"
                   aria-label={`commission-supervisors-${idx}`}
                   value={(rule.supervisors || []).join(', ')}
                   onChange={(e) => update(idx, 'supervisors', e.target.value)}
                   disabled={!canEdit}
+                  style={{ width: '100%', minWidth: 100 }}
                 />
               </td>
               <td>
                 <input
+                  className="input"
                   aria-label={`commission-uns-${idx}`}
                   value={(rule.uns || []).join(', ')}
                   onChange={(e) => update(idx, 'uns', e.target.value)}
                   disabled={!canEdit}
+                  style={{ width: '100%', minWidth: 100 }}
                 />
               </td>
               <td>
                 <input
+                  className="input"
                   aria-label={`commission-vias-${idx}`}
                   value={(rule.vias || []).join(', ')}
                   onChange={(e) => update(idx, 'vias', e.target.value)}
                   disabled={!canEdit}
+                  style={{ width: '100%', minWidth: 80 }}
                 />
               </td>
               <td>
                 <input
+                  className="input"
                   aria-label={`commission-months-${idx}`}
                   value={(rule.months || []).join(', ')}
                   onChange={(e) => update(idx, 'months', e.target.value)}
                   disabled={!canEdit}
+                  style={{ width: '100%', minWidth: 100 }}
                 />
               </td>
               <td>
                 <input
+                  className="input"
                   aria-label={`commission-rate-${idx}`}
                   type="number"
                   value={Number(rule.rate || 0)}
                   onChange={(e) => update(idx, 'rate', e.target.value)}
                   disabled={!canEdit}
+                  style={{ width: 80 }}
                 />
               </td>
               <td>
-                <button onClick={() => removeRule(idx)} disabled={!canEdit}>Eliminar</button>
+                <button type="button" className="btn btn-secondary" onClick={() => removeRule(idx)} disabled={!canEdit}>Eliminar</button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-        <button onClick={addRule} disabled={!canEdit}>Agregar regla</button>
-        <button onClick={save} disabled={!canEdit || saving}>{saving ? 'Guardando...' : 'Guardar comisiones'}</button>
+      </div>
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+        <button type="button" className="btn btn-secondary" onClick={addRule} disabled={!canEdit}>Agregar regla</button>
+        <button type="button" className="btn btn-primary" onClick={save} disabled={!canEdit || saving}>{saving ? 'Guardando…' : 'Guardar comisiones'}</button>
       </div>
     </section>
   )

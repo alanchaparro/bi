@@ -72,12 +72,13 @@ export function BrokersPrizesView({ rules, canEdit, loading, error, onSave }: Pr
   }
 
   return (
-    <section>
-      <h2>Configuracion de Premios</h2>
-      <p>Escalas formato: <code>meta:premio, meta:premio</code>. Se unifica FVBROKERS en backend legacy.</p>
-      {loading ? <p>loading...</p> : null}
-      {error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
-      {localError ? <p style={{ color: 'crimson' }}>{localError}</p> : null}
+    <section className="card">
+      <h2>Configuración de Premios</h2>
+      <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>Escalas formato: <code>meta:premio, meta:premio</code>. Se unifica FVBROKERS en backend legacy.</p>
+      {loading ? <p style={{ color: 'var(--color-text-muted)' }}>Cargando…</p> : null}
+      {error ? <div className="alert-error">{error}</div> : null}
+      {localError ? <div className="alert-error">{localError}</div> : null}
+      <div className="table-wrap">
       <table>
         <thead>
           <tr>
@@ -92,38 +93,45 @@ export function BrokersPrizesView({ rules, canEdit, loading, error, onSave }: Pr
             <tr key={idx}>
               <td>
                 <input
+                  className="input"
                   aria-label={`prize-supervisors-${idx}`}
                   value={(rule.supervisors || []).join(', ')}
                   onChange={(e) => updateText(idx, 'supervisors', e.target.value)}
                   disabled={!canEdit}
+                  style={{ width: '100%', minWidth: 120 }}
                 />
               </td>
               <td>
                 <input
+                  className="input"
                   aria-label={`prize-uns-${idx}`}
                   value={(rule.uns || []).join(', ')}
                   onChange={(e) => updateText(idx, 'uns', e.target.value)}
                   disabled={!canEdit}
+                  style={{ width: '100%', minWidth: 100 }}
                 />
               </td>
               <td>
                 <input
+                  className="input"
                   aria-label={`prize-scales-${idx}`}
                   value={(rule.scales || []).map((s) => `${Number(s.threshold || 0)}:${Number(s.prize || 0)}`).join(', ')}
                   onChange={(e) => updateScales(idx, e.target.value)}
                   disabled={!canEdit}
+                  style={{ width: '100%', minWidth: 160 }}
                 />
               </td>
               <td>
-                <button onClick={() => removeRule(idx)} disabled={!canEdit}>Eliminar</button>
+                <button type="button" className="btn btn-secondary" onClick={() => removeRule(idx)} disabled={!canEdit}>Eliminar</button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-        <button onClick={addRule} disabled={!canEdit}>Agregar regla</button>
-        <button onClick={save} disabled={!canEdit || saving}>{saving ? 'Guardando...' : 'Guardar premios'}</button>
+      </div>
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+        <button type="button" className="btn btn-secondary" onClick={addRule} disabled={!canEdit}>Agregar regla</button>
+        <button type="button" className="btn btn-primary" onClick={save} disabled={!canEdit || saving}>{saving ? 'Guardando…' : 'Guardar premios'}</button>
       </div>
     </section>
   )

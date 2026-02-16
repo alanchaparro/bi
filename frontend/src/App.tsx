@@ -28,6 +28,10 @@ import { BrokersSupervisorsView } from './modules/brokersSupervisors/BrokersSupe
 import { BrokersMoraView } from './modules/brokersMora/BrokersMoraView'
 import { getApiErrorMessage } from './shared/apiErrors'
 import { LoginView } from './modules/auth/LoginView'
+import { NAV_SECTIONS } from './config/navSections'
+import { SidebarNav } from './components/SidebarNav'
+import { PlaceholderView } from './components/PlaceholderView/PlaceholderView'
+import { ConfigView } from './modules/config/ConfigView'
 
 type BrokerRow = {
   year: string
@@ -51,6 +55,9 @@ export default function App() {
   const [commissionRules, setCommissionRules] = useState<Record<string, unknown>[]>([])
   const [prizeRules, setPrizeRules] = useState<Record<string, unknown>[]>([])
   const [filters, setFilters] = useState<BrokersFilters>(EMPTY_BROKERS_FILTERS)
+  const [activeSectionId, setActiveSectionId] = useState<string | null>('brokers')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [brokersLoading, setBrokersLoading] = useState(false)
 
   const role = auth?.role ?? ''
   const permissions = auth?.permissions ?? []
@@ -99,11 +106,19 @@ export default function App() {
 
   const onFiltersChange = async (nextFilters: BrokersFilters) => {
     setFilters(nextFilters)
+    setError('')
+    setBrokersLoading(true)
     try {
-      await saveCurrentPreferences(nextFilters)
       await loadBrokersSummary(nextFilters)
+      try {
+        await saveCurrentPreferences(nextFilters)
+      } catch {
+        // Preferencias no críticas
+      }
     } catch (e: unknown) {
       setError(getApiErrorMessage(e))
+    } finally {
+      setBrokersLoading(false)
     }
   }
 
@@ -172,6 +187,19 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    document.body.classList.toggle('sidebar-open', sidebarOpen)
+    return () => document.body.classList.remove('sidebar-open')
+  }, [sidebarOpen])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidebarOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  useEffect(() => {
     const boot = async () => {
       try {
         const restored = await restoreSession()
@@ -207,11 +235,7 @@ export default function App() {
   }, [])
 
   if (loading) {
-    return (
-      <main style={{ fontFamily: 'Outfit, sans-serif', padding: 24 }}>
-        <p>Cargando…</p>
-      </main>
-    )
+    return <div className="loading-page">Cargando…</div>
   }
 
   if (!auth) {
@@ -231,54 +255,90 @@ export default function App() {
   }
 
   return (
-    <main style={{ fontFamily: 'Outfit, sans-serif', padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-        <div>
-          <h1 style={{ margin: 0 }}>Frontend v1 - Brokers</h1>
-          <p style={{ margin: '4px 0 0', color: '#666' }}>
-            Paridad funcional Brokers con persistencia server-side y dual-run de analytics.
-          </p>
+    <>
+      <header className="app-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <SidebarNav
+            sections={[...NAV_SECTIONS]}
+            activeId={activeSectionId}
+            onSelect={setActiveSectionId}
+            sidebarOpen={sidebarOpen}
+            onToggleSidebar={() => setSidebarOpen((o) => !o)}
+            onCloseSidebar={() => setSidebarOpen(false)}
+          />
+          <h1>EPEM - Cartera de Cobranzas</h1>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 14 }}>
-            Rol: <strong>{role || '-'}</strong> | Permisos: {permissions.join(', ') || '-'}
-          </span>
-          <button type="button" onClick={handleLogout} style={{ padding: '6px 12px', fontSize: 14 }}>
+        <div className="user-info">
+          <span>Rol: <strong>{role || '-'}</strong></span>
+          <button type="button" className="btn btn-secondary" onClick={handleLogout}>
             Cerrar sesión
           </button>
         </div>
-      </div>
-      {error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
+      </header>
+      <main className="app-content">
+        {error ? <div className="alert-error">{error}</div> : null}
 
-      <BrokersView
-        options={options}
-        filters={filters}
-        onFiltersChange={onFiltersChange}
-        rows={filteredRows}
-        loading={false}
-        error={error}
-      />
-      <BrokersCommissionsView
-        rules={commissionRules}
-        canEdit={canWrite}
-        loading={false}
-        error={error}
-        onSave={onSaveCommissions}
-      />
-      <BrokersPrizesView
-        rules={prizeRules}
-        canEdit={canWrite}
-        loading={false}
-        error={error}
-        onSave={onSavePrizes}
-      />
-      <BrokersSupervisorsView
-        allSupervisors={options.supervisors}
-        enabledSupervisors={supervisorsEnabled}
-        canEdit={canWrite}
-        onSave={onSaveSupervisors}
-      />
-      <BrokersMoraView rows={filteredRows} />
-    </main>
+        {NAV_SECTIONS.map((s) => (
+          <section
+            key={s.id}
+            id={s.id}
+            className={`app-section ${activeSectionId === s.id ? '' : 'hidden'}`}
+          >
+            {s.id === 'brokers' && (
+              <BrokersView
+                options={options}
+                filters={filters}
+                onFiltersChange={onFiltersChange}
+                rows={filteredRows}
+                loading={brokersLoading}
+                error={error}
+              />
+            )}
+            {s.id === 'brokersCommissions' && (
+              <BrokersCommissionsView
+                rules={commissionRules}
+                canEdit={canWrite}
+                loading={false}
+                error={error}
+                onSave={onSaveCommissions}
+              />
+            )}
+            {s.id === 'brokersPrizes' && (
+              <BrokersPrizesView
+                rules={prizeRules}
+                canEdit={canWrite}
+                loading={false}
+                error={error}
+                onSave={onSavePrizes}
+              />
+            )}
+            {s.id === 'brokersSupervisors' && (
+              <BrokersSupervisorsView
+                allSupervisors={options.supervisors}
+                enabledSupervisors={supervisorsEnabled}
+                canEdit={canWrite}
+                onSave={onSaveSupervisors}
+              />
+            )}
+            {s.id === 'brokersMora' && <BrokersMoraView rows={filteredRows} />}
+            {s.id === 'config' && (
+              <ConfigView
+                onReloadBrokers={async () => {
+                  setBrokersLoading(true)
+                  try {
+                    await loadBrokersSummary(filters)
+                  } finally {
+                    setBrokersLoading(false)
+                  }
+                }}
+              />
+            )}
+            {!['brokers', 'brokersCommissions', 'brokersPrizes', 'brokersSupervisors', 'brokersMora', 'config'].includes(s.id) && (
+              <PlaceholderView title={s.label} />
+            )}
+          </section>
+        ))}
+      </main>
+    </>
   )
 }

@@ -38,28 +38,29 @@ export function BrokersMoraView({ rows }: Props) {
   }, [rows, supervisor, un, via])
 
   return (
-    <section>
+    <section className="card">
       <h2>Mora Brokers</h2>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <select aria-label="mora-supervisor" value={supervisor} onChange={(e) => setSupervisor(e.target.value)}>
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+        <select className="input" aria-label="mora-supervisor" value={supervisor} onChange={(e) => setSupervisor(e.target.value)}>
           <option value="">Todos los supervisores</option>
           {options.supervisors.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
-        <select aria-label="mora-un" value={un} onChange={(e) => setUn(e.target.value)}>
+        <select className="input" aria-label="mora-un" value={un} onChange={(e) => setUn(e.target.value)}>
           <option value="">Todas las UN</option>
           {options.uns.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
-        <select aria-label="mora-via" value={via} onChange={(e) => setVia(e.target.value)}>
-          <option value="">Todas las vias</option>
+        <select className="input" aria-label="mora-via" value={via} onChange={(e) => setVia(e.target.value)}>
+          <option value="">Todas las vías</option>
           {options.vias.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
       </div>
+      <div className="table-wrap">
       <table>
         <thead>
           <tr>
@@ -93,6 +94,7 @@ export function BrokersMoraView({ rows }: Props) {
           ) : null}
         </tbody>
       </table>
+      </div>
     </section>
   )
 }
