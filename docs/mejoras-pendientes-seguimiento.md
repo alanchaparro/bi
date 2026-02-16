@@ -23,6 +23,11 @@ Objetivo: controlar qué mejoras faltan, su estado real y evidencia de cumplimie
 | M-006 | Cierre formal de cutover con flag v1 y plan de apagado legacy | PENDIENTE | Alta | Plataforma | 2026-02-21 | Checklist de cutover/post-cutover en `[x]` + criterio de apagado cumplido | `docs/cutover-checklist-final.md` |
 | M-007 | Mantener Cobranzas sin filtro de sucursal y con filtro/gráfico por UN (verificación UX) | EN_PROGRESO | Media | Frontend | 2026-02-18 | Validación funcional en UI y smoke manual documentado | `dashboard.html`, `dashboard.js` |
 
+### Criterios de aceptación M-007 (Cobranzas UX)
+- **Sin filtro de sucursal:** En el módulo Cobranzas (legacy), no debe existir filtro por sucursal o debe estar deshabilitado/oculto según regla de negocio.
+- **Filtro y gráfico por UN:** Debe existir filtro por Unidad de Negocio (UN) y al menos un gráfico que permita desglose o vista por UN.
+- **Evidencia:** Smoke manual en legacy (dashboard): 1) Abrir Cobranzas, comprobar ausencia de filtro sucursal. 2) Aplicar filtro por UN y comprobar que el gráfico (o tabla) refleja datos por UN. Documentar en este archivo o en `docs/cutover-checklist-final.md`.
+
 ## Registro de avances
 ### 2026-02-16
 - Se creó el documento de seguimiento.

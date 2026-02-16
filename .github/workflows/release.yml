@@ -30,6 +30,20 @@ jobs:
       - name: Backend Unit + Integration Tests
         run: docker compose --profile dev run --rm dashboard python -m unittest discover -s tests -p "test_*.py"
 
+      - name: Backend Coverage
+        run: |
+          docker compose --profile dev run --rm -v ${{ github.workspace }}:/workspace dashboard sh -c "
+            pip install --quiet coverage &&
+            cd /app && coverage run -m unittest discover -s tests -p 'test_*.py' &&
+            coverage xml -o /workspace/coverage.xml
+          "
+
+      - name: Upload Backend Coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: coverage.xml
+
       - name: Bootstrap Auth Users
         run: docker compose --profile dev run --rm dashboard python scripts/bootstrap_auth_users.py
 

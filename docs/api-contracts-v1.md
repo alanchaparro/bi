@@ -2,6 +2,17 @@
 
 Base path: `/api/v1`
 
+## Health
+### `GET /api/v1/health`
+- **200**: Servicio y DB operativos.
+  ```json
+  { "ok": true, "service": "cobranzas-api-v1", "db_ok": true }
+  ```
+- **503**: Dependencia crítica (DB) no disponible.
+  ```json
+  { "ok": false, "service": "cobranzas-api-v1", "db_ok": false, "message": "Database unreachable" }
+  ```
+
 ## Error contract estandar
 ```json
 { "error_code": "...", "message": "...", "details": null, "trace_id": "..." }

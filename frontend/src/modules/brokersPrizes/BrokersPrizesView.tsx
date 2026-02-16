@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { getApiErrorMessage } from '../../shared/apiErrors'
 
 type PrizeScale = {
   threshold?: number
@@ -63,8 +64,8 @@ export function BrokersPrizesView({ rules, canEdit, loading, error, onSave }: Pr
     setSaving(true)
     try {
       await onSave(draft)
-    } catch (e: any) {
-      setLocalError(e?.response?.data?.message || 'No se pudo guardar premios')
+    } catch (e: unknown) {
+      setLocalError(getApiErrorMessage(e) || 'No se pudo guardar premios')
     } finally {
       setSaving(false)
     }

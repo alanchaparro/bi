@@ -9,9 +9,10 @@
 - Validation sample cap (`5000`) to avoid expensive full-file prechecks.
 - Graceful chart render errors to prevent UI lockups.
 - Sidebar state and tab state centralized to reduce redundant UI churn.
+- **Backend:** cache por firma de filtros en `POST /api/v1/analytics/brokers/summary` (in-memory, TTL 60 s). Ver `app/core/analytics_cache.py` y uso en `app/api/v1/endpoints/analytics.py`.
 
 ## Next Optimizations
-- Memoize aggregations by filter signature.
+- Extender cache a otros endpoints de analytics (portfolio, rendimiento, mora) si el patrón de uso lo justifica.
 - Cache `contract_id + month` maps per dataset load.
 - Split expensive analytics into incremental recompute paths.
 

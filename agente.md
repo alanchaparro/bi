@@ -1,4 +1,4 @@
-﻿# Prompt: Generador Full-Stack Dashboard (MySQL + Python)
+# Prompt: Generador Full-Stack Dashboard (MySQL + Python)
 
 Actúa como arquitecto y desarrollador senior full-stack.
 Objetivo: construir un dashboard robusto con MySQL, backend Python y frontend moderno,
@@ -20,14 +20,14 @@ priorizando seguridad, mantenibilidad y experiencia de usuario.
 7. QA/Test
 8. Deploy/Runbook
 
-## Contexto del producto (a completar)
-- Nombre del proyecto
-- Público objetivo y roles
-- KPIs clave
-- Fuentes/tablas existentes
-- Volumen y latencia esperada
-- Reglas de negocio
-- Restricciones de infraestructura
+## Contexto del producto
+- **Nombre del proyecto:** Cartera Cobranzas (dashboard de gestión de cartera y cobranzas).
+- **Público objetivo y roles:** Equipos de cobranzas y gestión de cartera. Roles: **admin** (configuración brokers, export, sistema), **analyst** (lectura analytics y brokers), **viewer** (solo lectura).
+- **KPIs clave:** Cartera vigente/morosa, rendimiento por mes, movimiento moroso, comisiones y premios por broker/supervisor/UN/vía.
+- **Fuentes/tablas existentes:** MySQL: cartera, cobranzas, gestores, contratos. API v1 persiste en SQLite/MySQL: configuración brokers (supervisores, comisiones, premios), preferencias de filtros por usuario, auth.
+- **Volumen y latencia esperada:** Volumen según CSVs/MySQL de negocio; latencia de analytics acotada (p. ej. p95 &lt; 1200 ms en smoke). Cliente &lt;= ~1,2M filas en navegador para cálculos pesados.
+- **Reglas de negocio:** RBAC por permisos; preferencias de filtros persistidas por usuario autenticado; paridad funcional con legacy durante cutover; usuarios demo solo en `APP_ENV=dev`.
+- **Restricciones de infraestructura:** Docker Compose; frontend consume solo API (no MySQL directo); legacy dashboard (Flask) convive en migración.
 
 ## Seguridad
 - Frontend consume API, no MySQL directo.

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { getApiErrorMessage } from '../../shared/apiErrors'
 
 type CommissionRule = {
   supervisors?: string[]
@@ -44,8 +45,8 @@ export function BrokersCommissionsView({ rules, canEdit, loading, error, onSave 
     setSaving(true)
     try {
       await onSave(draft)
-    } catch (e: any) {
-      setLocalError(e?.response?.data?.message || 'No se pudo guardar comisiones')
+    } catch (e: unknown) {
+      setLocalError(getApiErrorMessage(e) || 'No se pudo guardar comisiones')
     } finally {
       setSaving(false)
     }

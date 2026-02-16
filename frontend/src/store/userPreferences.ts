@@ -1,17 +1,10 @@
 import { getBrokersPreferences, saveBrokersPreferences } from '../shared/api'
+import { EMPTY_BROKERS_FILTERS, type BrokersPreferences } from '../shared/contracts'
 
-export type BrokersPreferences = {
-  filters: {
-    supervisors: string[]
-    uns: string[]
-    vias: string[]
-    years: string[]
-    months: string[]
-  }
-}
+export type { BrokersPreferences } from '../shared/contracts'
 
 const EMPTY: BrokersPreferences = {
-  filters: { supervisors: [], uns: [], vias: [], years: [], months: [] },
+  filters: EMPTY_BROKERS_FILTERS,
 }
 
 export async function loadBrokersPreferences(): Promise<BrokersPreferences> {

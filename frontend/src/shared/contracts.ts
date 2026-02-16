@@ -16,3 +16,24 @@ export type RulesResponse =
 
 export type RulesRequest =
   ApiPaths["/api/v1/brokers/commissions"]["post"]["requestBody"]["content"]["application/json"];
+
+/** Filtros de Brokers (resumen, preferencias). Origen único de verdad para tipos. */
+export type BrokersFilters = {
+  supervisors: string[];
+  uns: string[];
+  vias: string[];
+  years: string[];
+  months: string[];
+};
+
+export type BrokersPreferences = {
+  filters: BrokersFilters;
+};
+
+export const EMPTY_BROKERS_FILTERS: BrokersFilters = {
+  supervisors: [],
+  uns: [],
+  vias: [],
+  years: [],
+  months: [],
+};

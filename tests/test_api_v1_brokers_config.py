@@ -13,18 +13,24 @@ os.environ.setdefault('JWT_SECRET_KEY', 'test_secret_key')
 
 from app.main import app  # noqa: E402
 
+# Credenciales de test: por defecto usuarios demo (dev). Para DB-only usar TEST_* con usuario creado en DB.
+TEST_ADMIN_USER = os.environ.get('TEST_ADMIN_USER', 'admin')
+TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', 'admin123')
+TEST_ANALYST_USER = os.environ.get('TEST_ANALYST_USER', 'analyst')
+TEST_ANALYST_PASSWORD = os.environ.get('TEST_ANALYST_PASSWORD', 'analyst123')
+
 
 class ApiV1BrokersConfigTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = TestClient(app)
-        r = cls.client.post('/api/v1/auth/login', json={'username': 'admin', 'password': 'admin123'})
-        assert r.status_code == 200
+        r = cls.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
+        assert r.status_code == 200, r.json()
         cls.token = r.json()['access_token']
         cls.headers = {'Authorization': f'Bearer {cls.token}'}
 
-        r2 = cls.client.post('/api/v1/auth/login', json={'username': 'analyst', 'password': 'analyst123'})
-        assert r2.status_code == 200
+        r2 = cls.client.post('/api/v1/auth/login', json={'username': TEST_ANALYST_USER, 'password': TEST_ANALYST_PASSWORD})
+        assert r2.status_code == 200, r2.json()
         cls.analyst_headers = {'Authorization': f"Bearer {r2.json()['access_token']}"}
 
     def test_health(self):

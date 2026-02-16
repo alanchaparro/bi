@@ -1,4 +1,4 @@
-﻿from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 
 from fastapi import HTTPException, status
@@ -42,6 +42,11 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+def _is_demo_allowed() -> bool:
+    """Demo users are only allowed in dev to avoid default credentials in prod."""
+    return settings.app_env == 'dev'
+
+
 def resolve_identity(username: str, db: Session | None = None):
     name = str(username or '').strip()
     if not name:
@@ -53,10 +58,11 @@ def resolve_identity(username: str, db: Session | None = None):
             role = str(row.role or 'viewer').strip().lower() or 'viewer'
             return {'username': row.username, 'role': role, 'permissions': ROLE_PERMISSIONS.get(role, [])}
 
-    demo = DEMO_USERS.get(name)
-    if demo:
-        role = demo['role']
-        return {'username': name, 'role': role, 'permissions': ROLE_PERMISSIONS.get(role, [])}
+    if _is_demo_allowed():
+        demo = DEMO_USERS.get(name)
+        if demo:
+            role = demo['role']
+            return {'username': name, 'role': role, 'permissions': ROLE_PERMISSIONS.get(role, [])}
 
     return None
 
@@ -74,7 +80,9 @@ def authenticate_user_with_db(db: Session | None, username: str, password: str):
         if row:
             return None
 
-    return authenticate_user(name, password)
+    if _is_demo_allowed():
+        return authenticate_user(name, password)
+    return None
 
 
 def create_access_token(data: dict, expires_minutes: int | None = None):

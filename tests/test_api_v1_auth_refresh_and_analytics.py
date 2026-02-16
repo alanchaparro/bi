@@ -18,6 +18,11 @@ from app.core.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 from app.models.brokers import AnalyticsContractSnapshot, AuthUser  # noqa: E402
 
+TEST_ADMIN_USER = os.environ.get('TEST_ADMIN_USER', 'admin')
+TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', 'admin123')
+TEST_ANALYST_USER = os.environ.get('TEST_ANALYST_USER', 'analyst')
+TEST_ANALYST_PASSWORD = os.environ.get('TEST_ANALYST_PASSWORD', 'analyst123')
+
 
 class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
     @classmethod
@@ -25,7 +30,7 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
         cls.client = TestClient(app)
 
     def test_login_refresh_revoke_flow(self):
-        login = self.client.post('/api/v1/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
         self.assertEqual(login.status_code, 200)
         payload = login.json()
         self.assertIn('access_token', payload)
@@ -64,7 +69,7 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
         self.assertIn('brokers:write_config', payload.get('permissions', []))
 
     def test_analytics_portfolio_summary(self):
-        login = self.client.post('/api/v1/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
         token = login.json()['access_token']
         headers = {'Authorization': f'Bearer {token}'}
 
@@ -75,7 +80,7 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
             self.assertEqual(r.json().get('total'), 10)
 
     def test_analytics_export_csv_requires_permission(self):
-        login = self.client.post('/api/v1/auth/login', json={'username': 'analyst', 'password': 'analyst123'})
+        login = self.client.post('/api/v1/auth/login', json={'username': TEST_ANALYST_USER, 'password': TEST_ANALYST_PASSWORD})
         token = login.json()['access_token']
         headers = {'Authorization': f'Bearer {token}'}
         r = self.client.post(
@@ -106,7 +111,7 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
         finally:
             db.close()
 
-        login = self.client.post('/api/v1/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
         token = login.json()['access_token']
         headers = {'Authorization': f'Bearer {token}'}
         r = self.client.post('/api/v1/analytics/brokers/summary', json={'supervisor': ['FVBROKEREAS']}, headers=headers)
@@ -136,7 +141,7 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
         finally:
             db.close()
 
-        login = self.client.post('/api/v1/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
         token = login.json()['access_token']
         headers = {'Authorization': f'Bearer {token}'}
 
@@ -146,7 +151,7 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
             self.assertIsInstance(r.json().get('rows'), list)
 
     def test_invalid_payload_includes_trace_id(self):
-        login = self.client.post('/api/v1/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
         token = login.json()['access_token']
         headers = {'Authorization': f'Bearer {token}'}
         r = self.client.post('/api/v1/auth/revoke', json={'refresh_token': 'a'}, headers=headers)

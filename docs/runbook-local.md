@@ -35,6 +35,12 @@ python start_dashboard.py
 - If analytics endpoint fails, critical tabs fallback to local computation.
 - Debug traces: append `?debug=1` to URL.
 
+## Auth (Frontend v1)
+- Login: `POST /api/v1/auth/login` con `username`/`password`; respuesta incluye `access_token`, `refresh_token`, `role`, `permissions`.
+- Access token se envía en header `Authorization: Bearer <access_token>`; tiene vida corta (p. ej. 120 min).
+- Refresh token se guarda en `sessionStorage` (solo en la pestaña actual). Ante 401, el frontend llama a `POST /api/v1/auth/refresh` con `refresh_token` y renueva ambos tokens; si falla, cierra sesión y muestra pantalla de login.
+- Cerrar sesión: el frontend limpia `sessionStorage` y deja de enviar Bearer; opcionalmente llamar `POST /api/v1/auth/revoke` con el refresh token para invalidarlo en el servidor.
+
 ## Feature Flags (frontend)
 - `FF_MOVEMENT_SERIES_V2` (default `true`)
 - `FF_LINE_LABELS_SMART_LAYOUT` (default `true`)

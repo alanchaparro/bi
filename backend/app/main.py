@@ -26,6 +26,9 @@ app.add_middleware(
 )
 
 
+from app.core.logging_config import log_request, structured_log
+
+
 @app.middleware('http')
 async def trace_and_logging(request: Request, call_next):
     trace_id = request.headers.get('x-trace-id') or str(uuid.uuid4())
@@ -33,15 +36,21 @@ async def trace_and_logging(request: Request, call_next):
     start = time.time()
     try:
         response = await call_next(request)
+        latency = round((time.time() - start) * 1000, 2)
+        log_request(request.url.path, request.method, trace_id, latency, response.status_code)
+        response.headers['x-trace-id'] = trace_id
+        response.headers['x-latency-ms'] = str(latency)
+        return response
     except Exception as exc:
         latency = round((time.time() - start) * 1000, 2)
+        structured_log(
+            'error', 'request_failed',
+            trace_id=trace_id, duration_ms=latency,
+            endpoint=f'{request.method} {request.url.path}',
+            error=str(exc),
+        )
         body = {'error_code': 'INTERNAL_ERROR', 'message': 'Error interno', 'details': str(exc), 'trace_id': trace_id}
         return JSONResponse(status_code=500, content=body, headers={'x-trace-id': trace_id, 'x-latency-ms': str(latency)})
-
-    latency = round((time.time() - start) * 1000, 2)
-    response.headers['x-trace-id'] = trace_id
-    response.headers['x-latency-ms'] = str(latency)
-    return response
 
 
 @app.exception_handler(StarletteHTTPException)

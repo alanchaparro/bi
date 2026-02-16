@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { getApiErrorMessage } from '../../shared/apiErrors'
 
 type Props = {
   allSupervisors: string[]
@@ -31,8 +32,8 @@ export function BrokersSupervisorsView({ allSupervisors, enabledSupervisors, can
     setSaving(true)
     try {
       await onSave(selected)
-    } catch (e: any) {
-      setError(e?.response?.data?.message || 'No se pudo guardar supervisores')
+    } catch (e: unknown) {
+      setError(getApiErrorMessage(e) || 'No se pudo guardar supervisores')
     } finally {
       setSaving(false)
     }

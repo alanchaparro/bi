@@ -1,12 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
+from app.core.analytics_cache import get as cache_get, set as cache_set
 from app.core.deps import require_permission, write_rate_limiter
 from app.db.session import get_db
 from app.schemas.analytics import AnalyticsFilters, ExportRequest
 from app.services.analytics_service import AnalyticsService
 
 router = APIRouter()
+BROKERS_SUMMARY_CACHE_TTL = 60
 
 
 def _call(endpoint: str, filters: AnalyticsFilters):
@@ -73,7 +75,12 @@ def brokers_summary(
     db: Session = Depends(get_db),
     user=Depends(require_permission('analytics:read')),
 ):
-    return AnalyticsService.fetch_brokers_summary_v1(db, filters)
+    cached = cache_get('brokers/summary', filters)
+    if cached is not None:
+        return cached
+    result = AnalyticsService.fetch_brokers_summary_v1(db, filters)
+    cache_set('brokers/summary', filters, result, ttl_seconds=BROKERS_SUMMARY_CACHE_TTL)
+    return result
 
 
 @router.post('/export/csv')

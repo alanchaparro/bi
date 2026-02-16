@@ -55,7 +55,7 @@ class DashboardStaticTests(unittest.TestCase):
             'docs/data-validation-rules.md',
             'docs/runbook-local.md',
             'docs/performance-notes.md',
-            'docs/api-draft.md',
+            'docs/api-contracts-v1.md',
         ]
         for rel in expected:
             self.assertTrue((ROOT / rel).exists(), f'missing {rel}')

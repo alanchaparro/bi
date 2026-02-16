@@ -1,21 +1,33 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   api,
   getCommissionsRules,
   getPrizesRules,
   getSupervisorsScope,
   login,
+  logout,
+  restoreSession,
   saveCommissionsRules,
   savePrizesRules,
   saveSupervisorsScope,
   setAuthToken,
+  setOnUnauthorized,
 } from './shared/api'
+import { loadBrokersPreferences, persistBrokersPreferences } from './store/userPreferences'
+import type {
+  BrokersFilters,
+  LoginRequest,
+  LoginResponse,
+} from './shared/contracts'
+import { EMPTY_BROKERS_FILTERS } from './shared/contracts'
+import { setStoredRefreshToken } from './shared/sessionStorage'
 import { BrokersView } from './modules/brokers/BrokersView'
 import { BrokersCommissionsView } from './modules/brokersCommissions/BrokersCommissionsView'
 import { BrokersPrizesView } from './modules/brokersPrizes/BrokersPrizesView'
 import { BrokersSupervisorsView } from './modules/brokersSupervisors/BrokersSupervisorsView'
 import { BrokersMoraView } from './modules/brokersMora/BrokersMoraView'
-import { loadBrokersPreferences, persistBrokersPreferences } from './store/userPreferences'
+import { getApiErrorMessage } from './shared/apiErrors'
+import { LoginView } from './modules/auth/LoginView'
 
 type BrokerRow = {
   year: string
@@ -29,27 +41,19 @@ type BrokerRow = {
   commission: number
 }
 
-type BrokersFilters = {
-  supervisors: string[]
-  uns: string[]
-  vias: string[]
-  years: string[]
-  months: string[]
-}
-
-const EMPTY_FILTERS: BrokersFilters = { supervisors: [], uns: [], vias: [], years: [], months: [] }
-
 export default function App() {
+  const [auth, setAuth] = useState<LoginResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loginError, setLoginError] = useState<string | null>(null)
   const [error, setError] = useState('')
-  const [role, setRole] = useState('')
-  const [permissions, setPermissions] = useState<string[]>([])
   const [supervisorsEnabled, setSupervisorsEnabled] = useState<string[]>([])
   const [rows, setRows] = useState<BrokerRow[]>([])
-  const [commissionRules, setCommissionRules] = useState<any[]>([])
-  const [prizeRules, setPrizeRules] = useState<any[]>([])
-  const [filters, setFilters] = useState<BrokersFilters>(EMPTY_FILTERS)
+  const [commissionRules, setCommissionRules] = useState<Record<string, unknown>[]>([])
+  const [prizeRules, setPrizeRules] = useState<Record<string, unknown>[]>([])
+  const [filters, setFilters] = useState<BrokersFilters>(EMPTY_BROKERS_FILTERS)
 
+  const role = auth?.role ?? ''
+  const permissions = auth?.permissions ?? []
   const canWrite = permissions.includes('brokers:write_config')
 
   const options = useMemo(() => {
@@ -98,17 +102,17 @@ export default function App() {
     try {
       await saveCurrentPreferences(nextFilters)
       await loadBrokersSummary(nextFilters)
-    } catch (e: any) {
-      setError(e?.response?.data?.message || 'No se pudo aplicar filtros')
+    } catch (e: unknown) {
+      setError(getApiErrorMessage(e))
     }
   }
 
-  const onSaveCommissions = async (rules: any[]) => {
+  const onSaveCommissions = async (rules: Record<string, unknown>[]) => {
     const res = await saveCommissionsRules({ rules })
     setCommissionRules(res.rules || [])
   }
 
-  const onSavePrizes = async (rules: any[]) => {
+  const onSavePrizes = async (rules: Record<string, unknown>[]) => {
     const res = await savePrizesRules({ rules })
     setPrizeRules(res.rules || [])
   }
@@ -123,37 +127,78 @@ export default function App() {
     await loadBrokersSummary(nextFilters)
   }
 
+  const handleLogin = useCallback(async (payload: LoginRequest) => {
+    setLoginError(null)
+    const authRes = await login(payload)
+    setAuthToken(authRes.access_token)
+    if (authRes.refresh_token) setStoredRefreshToken(authRes.refresh_token)
+    setAuth(authRes)
+    setLoginError(null)
+
+    const [prefs, scopeRes, commRes, prizeRes] = await Promise.all([
+      loadBrokersPreferences(),
+      getSupervisorsScope(),
+      getCommissionsRules(),
+      getPrizesRules(),
+    ])
+    const enabled = scopeRes.supervisors || []
+    const nextFilters: BrokersFilters = {
+      supervisors: prefs.filters?.supervisors?.length ? prefs.filters.supervisors : enabled,
+      uns: prefs.filters?.uns || [],
+      vias: prefs.filters?.vias || [],
+      years: prefs.filters?.years || [],
+      months: prefs.filters?.months || [],
+    }
+    setSupervisorsEnabled(enabled)
+    setFilters(nextFilters)
+    setCommissionRules(commRes.rules || [])
+    setPrizeRules(prizeRes.rules || [])
+    await loadBrokersSummary(nextFilters)
+  }, [])
+
+  const handleLogout = useCallback(() => {
+    logout()
+    setAuth(null)
+    setError('')
+    setLoginError(null)
+  }, [])
+
+  useEffect(() => {
+    setOnUnauthorized(() => {
+      setAuth(null)
+      setError('Sesión expirada. Vuelve a iniciar sesión.')
+    })
+    return () => setOnUnauthorized(null)
+  }, [])
+
   useEffect(() => {
     const boot = async () => {
       try {
-        const auth = await login({ username: 'admin', password: 'admin123' })
-        setAuthToken(auth.access_token)
-        setRole(auth.role)
-        setPermissions(auth.permissions || [])
-
-        const [prefs, scopeRes, commRes, prizeRes] = await Promise.all([
-          loadBrokersPreferences(),
-          getSupervisorsScope(),
-          getCommissionsRules(),
-          getPrizesRules(),
-        ])
-
-        const enabled = scopeRes.supervisors || []
-        const nextFilters: BrokersFilters = {
-          supervisors: prefs.filters?.supervisors?.length ? prefs.filters.supervisors : enabled,
-          uns: prefs.filters?.uns || [],
-          vias: prefs.filters?.vias || [],
-          years: prefs.filters?.years || [],
-          months: prefs.filters?.months || [],
+        const restored = await restoreSession()
+        if (restored) {
+          setAuth(restored)
+          const [prefs, scopeRes, commRes, prizeRes] = await Promise.all([
+            loadBrokersPreferences(),
+            getSupervisorsScope(),
+            getCommissionsRules(),
+            getPrizesRules(),
+          ])
+          const enabled = scopeRes.supervisors || []
+          const nextFilters: BrokersFilters = {
+            supervisors: prefs.filters?.supervisors?.length ? prefs.filters.supervisors : enabled,
+            uns: prefs.filters?.uns || [],
+            vias: prefs.filters?.vias || [],
+            years: prefs.filters?.years || [],
+            months: prefs.filters?.months || [],
+          }
+          setSupervisorsEnabled(enabled)
+          setFilters(nextFilters)
+          setCommissionRules(commRes.rules || [])
+          setPrizeRules(prizeRes.rules || [])
+          await loadBrokersSummary(nextFilters)
         }
-
-        setSupervisorsEnabled(enabled)
-        setFilters(nextFilters)
-        setCommissionRules(commRes.rules || [])
-        setPrizeRules(prizeRes.rules || [])
-        await loadBrokersSummary(nextFilters)
-      } catch (e: any) {
-        setError(e?.response?.data?.message || 'No se pudo cargar frontend v1')
+      } catch {
+        // restoreSession already clears on failure
       } finally {
         setLoading(false)
       }
@@ -161,33 +206,69 @@ export default function App() {
     boot()
   }, [])
 
+  if (loading) {
+    return (
+      <main style={{ fontFamily: 'Outfit, sans-serif', padding: 24 }}>
+        <p>Cargando…</p>
+      </main>
+    )
+  }
+
+  if (!auth) {
+    return (
+      <LoginView
+        onSubmit={async (payload) => {
+          try {
+            await handleLogin(payload)
+          } catch (e: unknown) {
+            setLoginError(getApiErrorMessage(e))
+            throw e
+          }
+        }}
+        error={loginError}
+      />
+    )
+  }
+
   return (
     <main style={{ fontFamily: 'Outfit, sans-serif', padding: 24 }}>
-      <h1>Frontend v1 - Brokers</h1>
-      <p>Paridad funcional Brokers con persistencia server-side y dual-run de analytics.</p>
-      {loading ? <p>loading...</p> : null}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <h1 style={{ margin: 0 }}>Frontend v1 - Brokers</h1>
+          <p style={{ margin: '4px 0 0', color: '#666' }}>
+            Paridad funcional Brokers con persistencia server-side y dual-run de analytics.
+          </p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 14 }}>
+            Rol: <strong>{role || '-'}</strong> | Permisos: {permissions.join(', ') || '-'}
+          </span>
+          <button type="button" onClick={handleLogout} style={{ padding: '6px 12px', fontSize: 14 }}>
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
       {error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
-      <p>Rol: {role || '-'} | Permisos: {permissions.join(', ') || '-'}</p>
 
       <BrokersView
         options={options}
         filters={filters}
         onFiltersChange={onFiltersChange}
         rows={filteredRows}
-        loading={loading}
+        loading={false}
         error={error}
       />
       <BrokersCommissionsView
         rules={commissionRules}
         canEdit={canWrite}
-        loading={loading}
+        loading={false}
         error={error}
         onSave={onSaveCommissions}
       />
       <BrokersPrizesView
         rules={prizeRules}
         canEdit={canWrite}
-        loading={loading}
+        loading={false}
         error={error}
         onSave={onSavePrizes}
       />
