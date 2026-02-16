@@ -372,16 +372,16 @@
                 </div>
 
                 <div class="filter-group">
-                    <label>Sucursal:</label>
-                    <div class="multi-select" id="suc-filter">
-                        <div class="select-box" onclick="toggleDropdown('suc-dropdown')">
-                            <span id="suc-count">Todas</span>
+                    <label>Unidad de Negocio:</label>
+                    <div class="multi-select" id="cob-un-filter">
+                        <div class="select-box" onclick="toggleDropdown('cob-un-dropdown')">
+                            <span id="cob-un-count">Todas</span>
                             <span class="arrow">▼</span>
                         </div>
-                        <div id="suc-dropdown" class="dropdown-content hidden">
-                            <label><input type="checkbox" id="suc-all" checked> Todas</label>
+                        <div id="cob-un-dropdown" class="dropdown-content hidden">
+                            <label><input type="checkbox" id="cob-un-all" checked> Todas</label>
                             <hr>
-                            <div id="suc-options"></div>
+                            <div id="cob-un-options"></div>
                         </div>
                     </div>
                 </div>
@@ -436,8 +436,8 @@
                     <canvas id="vpChart"></canvas>
                 </div>
                 <div class="chart-container">
-                    <h3>Cobros por Sucursal</h3>
-                    <canvas id="sucChart"></canvas>
+                    <h3>Cobros por Unidad de Negocio</h3>
+                    <canvas id="cobUnChart"></canvas>
                 </div>
                 <div class="chart-container">
                     <h3>Distribución por Mes (Acumulado)</h3>

@@ -632,6 +632,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const memo = {
         cobranzas: { stamp: '', value: null },
         contratos: { stamp: '', value: null },
+        unById: { stamp: '', value: null },
         viaById: { stamp: '', value: null },
         moraTransitions: { stamp: '', value: null },
         tramoById: { stamp: '', value: null },
@@ -640,7 +641,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const tabFilterIds = {
         cartera: ['un', 'tramo', 'cat', 'fecha'],
-        cobranzas: ['vp', 'suc', 'anio', 'mes', 'dia', 'cob-super'],
+        cobranzas: ['vp', 'cob-un', 'anio', 'mes', 'dia', 'cob-super'],
         analisisCartera: ['aca-un', 'aca-anio', 'aca-fecha', 'aca-via-cobro', 'aca-super', 'aca-cat'],
         acaMovimiento: ['acam-un', 'acam-anio', 'acam-fecha', 'acam-via-cobro', 'acam-cat'],
         acaAnuales: ['acaa-un', 'acaa-anio', 'acaa-mes-contrato'],
@@ -1181,7 +1182,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         setDataReady('cobranzas', true);
         invalidateMemo('cobranzas');
 
-        const vps = new Set(), sucs = new Set(), anios = new Set(), meses = new Set(), dias = new Set();
+        const vps = new Set(), uns = new Set(), anios = new Set(), meses = new Set(), dias = new Set();
 
         console.log("Optimizing Cobranzas process (Single-pass + Normalization)...");
         for (let i = 0; i < data.length; i++) {
@@ -1195,13 +1196,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             r._cId = String(r.contract_id || r.id_contrato || '').replace(/[^0-9]/g, '');
 
             const vp = String(r.VP || '').trim();
-            const suc = String(r.Suc || '').trim();
+            const un = String(getUnByContractId()[String(r._cId || '')] || 'S/D').trim() || 'S/D';
             const anio = String(r['A\u00f1o'] || '').trim();
             const mes = String(r.Mes || '').trim();
             const dia = String(r.Dia || '').trim();
 
             if (vp) vps.add(vp);
-            if (suc) sucs.add(suc);
+            if (un) uns.add(un);
             if (anio) anios.add(anio);
             if (mes) meses.add(mes);
             if (dia) dias.add(dia);
@@ -1217,7 +1218,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         await persistDatasetSafe('cobranzas', data, 'Cobranzas');
 
         setupFilter('vp', Array.from(vps).sort(), 'cobranzas');
-        setupFilter('suc', Array.from(sucs).sort(), 'cobranzas');
+        setupFilter('cob-un', Array.from(uns).sort(), 'cobranzas');
         setupFilter('anio', Array.from(anios).sort(), 'cobranzas');
         setupFilter('mes', Array.from(meses).sort((a, b) => a - b), 'cobranzas');
         setupFilter('dia', Array.from(dias).sort((a, b) => a - b), 'cobranzas');
@@ -4193,17 +4194,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function applyCobranzasFilters() {
         const selVp = getAppliedSelected('cobranzas', 'vp');
-        const selSuc = getAppliedSelected('cobranzas', 'suc');
+        const selUn = getAppliedSelected('cobranzas', 'cob-un');
         const selAnio = getAppliedSelected('cobranzas', 'anio');
         const selMes = getAppliedSelected('cobranzas', 'mes');
         const selDia = getAppliedSelected('cobranzas', 'dia');
         const selSuper = getAppliedSelected('cobranzas', 'cob-super');
         const supervisorById = getSupervisorByContractId();
+        const unById = getUnByContractId();
 
         const filtered = state.cobranzas.data.filter(r => {
             const sup = String(supervisorById[String(r._cId || '')] || 'S/D');
+            const un = String(unById[String(r._cId || '')] || 'S/D');
             return selVp.has(String(r.VP || '').trim()) &&
-                selSuc.has(String(r.Suc || '').trim()) &&
+                selUn.has(un) &&
                 selAnio.has(String(r['A\u00f1o'] || '').trim()) &&
                 selMes.has(String(r.Mes || '').trim()) &&
                 selDia.has(String(r.Dia || '').trim()) &&
@@ -4214,8 +4217,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function updateCobranzasUI(data) {
         let t = 0, d = 0, c = 0;
-        const trend = {}, vpMap = {}, sucMap = {};
+        const trend = {}, vpMap = {}, unMap = {};
         const mesDist = {}, diaDist = {};
+        const unById = getUnByContractId();
 
         data.forEach(r => {
             const m = r.monto || 0; t += m;
@@ -4226,9 +4230,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             const f = `${String(r.Mes).padStart(2, '0')}/${r['A\u00f1o']}`;
             trend[f] = (trend[f] || 0) + m;
 
-            // VP & Sucursal
+            // VP & Unidad de Negocio
             vpMap[r.VP] = (vpMap[r.VP] || 0) + m;
-            sucMap[r.Suc] = (sucMap[r.Suc] || 0) + m;
+            const un = String(unById[String(r._cId || '')] || 'S/D');
+            unMap[un] = (unMap[un] || 0) + m;
 
             // Distribution by Month (1-12) and Day (1-31)
             mesDist[r.Mes] = (mesDist[r.Mes] || 0) + m;
@@ -4242,7 +4247,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Render Charts
         renderChart('cobranzaTrendChart', 'cobranzas', 'line', Object.keys(trend), Object.values(trend), 'Gs.', '#10b981');
         renderChart('vpChart', 'cobranzas', 'doughnut', Object.keys(vpMap), Object.values(vpMap));
-        renderChart('sucChart', 'cobranzas', 'bar', Object.keys(sucMap), Object.values(sucMap), 'Gs.', '#3b82f6');
+        renderChart('cobUnChart', 'cobranzas', 'bar', Object.keys(unMap), Object.values(unMap), 'Gs.', '#3b82f6');
 
         // Mes Distribution Chart (Sorted 1-12)
         const mesLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -6823,6 +6828,31 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!cId) continue;
             map[cId] = normalizeSupervisorName(c._supervisor || c.Supervisor || 'S/D');
         }
+        return map;
+    }
+
+    function getUnByContractId() {
+        const stamp = buildDatasetStamp(state.contratos.data, ['_cId', 'UN']) + '|' + buildDatasetStamp(state.cartera.data, ['_cId', 'UN']);
+        if (memo.unById && memo.unById.stamp === stamp && memo.unById.value) return memo.unById.value;
+
+        const map = {};
+        for (let i = 0; i < state.contratos.data.length; i++) {
+            const c = state.contratos.data[i];
+            const cId = String(c._cId || c.id || c.contract_id || '').replace(/[^0-9]/g, '');
+            if (!cId) continue;
+            const un = String(c.UN || 'S/D').trim() || 'S/D';
+            map[cId] = un;
+        }
+
+        for (let i = 0; i < state.cartera.data.length; i++) {
+            const r = state.cartera.data[i];
+            const cId = String(r._cId || '').replace(/[^0-9]/g, '');
+            if (!cId || map[cId]) continue;
+            const un = String(r.UN || 'S/D').trim() || 'S/D';
+            map[cId] = un;
+        }
+
+        memo.unById = { stamp, value: map };
         return map;
     }
 
