@@ -16,7 +16,7 @@ os.environ.setdefault('JWT_REFRESH_SECRET_KEY', 'test_refresh_secret')
 from app.main import app  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
-from app.models.brokers import AuthUser  # noqa: E402
+from app.models.brokers import AnalyticsContractSnapshot, AuthUser  # noqa: E402
 
 
 class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
@@ -84,6 +84,36 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
             headers=headers,
         )
         self.assertEqual(r.status_code, 403)
+
+    def test_analytics_brokers_summary_v1_native(self):
+        db = SessionLocal()
+        try:
+            db.query(AnalyticsContractSnapshot).delete()
+            db.add(
+                AnalyticsContractSnapshot(
+                    contract_id='1001',
+                    sale_month='01/2026',
+                    close_month='05/2026',
+                    supervisor='FVBROKEREAS',
+                    un='MEDICINA ESTETICA',
+                    via='COBRADOR',
+                    tramo=4,
+                    debt=120.0,
+                    paid=10.0,
+                )
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        login = self.client.post('/api/v1/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        token = login.json()['access_token']
+        headers = {'Authorization': f'Bearer {token}'}
+        r = self.client.post('/api/v1/analytics/brokers/summary', json={'supervisor': ['FVBROKEREAS']}, headers=headers)
+        self.assertEqual(r.status_code, 200)
+        payload = r.json()
+        self.assertIn('rows', payload)
+        self.assertEqual(payload.get('meta', {}).get('source'), 'api-v1')
 
     def test_invalid_payload_includes_trace_id(self):
         login = self.client.post('/api/v1/auth/login', json={'username': 'admin', 'password': 'admin123'})

@@ -39,7 +39,7 @@ Response:
 - `GET/POST /api/v1/brokers/prizes`
 - `GET/POST /api/v1/brokers/preferences` (persistencia de filtros server-side por usuario)
 
-## Analytics v1 (dual-run via legacy backend)
+## Analytics v1
 Todos reciben body `AnalyticsFilters` (POST):
 ```json
 {
@@ -59,7 +59,7 @@ Endpoints:
 - `POST /api/v1/analytics/portfolio/summary`
 - `POST /api/v1/analytics/rendimiento/summary`
 - `POST /api/v1/analytics/mora/summary`
-- `POST /api/v1/analytics/brokers/summary`
+- `POST /api/v1/analytics/brokers/summary` (calculo nativo API v1)
 - `POST /api/v1/analytics/export/csv` (`endpoint`: `portfolio|rendimiento|mora|brokers`)
 - `POST /api/v1/analytics/export/pdf` (`endpoint`: `portfolio|rendimiento|mora|brokers`)
 

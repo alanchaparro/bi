@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy.orm import Session
 
 from app.core.deps import require_permission, write_rate_limiter
+from app.db.session import get_db
 from app.schemas.analytics import AnalyticsFilters, ExportRequest
 from app.services.analytics_service import AnalyticsService
 
@@ -41,6 +43,12 @@ def _resolve_export_endpoint(name: str) -> str:
     return endpoint
 
 
+def _load_export_payload(db: Session, payload: ExportRequest) -> dict:
+    if payload.endpoint == 'brokers':
+        return AnalyticsService.fetch_brokers_summary_v1(db, payload.filters)
+    return _call(_resolve_export_endpoint(payload.endpoint), payload.filters)
+
+
 @router.post('/portfolio/summary')
 def portfolio_summary(filters: AnalyticsFilters, user=Depends(require_permission('analytics:read'))):
     return _call('/analytics/portfolio/summary', filters)
@@ -57,17 +65,22 @@ def mora_summary(filters: AnalyticsFilters, user=Depends(require_permission('ana
 
 
 @router.post('/brokers/summary')
-def brokers_summary(filters: AnalyticsFilters, user=Depends(require_permission('analytics:read'))):
-    return _call('/api/brokers/summary', filters)
+def brokers_summary(
+    filters: AnalyticsFilters,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('analytics:read')),
+):
+    return AnalyticsService.fetch_brokers_summary_v1(db, filters)
 
 
 @router.post('/export/csv')
 def analytics_export_csv(
     payload: ExportRequest,
     _rl=Depends(write_rate_limiter),
+    db: Session = Depends(get_db),
     user=Depends(require_permission('analytics:export')),
 ):
-    data = _call(_resolve_export_endpoint(payload.endpoint), payload.filters)
+    data = _load_export_payload(db, payload)
     csv_text = AnalyticsService.export_csv(data)
     return Response(content=csv_text, media_type='text/csv')
 
@@ -76,9 +89,10 @@ def analytics_export_csv(
 def analytics_export_pdf(
     payload: ExportRequest,
     _rl=Depends(write_rate_limiter),
+    db: Session = Depends(get_db),
     user=Depends(require_permission('analytics:export')),
 ):
-    data = _call(_resolve_export_endpoint(payload.endpoint), payload.filters)
+    data = _load_export_payload(db, payload)
     content = ('Analytics export\n\n' + str(data)).encode('utf-8')
     return Response(content=content, media_type='application/pdf')
 
@@ -87,8 +101,9 @@ def analytics_export_pdf(
 def analytics_export_legacy(
     payload: ExportRequest,
     _rl=Depends(write_rate_limiter),
+    db: Session = Depends(get_db),
     user=Depends(require_permission('analytics:export')),
 ):
     if payload.format == 'pdf':
-        return analytics_export_pdf(payload, _rl, user)
-    return analytics_export_csv(payload, _rl, user)
+        return analytics_export_pdf(payload, _rl, db, user)
+    return analytics_export_csv(payload, _rl, db, user)
