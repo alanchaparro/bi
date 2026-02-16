@@ -5,6 +5,7 @@
 - [ ] No recursive or stack overflow errors.
 - [ ] Config tab sync works for available CSV files.
 - [ ] Docker validation pipeline executed (`.\scripts\docker-validate.ps1`).
+- [ ] Release finalize pipeline executed (`make docker-release-finalize`).
 
 ## Navigation
 - [ ] Sidebar opens/closes with menu button.
@@ -37,3 +38,12 @@
   - [ ] `p95_ms <= 1200ms`
   - [ ] cache-hit rate healthy after warmup
 - [ ] If threshold breached, disable affected `FF_API_*` flag and retry rollout by slices.
+
+## Cierre V1 Brokers
+- [ ] `scripts/verify_legacy_config_migration.py` en verde (diff = 0).
+- [ ] `scripts/e2e_brokers_critical.py` en verde.
+- [ ] `scripts/parity_check_analytics_v1.py` en verde.
+- [ ] `scripts/perf_smoke_api_v1.py` en verde.
+- [ ] `scripts/smoke_deploy_v1.py` en verde.
+- [ ] `docs/openapi-v1.json` regenerado.
+- [ ] `frontend/src/shared/api-types.ts` regenerado.

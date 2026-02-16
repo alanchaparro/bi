@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: docker-build docker-up docker-down docker-logs docker-test docker-compile docker-smoke docker-validate docker-up-dev docker-up-prod docker-api-test docker-openapi-export frontend-generate-types frontend-build frontend-test docker-smoke-v1 docker-perf-smoke-v1 docker-parity-v1 docker-ci
+.PHONY: docker-build docker-up docker-down docker-logs docker-test docker-compile docker-smoke docker-validate docker-up-dev docker-up-prod docker-api-test docker-openapi-export frontend-generate-types frontend-build frontend-test docker-smoke-v1 docker-perf-smoke-v1 docker-parity-v1 docker-ci docker-migrate-verify docker-e2e-brokers docker-smoke-deploy-v1 docker-release-finalize
 
 docker-build:
 	docker compose build --no-cache
@@ -25,6 +25,16 @@ docker-api-test:
 
 docker-openapi-export:
 	docker compose --profile dev run --rm dashboard python scripts/export_openapi_v1.py
+
+docker-migrate-verify:
+	docker compose --profile dev run --rm dashboard python scripts/migrate_legacy_config_to_db.py
+	docker compose --profile dev run --rm dashboard python scripts/verify_legacy_config_migration.py
+
+docker-e2e-brokers:
+	docker compose --profile dev run --rm -e E2E_API_BASE=http://api-v1:8000/api/v1 dashboard python scripts/e2e_brokers_critical.py
+
+docker-smoke-deploy-v1:
+	docker compose --profile dev run --rm -e SMOKE_API_V1_BASE=http://api-v1:8000/api/v1 -e SMOKE_LEGACY_BASE=http://dashboard:5000 dashboard python scripts/smoke_deploy_v1.py
 
 frontend-generate-types:
 	docker run --rm -v "$$(pwd):/work" -w /work/frontend node:20-alpine sh -lc "npm install --silent && npm run generate:types"
@@ -69,3 +79,5 @@ except urllib.error.HTTPError as e:\
 docker-validate: docker-up docker-compile docker-test docker-smoke
 
 docker-ci: docker-up-dev docker-compile docker-test docker-api-test docker-smoke docker-smoke-v1 docker-perf-smoke-v1 docker-openapi-export frontend-generate-types frontend-test frontend-build
+
+docker-release-finalize: docker-up-dev docker-compile docker-test docker-api-test docker-smoke-v1 docker-migrate-verify docker-e2e-brokers docker-perf-smoke-v1 docker-parity-v1 docker-smoke-deploy-v1 docker-openapi-export frontend-generate-types frontend-test frontend-build

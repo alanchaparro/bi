@@ -115,6 +115,36 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
         self.assertIn('rows', payload)
         self.assertEqual(payload.get('meta', {}).get('source'), 'api-v1')
 
+    def test_analytics_brokers_summary_does_not_require_legacy(self):
+        db = SessionLocal()
+        try:
+            db.query(AnalyticsContractSnapshot).delete()
+            db.add(
+                AnalyticsContractSnapshot(
+                    contract_id='2001',
+                    sale_month='02/2026',
+                    close_month='06/2026',
+                    supervisor='FVBROKEREASCDE',
+                    un='MEDICINA ESTETICA',
+                    via='DEBITO',
+                    tramo=5,
+                    debt=90.0,
+                    paid=20.0,
+                )
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        login = self.client.post('/api/v1/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        token = login.json()['access_token']
+        headers = {'Authorization': f'Bearer {token}'}
+
+        with patch('app.services.analytics_service.AnalyticsService.fetch_legacy', side_effect=RuntimeError('legacy down')):
+            r = self.client.post('/api/v1/analytics/brokers/summary', json={'supervisor': ['FVBROKEREASCDE']}, headers=headers)
+            self.assertEqual(r.status_code, 200)
+            self.assertIsInstance(r.json().get('rows'), list)
+
     def test_invalid_payload_includes_trace_id(self):
         login = self.client.post('/api/v1/auth/login', json={'username': 'admin', 'password': 'admin123'})
         token = login.json()['access_token']
