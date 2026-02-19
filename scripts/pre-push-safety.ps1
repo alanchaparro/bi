@@ -9,7 +9,9 @@ $blockedPatterns = @(
     '(^|/)\.env\..+$',
     '\.csv$',
     '\.xlsx$',
-    '(^|/)analytics_meta\.json$'
+    '(^|/)analytics_meta\.json$',
+    '\.db$',
+    '(^|/)docs/archive/.+/evidence-old/.+$'
 )
 
 $tracked = git ls-files

@@ -33,9 +33,9 @@ class Settings(BaseSettings):
     analytics_legacy_timeout_seconds: int = Field(default=120, alias='ANALYTICS_LEGACY_TIMEOUT_SECONDS')
 
     demo_admin_user: str = Field(default='admin', alias='DEMO_ADMIN_USER')
-    demo_admin_password: str = Field(default='admin123', alias='DEMO_ADMIN_PASSWORD')
+    demo_admin_password: str = Field(default='change_me_demo_admin_password', alias='DEMO_ADMIN_PASSWORD')
     demo_analyst_user: str = Field(default='analyst', alias='DEMO_ANALYST_USER')
-    demo_analyst_password: str = Field(default='analyst123', alias='DEMO_ANALYST_PASSWORD')
+    demo_analyst_password: str = Field(default='change_me_demo_analyst_password', alias='DEMO_ANALYST_PASSWORD')
 
     mysql_host: str = Field(default='localhost', alias='MYSQL_HOST')
     mysql_port: int = Field(default=3306, alias='MYSQL_PORT')

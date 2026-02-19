@@ -16,7 +16,7 @@ os.environ.setdefault('JWT_REFRESH_SECRET_KEY', 'test_refresh_secret')
 from app.main import app  # noqa: E402
 
 TEST_ADMIN_USER = os.environ.get('TEST_ADMIN_USER', 'admin')
-TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', 'admin123')
+TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', 'change_me_demo_admin_password')
 
 
 class ApiV1SyncTests(unittest.TestCase):

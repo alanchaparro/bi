@@ -30,7 +30,7 @@ Ejecutar E2E:
 ```bash
 npm run test:e2e
 ```
-Playwright arranca la API (`docker compose --profile dev up api-v1` desde la raíz) y el front (`npm run dev`) si no están en marcha; con `reuseExistingServer` puede reutilizar servidores ya levantados. El test: login con `admin`/`admin123` (o `E2E_USERNAME`/`E2E_PASSWORD`), clic en "Comisiones" y comprueba que la sección `#comisiones` está visible en viewport.
+Playwright arranca la API (`docker compose --profile dev up api-v1` desde la raíz) y el front (`npm run dev`) si no están en marcha; con `reuseExistingServer` puede reutilizar servidores ya levantados. El test: login con `admin`/`change_me_demo_admin_password` (o `E2E_USERNAME`/`E2E_PASSWORD`), clic en "Comisiones" y comprueba que la sección `#comisiones` está visible en viewport.
 
 ## Objetivo
 Scaffold de migración para módulos Brokers sin romper el frontend legacy.

@@ -62,7 +62,7 @@ PRIZES_RULES_FILE = os.path.join("data", "prizes_rules.json")
 BROKERS_SUPERVISORS_FILE = os.path.join("data", "brokers_supervisors.json")
 API_V1_BASE_URL = os.getenv("API_V1_BASE_URL", "http://localhost:8000/api/v1").rstrip("/")
 API_V1_ADMIN_USER = os.getenv("DEMO_ADMIN_USER", "admin")
-API_V1_ADMIN_PASSWORD = os.getenv("DEMO_ADMIN_PASSWORD", "admin123")
+API_V1_ADMIN_PASSWORD = os.getenv("DEMO_ADMIN_PASSWORD", "change_me_demo_admin_password")
 API_V1_TOKEN_CACHE = {"token": ""}
 
 

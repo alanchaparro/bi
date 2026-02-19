@@ -4,6 +4,8 @@ import urllib.request
 
 
 BASE = os.getenv('E2E_API_BASE', 'http://localhost:8000/api/v1').rstrip('/')
+E2E_USERNAME = os.getenv('E2E_USERNAME', 'admin')
+E2E_PASSWORD = os.getenv('E2E_PASSWORD', 'change_me_demo_admin_password')
 
 
 def post(path: str, payload: dict, token: str | None = None):
@@ -31,7 +33,7 @@ def get(path: str, token: str):
 
 
 def main():
-    auth = post('/auth/login', {'username': 'admin', 'password': 'admin123'})
+    auth = post('/auth/login', {'username': E2E_USERNAME, 'password': E2E_PASSWORD})
     token = auth.get('access_token')
     if not token:
         raise RuntimeError('No access_token in login response')

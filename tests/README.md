@@ -13,9 +13,9 @@ Los tests de auth y brokers (`test_api_v1_*.py`) usan credenciales configurables
 | Variable | Default | Uso |
 |----------|---------|-----|
 | `TEST_ADMIN_USER` | `admin` | Usuario con rol admin para login en tests |
-| `TEST_ADMIN_PASSWORD` | `admin123` | Contraseña del usuario admin de test |
+| `TEST_ADMIN_PASSWORD` | `change_me_demo_admin_password` | Contraseña del usuario admin de test |
 | `TEST_ANALYST_USER` | `analyst` | Usuario con rol analyst |
-| `TEST_ANALYST_PASSWORD` | `analyst123` | Contraseña del usuario analyst |
+| `TEST_ANALYST_PASSWORD` | `change_me_demo_analyst_password` | Contraseña del usuario analyst |
 
 Para ejecutar tests contra usuarios de base de datos (por ejemplo con `APP_ENV=prod` o sin demo), crear los usuarios en la DB de test y definir estas variables con el usuario/contraseña correspondientes.
 

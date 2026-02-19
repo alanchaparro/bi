@@ -13,6 +13,8 @@ ABS_TOL = float(os.getenv('PARITY_ABS_TOL', '1.0'))
 HTTP_RETRIES = int(os.getenv('PARITY_HTTP_RETRIES', '4'))
 HTTP_RETRY_SLEEP_SECONDS = float(os.getenv('PARITY_HTTP_RETRY_SLEEP_SECONDS', '1.5'))
 HTTP_TIMEOUT_SECONDS = float(os.getenv('PARITY_HTTP_TIMEOUT_SECONDS', '180'))
+PARITY_USERNAME = os.getenv('PARITY_USERNAME', 'admin')
+PARITY_PASSWORD = os.getenv('PARITY_PASSWORD', 'change_me_demo_admin_password')
 
 
 def post_json(url: str, payload: dict, headers: dict | None = None):
@@ -68,7 +70,7 @@ def is_close(a: float, b: float) -> bool:
 
 
 def main():
-    login = post_json(f'{API_V1_BASE}/auth/login', {'username': 'admin', 'password': 'admin123'})
+    login = post_json(f'{API_V1_BASE}/auth/login', {'username': PARITY_USERNAME, 'password': PARITY_PASSWORD})
     token = login.get('access_token')
     if not token:
         raise RuntimeError('No se obtuvo access_token para parity check')

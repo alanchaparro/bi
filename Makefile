@@ -48,7 +48,7 @@ frontend-test:
 docker-smoke-v1:
 	docker compose --profile dev up -d api-v1
 	docker compose --profile dev run --rm dashboard python -c "import urllib.request,json;u='http://api-v1:8000/api/v1/health';obj=json.loads(urllib.request.urlopen(u,timeout=10).read().decode('utf-8'));assert obj.get('ok') is True"
-	docker compose --profile dev run --rm dashboard python -c "import urllib.request,json;u='http://api-v1:8000/api/v1/auth/login';data=json.dumps({'username':'admin','password':'admin123'}).encode('utf-8');req=urllib.request.Request(u,data=data,headers={'Content-Type':'application/json'},method='POST');obj=json.loads(urllib.request.urlopen(req,timeout=10).read().decode('utf-8'));assert obj.get('access_token')"
+	docker compose --profile dev run --rm dashboard python -c "import os,urllib.request,json;u='http://api-v1:8000/api/v1/auth/login';user=os.getenv('DEMO_ADMIN_USER','admin');pwd=os.getenv('DEMO_ADMIN_PASSWORD','change_me_demo_admin_password');data=json.dumps({'username':user,'password':pwd}).encode('utf-8');req=urllib.request.Request(u,data=data,headers={'Content-Type':'application/json'},method='POST');obj=json.loads(urllib.request.urlopen(req,timeout=10).read().decode('utf-8'));assert obj.get('access_token')"
 
 docker-perf-smoke-v1:
 	docker compose --profile dev up -d api-v1 dashboard

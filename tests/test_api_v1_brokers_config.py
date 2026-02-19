@@ -15,9 +15,9 @@ from app.main import app  # noqa: E402
 
 # Credenciales de test: por defecto usuarios demo (dev). Para DB-only usar TEST_* con usuario creado en DB.
 TEST_ADMIN_USER = os.environ.get('TEST_ADMIN_USER', 'admin')
-TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', 'admin123')
+TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', 'change_me_demo_admin_password')
 TEST_ANALYST_USER = os.environ.get('TEST_ANALYST_USER', 'analyst')
-TEST_ANALYST_PASSWORD = os.environ.get('TEST_ANALYST_PASSWORD', 'analyst123')
+TEST_ANALYST_PASSWORD = os.environ.get('TEST_ANALYST_PASSWORD', 'change_me_demo_analyst_password')
 
 
 class ApiV1BrokersConfigTests(unittest.TestCase):

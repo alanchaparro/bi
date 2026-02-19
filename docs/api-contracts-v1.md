@@ -21,7 +21,7 @@ Base path: `/api/v1`
 ## Auth
 ### `POST /api/v1/auth/login`
 ```json
-{ "username": "admin", "password": "admin123" }
+{ "username": "admin", "password": "change_me_demo_admin_password" }
 ```
 Response:
 ```json

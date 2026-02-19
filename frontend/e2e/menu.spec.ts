@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 
 const E2E_USER = process.env.E2E_USERNAME ?? 'admin'
-const E2E_PASS = process.env.E2E_PASSWORD ?? 'admin123'
+const E2E_PASS = process.env.E2E_PASSWORD ?? 'change_me_demo_admin_password'
 
 test.describe('Menú de navegación', () => {
   test('tras login, clic en Comisiones muestra la sección comisiones visible', async ({ page }) => {

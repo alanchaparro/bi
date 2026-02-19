@@ -13,6 +13,8 @@ WARMUP_CALLS = int(os.getenv('PERF_WARMUP_CALLS', '2'))
 HTTP_TIMEOUT_SECONDS = float(os.getenv('PERF_HTTP_TIMEOUT_SECONDS', '180'))
 HTTP_RETRIES = int(os.getenv('PERF_HTTP_RETRIES', '4'))
 HTTP_RETRY_SLEEP_SECONDS = float(os.getenv('PERF_HTTP_RETRY_SLEEP_SECONDS', '2'))
+PERF_USERNAME = os.getenv('PERF_USERNAME', 'admin')
+PERF_PASSWORD = os.getenv('PERF_PASSWORD', 'change_me_demo_admin_password')
 
 
 def http_post(path: str, payload: dict, headers: dict | None = None):
@@ -57,7 +59,7 @@ def p95(values):
 
 
 def main():
-    login_ms, login_payload = http_post('/auth/login', {'username': 'admin', 'password': 'admin123'})
+    login_ms, login_payload = http_post('/auth/login', {'username': PERF_USERNAME, 'password': PERF_PASSWORD})
     token = login_payload['access_token']
     headers = {'Authorization': f'Bearer {token}'}
 
