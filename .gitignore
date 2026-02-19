@@ -18,6 +18,7 @@ __pycache__/
 # OS/editor noise
 .DS_Store
 Thumbs.db
+.cursor/
 
 # Logs
 *.log
@@ -31,5 +32,6 @@ frontend/dist/
 
 # Local runtime persisted state
 data/*.db
+data/*.db-*
 data/*_rules.json
 data/brokers_supervisors.json
