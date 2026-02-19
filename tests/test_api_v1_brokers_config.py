@@ -62,6 +62,22 @@ class ApiV1BrokersConfigTests(unittest.TestCase):
         self.assertEqual(get_r.status_code, 200)
         self.assertEqual(get_r.json().get('filters', {}).get('vias'), ['COBRADOR'])
 
+    def test_cartera_preferences_roundtrip(self):
+        payload = {
+            'filters': {
+                'supervisors': ['SUP_1'],
+                'uns': ['UN_1'],
+                'vias': ['DEBITO'],
+                'years': ['2025'],
+                'months': ['02/2025'],
+            }
+        }
+        post_r = self.client.post('/api/v1/brokers/preferences/cartera', json=payload, headers=self.headers)
+        self.assertEqual(post_r.status_code, 200)
+        get_r = self.client.get('/api/v1/brokers/preferences/cartera', headers=self.headers)
+        self.assertEqual(get_r.status_code, 200)
+        self.assertEqual(get_r.json().get('filters', {}).get('years'), ['2025'])
+
     def test_rbac_negative_on_write(self):
         payload = {'rules': []}
         r = self.client.post('/api/v1/brokers/commissions', json=payload, headers=self.analyst_headers)

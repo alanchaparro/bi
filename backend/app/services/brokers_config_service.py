@@ -34,3 +34,23 @@ class BrokersConfigService:
     @staticmethod
     def save_brokers_preferences(db, username: str, value: dict):
         return brokers_config.save_user_preferences(db, username, 'brokers.filters', value)
+
+    @staticmethod
+    def get_cartera_preferences(db, username: str):
+        return brokers_config.get_user_preferences(db, username, 'cartera_filters_v1')
+
+    @staticmethod
+    def save_cartera_preferences(db, username: str, value: dict):
+        return brokers_config.save_user_preferences(db, username, 'cartera_filters_v1', value)
+
+    @staticmethod
+    def get_cartera_tramo_rules(db):
+        return brokers_config.get_cartera_tramo_rules(db)
+
+    @staticmethod
+    def save_cartera_tramo_rules(db, value: dict, actor: str):
+        return brokers_config.save_cartera_tramo_rules(db, value, actor)
+
+    @staticmethod
+    def get_cartera_uns(db):
+        return brokers_config.get_cartera_uns(db)

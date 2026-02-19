@@ -16,9 +16,9 @@ export function getApiErrorMessage(e: unknown): string {
  */
 export function parseApiError(e: unknown): ApiErrorDetail {
   if (e && typeof e === 'object' && 'response' in e) {
-    const res = (e as { response?: { data?: { message?: string; error_code?: string; trace_id?: string }; status?: number } })
+    const res = (e as { response?: { data?: { message?: string; detail?: { message?: string }; error_code?: string; trace_id?: string }; status?: number } })
       .response;
-    const msg = res?.data?.message;
+    const msg = res?.data?.message ?? (typeof res?.data?.detail === 'object' ? res?.data?.detail?.message : undefined);
     if (typeof msg === 'string')
       return {
         message: msg,
@@ -31,6 +31,8 @@ export function parseApiError(e: unknown): ApiErrorDetail {
       return { message: 'Demasiados intentos. Espera un momento.', trace_id: res?.data?.trace_id };
     if (res?.status === 403)
       return { message: 'Cuenta bloqueada temporalmente. Intenta más tarde.', trace_id: res?.data?.trace_id };
+    if (res?.status === 504)
+      return { message: msg || 'Sincronización excedió el tiempo. Comprueba MYSQL_HOST (host.docker.internal si MySQL está en el host).', trace_id: res?.data?.trace_id };
   }
   return { message: 'Error de conexión. Revisa que la API esté disponible.' };
 }

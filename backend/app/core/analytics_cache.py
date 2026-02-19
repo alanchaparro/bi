@@ -40,3 +40,11 @@ def get(endpoint: str, filters: Any) -> Any | None:
 def set(endpoint: str, filters: Any, payload: Any, ttl_seconds: int = _DEFAULT_TTL_SECONDS) -> None:
     key = f"{endpoint}:{_signature(filters)}"
     _cache[key] = (payload, time.time() + ttl_seconds)
+
+
+def invalidate_prefix(prefix: str) -> int:
+    target = f"{prefix}:"
+    keys = [k for k in list(_cache.keys()) if k.startswith(target)]
+    for k in keys:
+        _cache.pop(k, None)
+    return len(keys)

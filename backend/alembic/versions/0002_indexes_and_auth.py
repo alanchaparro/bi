@@ -21,7 +21,7 @@ def upgrade() -> None:
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('username', sa.String(length=128), nullable=False),
         sa.Column('refresh_token_hash', sa.String(length=255), nullable=False),
-        sa.Column('revoked', sa.Boolean(), nullable=False, server_default=sa.text('0')),
+        sa.Column('revoked', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('expires_at', sa.DateTime(), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('rotated_at', sa.DateTime(), nullable=True),

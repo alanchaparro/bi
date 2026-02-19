@@ -4,11 +4,13 @@ from sqlalchemy.orm import Session
 from app.core.analytics_cache import get as cache_get, set as cache_set
 from app.core.deps import require_permission, write_rate_limiter
 from app.db.session import get_db
-from app.schemas.analytics import AnalyticsFilters, ExportRequest
+from app.schemas.analytics import AnalyticsFilters, ExportRequest, PortfolioOptionsOut, PortfolioSummaryIn
 from app.services.analytics_service import AnalyticsService
 
 router = APIRouter()
 BROKERS_SUMMARY_CACHE_TTL = 60
+PORTFOLIO_OPTIONS_CACHE_TTL = 600
+PORTFOLIO_SUMMARY_CACHE_TTL = 180
 
 
 def _call(endpoint: str, filters: AnalyticsFilters):
@@ -51,9 +53,35 @@ def _load_export_payload(db: Session, payload: ExportRequest) -> dict:
     return _call(_resolve_export_endpoint(payload.endpoint), payload.filters)
 
 
+@router.post('/portfolio/options', response_model=PortfolioOptionsOut)
+def portfolio_options(
+    filters: AnalyticsFilters,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('analytics:read')),
+):
+    cached = cache_get('portfolio/options', filters)
+    if cached is not None:
+        return cached
+    result = AnalyticsService.fetch_portfolio_options_v1(db, filters)
+    cache_set('portfolio/options', filters, result, ttl_seconds=PORTFOLIO_OPTIONS_CACHE_TTL)
+    return result
+
+
 @router.post('/portfolio/summary')
-def portfolio_summary(filters: AnalyticsFilters, user=Depends(require_permission('analytics:read'))):
-    return _call('/analytics/portfolio/summary', filters)
+def portfolio_summary(
+    filters: PortfolioSummaryIn,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('analytics:read')),
+):
+    # Dashboard path: cache only lightweight summary mode (without rows payload).
+    if not bool(filters.include_rows):
+        cached = cache_get('portfolio/summary', filters)
+        if cached is not None:
+            return cached
+        result = AnalyticsService.fetch_portfolio_summary_v1(db, filters)
+        cache_set('portfolio/summary', filters, result, ttl_seconds=PORTFOLIO_SUMMARY_CACHE_TTL)
+        return result
+    return AnalyticsService.fetch_portfolio_summary_v1(db, filters)
 
 
 @router.post('/rendimiento/summary')

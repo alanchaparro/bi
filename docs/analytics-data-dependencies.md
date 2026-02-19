@@ -4,20 +4,17 @@
 
 El endpoint `POST /api/v1/analytics/brokers/summary` (Resumen Brokers) lee de la tabla `analytics_contract_snapshot`. Si la tabla está vacía, la vista Brokers mostrará "No hay datos".
 
-### Cómo poblar la tabla
+### Cómo poblar la tabla (datos reales)
 
-1. **Script de seed (desarrollo/pruebas)**  
-   Ejecutar desde la raíz del proyecto:
-   ```powershell
-   python scripts/seed_brokers_analytics.py
-   ```
-   Inserta filas de prueba con supervisores FVBROKEREAS, FVBROKEREASCDE, UN MEDICINA ESTETICA, vía COBRADOR, meses 01/2026, 02/2026, 12/2025. Si la tabla ya tiene datos, el script no inserta nada.
+1. **Desde Configuración (recomendado)**  
+   En la vista Configuración del frontend v1, hacer clic en "Actualizar datos desde MySQL". Esto ejecuta `query_analytics.sql` contra el MySQL legacy y carga los resultados en `analytics_contract_snapshot`. Requiere `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE` en `.env`.
 
-2. **ETL desde legacy**  
-   Si existe un sistema legacy que alimenta la snapshot, configurar el ETL para que sincronice los datos hacia `analytics_contract_snapshot`.
+   **Docker:** Si la API corre en Docker y MySQL está en el host, usa `MYSQL_HOST=host.docker.internal` (Windows/Mac) o la IP del host. Con `localhost` el contenedor intentaría conectar a sí mismo y fallaría.
 
-3. **Supervisores habilitados**  
-   Los datos deben coincidir con los supervisores habilitados en Supervisores Brokers (`brokers_supervisor_scope`). Si el scope restringe a FVBROKEREAS y FVBROKEREASCDE, las filas en la snapshot deben usar esos mismos nombres.
+2. **Supervisores habilitados**  
+   Los datos deben coincidir con los supervisores habilitados en Supervisores Brokers (`brokers_supervisor_scope`).
+
+**Nota:** El script `seed_brokers_analytics.py` inserta datos de prueba (inventados). No usarlo en producción.
 
 ### Campos relevantes
 

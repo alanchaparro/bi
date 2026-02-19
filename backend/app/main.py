@@ -12,11 +12,36 @@ from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine
 
-Base.metadata.create_all(bind=engine)
+if settings.app_env != 'prod':
+    Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title=settings.app_name, version='1.0.0')
 
-origins = [o.strip() for o in settings.cors_origins.split(',')] if settings.cors_origins else ['*']
+if settings.cors_origins and settings.cors_origins.strip() != '*':
+    origins = [o.strip() for o in settings.cors_origins.split(',') if o.strip()]
+else:
+    origins = [
+        'http://localhost:8080', 'http://localhost:5173',
+        'http://127.0.0.1:8080', 'http://127.0.0.1:5173',
+    ]
+
+
+def _cors_error_headers(request: Request) -> dict[str, str]:
+    origin = request.headers.get('origin', '').strip()
+    if not origin:
+        return {}
+    allowed = origin in origins
+    if not allowed and '*' in origins:
+        allowed = True
+    if not allowed:
+        return {}
+    return {
+        'access-control-allow-origin': origin,
+        'access-control-allow-credentials': 'true',
+        'vary': 'Origin',
+    }
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -50,7 +75,9 @@ async def trace_and_logging(request: Request, call_next):
             error=str(exc),
         )
         body = {'error_code': 'INTERNAL_ERROR', 'message': 'Error interno', 'details': str(exc), 'trace_id': trace_id}
-        return JSONResponse(status_code=500, content=body, headers={'x-trace-id': trace_id, 'x-latency-ms': str(latency)})
+        headers = {'x-trace-id': trace_id, 'x-latency-ms': str(latency)}
+        headers.update(_cors_error_headers(request))
+        return JSONResponse(status_code=500, content=body, headers=headers)
 
 
 @app.exception_handler(StarletteHTTPException)

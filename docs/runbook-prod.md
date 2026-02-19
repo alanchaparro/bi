@@ -1,92 +1,140 @@
-# Runbook Produccion
+# Runbook Produccion From Zero
 
-## Arranque
-1. `docker compose --profile prod up -d --build`
-2. En producción definir `CORS_ORIGINS` con la URL del frontend (ej. `https://app.tudominio.com`). No usar `*`.
-3. Verificar salud:
-- `GET /api/v1/health` (incluye estado de DB; 503 si dependencias críticas fallan)
-- `GET /api/check-files`
+Fecha de corte: 2026-02-17
 
-## Frontend estático (perfil prod)
-- Servicio `frontend-prod`: construye el frontend con `npm run build` y lo sirve con nginx (puerto 80 interno, mapeado a `FRONTEND_PROD_PORT` por defecto 8080).
-- Build: `docker compose --profile prod build frontend-prod`. En el build se puede pasar `VITE_API_BASE_URL` (build arg) para que el cliente apunte a la API en producción.
-- Despliegue completo: `docker compose --profile prod up -d api-v1 frontend-prod` (y los servicios que necesites: dashboard legacy si aplica). El frontend en 8080 (o el puerto configurado) y la API en 8000.
+## 1) Pre-requisitos
+- Docker y Docker Compose operativos.
+- Archivo `.env` completo con variables PostgreSQL, MySQL, JWT y CORS.
+- Ventana de cambio aprobada.
 
-## Migraciones
-1. `PYTHONPATH=/app/backend alembic -c backend/alembic.ini stamp head` (solo si DB existente ya contiene tablas y no hay tabla alembic_version).
-2. `python scripts/migrate_legacy_config_to_db.py`
-3. `python scripts/verify_legacy_config_migration.py`
+## 2) Decomission legacy obligatorio
+1. Verificar tareas Windows relacionadas:
+   - `schtasks /Query /FO LIST /V | findstr /I "Sync Cobranzas"`
+2. Eliminar scheduler legacy:
+   - `schtasks /Delete /TN "CobranzasSyncIncremental" /F`
+3. Confirmar que no queden tareas equivalentes activas.
+4. Revisar checklist manual para cron/systemd externos en `docs/prod-from-zero-checklist.md`.
 
-## Verificacion funcional minima
-1. Auth: login + refresh + revoke en `/api/v1/auth/*`.
-2. Brokers config: GET/POST supervisors, commissions, prizes.
-3. Brokers preferences: GET/POST `/api/v1/brokers/preferences`.
-4. Analytics v1:
-- `/api/v1/analytics/portfolio/summary`
-- `/api/v1/analytics/rendimiento/summary`
-- `/api/v1/analytics/mora/summary`
-- `/api/v1/analytics/brokers/summary`
-- `/api/v1/analytics/export/csv`
-- `/api/v1/analytics/export/pdf`
+## 3) Bootstrap from zero
+Ejecutar:
 
-## Gates de cierre tecnico
-1. `python scripts/e2e_brokers_critical.py`
-2. `python scripts/perf_smoke_api_v1.py`
-3. `python scripts/parity_check_analytics_v1.py`
-4. `python scripts/smoke_deploy_v1.py`
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\prod_bootstrap_from_zero.ps1
+```
 
-Nota operativa Docker:
-- Para ejecuciones largas en entorno containerizado, preferir `docker exec <container> ...` sobre `docker compose run --rm ...` para evitar reinicios/recreaciones del servicio durante el cutover.
+Este script realiza:
+1. Levanta `postgres` en perfil `prod`.
+2. Espera readiness de DB.
+3. Ejecuta `alembic upgrade head`.
+4. Ejecuta `bootstrap_auth_users.py`.
+5. Ejecuta `migrate_legacy_config_to_db.py`.
+6. Ejecuta `verify_legacy_config_migration.py`.
+7. Smoke `health` + `login`.
 
-## Ejecucion de cutover (minuto a minuto)
-### T-15
-1. Confirmar snapshot DB y backup de configuracion.
-2. Confirmar flags listas para rollback rapido.
-3. Confirmar responsables en war-room (Backend, Frontend, Ops, QA).
+## 4) Sync dual (nuevo flujo)
+Regla unica:
+- Si `year_from` viene informado => `full_year` (solo ese anio exacto).
+- Si `year_from` no viene => `full_all` (carga completa).
+- En ambos casos la escritura es incremental por UPSERT y con verificacion de duplicados.
 
-### T-5
-1. Ejecutar `scripts/migrate_legacy_config_to_db.py` + `scripts/verify_legacy_config_migration.py`.
-2. Validar `/api/v1/health` y `/api/check-files`.
+### 4.1 Ejecutar carga
+`POST /api/v1/sync/run`
 
-### T0
-1. Activar feature flag de modulos v1 Brokers.
-2. Ejecutar smoke rapido:
-- login
-- brokers summary
-- brokers preferences roundtrip
+Ejemplo carga completa:
 
-### T+0 a T+30
-1. Ejecutar monitoreo continuo:
-- `python scripts/cutover_window_monitor.py`
-- Ejemplo recomendado en Compose: `docker exec <dashboard-container> sh -lc "CUTOVER_METRICS_URL=http://localhost:5000/analytics/ops/metrics CUTOVER_WINDOW_MINUTES=30 CUTOVER_INTERVAL_SECONDS=60 python /app/scripts/cutover_window_monitor.py"`
-2. Umbrales de salida:
-- `error_rate_pct <= 2.0`
-- `p95_ms <= 1200`
-3. Si se incumple umbral en endpoint critico, desactivar flag y pasar a rollback.
+```json
+{ "domain": "analytics" }
+```
 
-### T+30
-1. Ejecutar `scripts/parity_check_analytics_v1.py`.
-2. Ejecutar `scripts/perf_smoke_api_v1.py`.
-3. Registrar evidencia en `docs/cutover-checklist-final.md`.
+Ejemplo carga anual exacta:
 
-### T+60
-1. Repetir paridad/perf (segundo ciclo estable).
-2. Si cumple, programar apagado legacy por flag.
+```json
+{ "domain": "analytics", "year_from": 2024 }
+```
 
-## Rollback
-1. Tomar/confirmar snapshot DB previa.
-2. Desactivar feature flag de modulos v1.
-3. `docker compose --profile prod down`
-4. Restaurar snapshot DB.
-5. Levantar version anterior.
-6. Validar:
-- `/api/v1/health`
-- endpoints de brokers config
-- consistencia de preferencias por usuario
+### 4.2 Consultar estado
+`GET /api/v1/sync/status?domain=analytics&job_id=<job_id>`
 
-## Rate limit
-- Por defecto el rate limit es en memoria (por instancia). Con **varias réplicas** de la API el límite efectivo es por nodo, no global.
-- Si se despliegan múltiples réplicas y se requiere límite global, implementar backend compartido (p. ej. Redis) para el rate limiter y documentar configuración.
+Campos clave:
+- `running`, `stage`, `progress_pct`, `status_message`
+- `rows_inserted`, `rows_updated`, `rows_skipped`, `duplicates_detected`
+- `error`, `log`
 
-## Recuperacion rapida
-- Si falla analytics v1, mantener fallback legacy y reintentar por slices cuando `error_rate_pct <= 2` y `p95_ms` en umbral.
+## 5) Frontend de configuracion
+En modulo Configuracion:
+- Selector de dominio
+- Campo `Ano desde` opcional
+- Boton `Ejecutar carga`
+- Barra de progreso + log en vivo
+
+## 6) Verificacion minima post-corte
+1. `GET /api/v1/health` retorna `ok=true` y `db_ok=true`.
+2. Login admin operativo.
+3. Sync full_all ejecuta sin duplicados.
+4. Sync full_year reemplaza correctamente el anio solicitado.
+5. Seccion Cartera carga summary y filtros.
+
+## 7) Rollback operativo
+1. Detener ejecucion de sync nuevo (no lanzar nuevos jobs).
+2. Mantener PostgreSQL intacto.
+3. Revertir uso funcional a lectura legacy segun ventana de contingencia.
+
+## 8) Legacy deprecado
+Artefactos previos fueron archivados en:
+- `docs/archive/legacy-prod-20260217/`
+- `scripts/archive/legacy-prod-20260217/`
+
+No usar scripts legacy para operacion productiva nueva.
+
+## 9) Publicacion LAN (single URL via reverse proxy)
+Objetivo: exponer una sola URL interna de red local (ej: `http://192.168.1.20`) y ocultar puertos directos de API/frontend.
+
+### 9.1 Preparacion de entorno
+1. Crear `.env` a partir de `.env.prod-lan`:
+```powershell
+Copy-Item .env.prod-lan .env -Force
+```
+2. Editar `.env` y ajustar:
+- `CORS_ORIGINS`
+- `POSTGRES_PASSWORD`
+- `JWT_SECRET_KEY`
+- `JWT_REFRESH_SECRET_KEY`
+- `MYSQL_PASSWORD`
+
+### 9.2 Levantar perfil LAN
+```powershell
+docker compose --profile prod-lan up -d --build
+```
+
+Servicios del perfil:
+- `reverse-proxy` (expone solo `LAN_HTTP_PORT`, por defecto 80)
+- `api-v1-lan` (interno)
+- `frontend-prod-lan` (interno)
+- `postgres` (interno, salvo que se publique manualmente)
+
+### 9.3 Smoke checks LAN
+1. Health API via proxy:
+```powershell
+curl http://<IP_SERVIDOR>/api/v1/health
+```
+2. Frontend:
+```text
+http://<IP_SERVIDOR>/
+```
+3. Login y navegacion completa.
+4. Ejecutar una sync desde Configuracion.
+
+### 9.4 Firewall recomendado
+1. Permitir puerto 80 solo en subred LAN autorizada.
+2. Bloquear 8000/8080/5432 desde LAN para usuarios finales.
+3. Si se requiere acceso DB administrativo, permitir 5432 solo desde IP de administracion.
+
+### 9.5 Rollback rapido
+1. Bajar perfil LAN:
+```powershell
+docker compose --profile prod-lan down
+```
+2. Volver al perfil previo (puertos directos):
+```powershell
+docker compose --profile prod up -d --build
+```

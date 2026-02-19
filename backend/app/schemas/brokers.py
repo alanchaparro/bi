@@ -52,3 +52,21 @@ class BrokersPreferencesIn(BaseModel):
 
 class BrokersPreferencesOut(BaseModel):
     filters: BrokersFilters = Field(default_factory=BrokersFilters)
+
+
+class CarteraTramoRule(BaseModel):
+    un: str = Field(min_length=1, max_length=128)
+    category: str = Field(min_length=1, max_length=16)
+    tramos: list[int] = Field(default_factory=list)
+
+
+class CarteraTramoRulesIn(BaseModel):
+    rules: list[CarteraTramoRule] = Field(default_factory=list)
+
+
+class CarteraTramoRulesOut(BaseModel):
+    rules: list[CarteraTramoRule] = Field(default_factory=list)
+
+
+class CarteraUnsOut(BaseModel):
+    uns: list[str] = Field(default_factory=list)

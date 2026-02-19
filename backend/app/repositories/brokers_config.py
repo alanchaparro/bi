@@ -3,7 +3,8 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.models.brokers import AuditLog, BrokersSupervisorScope, CommissionRules, PrizeRules, UserPreference
+from app.core.config import settings
+from app.models.brokers import AuditLog, BrokersSupervisorScope, CarteraFact, CommissionRules, PrizeRules, SyncRecord, UserPreference
 
 
 def _upsert_singleton(db: Session, model, field_name: str, value_json: str):
@@ -97,3 +98,72 @@ def save_user_preferences(db: Session, username: str, pref_key: str, value: dict
     db.commit()
     db.refresh(row)
     return json.loads(row.value_json or '{}')
+
+
+def get_cartera_tramo_rules(db: Session) -> dict:
+    stored = get_user_preferences(db, '__system__', 'cartera_tramo_rules_v1')
+    return get_cartera_tramo_rules_from_payload(stored)
+
+
+def save_cartera_tramo_rules(db: Session, value: dict, actor: str) -> dict:
+    payload = get_cartera_tramo_rules_from_payload(value)
+    stored = save_user_preferences(db, '__system__', 'cartera_tramo_rules_v1', payload)
+    add_audit(db, 'cartera_tramo_rules_v1', 'upsert', actor, {'rules_count': len(payload.get('rules', []))})
+    return get_cartera_tramo_rules_from_payload(stored)
+
+
+def get_cartera_tramo_rules_from_payload(value: dict) -> dict:
+    if not isinstance(value, dict):
+        return {'rules': []}
+    rules = value.get('rules', [])
+    normalized_by_key: dict[tuple[str, str], set[int]] = {}
+    if isinstance(rules, list):
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            un = str(rule.get('un') or '').strip().upper()
+            if not un:
+                continue
+
+            # Backward compatibility with previous model: vigente_max_tramo.
+            if 'vigente_max_tramo' in rule:
+                try:
+                    vigente_max = int(rule.get('vigente_max_tramo', 3))
+                except Exception:
+                    vigente_max = 3
+                vigente_max = max(0, min(7, vigente_max))
+                vig_set = set(range(0, vigente_max + 1))
+                mor_set = set(range(vigente_max + 1, 8))
+                normalized_by_key[(un, 'VIGENTE')] = vig_set
+                normalized_by_key[(un, 'MOROSO')] = mor_set
+                continue
+
+            category = str(rule.get('category') or '').strip().upper()
+            if category not in {'VIGENTE', 'MOROSO'}:
+                continue
+            tramos = rule.get('tramos', [])
+            tramo_set: set[int] = set()
+            if isinstance(tramos, list):
+                for t in tramos:
+                    try:
+                        n = int(t)
+                    except Exception:
+                        continue
+                    if 0 <= n <= 7:
+                        tramo_set.add(n)
+            normalized_by_key[(un, category)] = tramo_set
+
+    normalized_rules = [
+        {'un': un, 'category': category, 'tramos': sorted(list(tramo_set))}
+        for (un, category), tramo_set in sorted(normalized_by_key.items(), key=lambda x: (x[0][0], x[0][1]))
+    ]
+    return {'rules': normalized_rules}
+
+
+def get_cartera_uns(db: Session) -> list[str]:
+    if settings.read_from_fact_tables:
+        rows = db.query(CarteraFact.un).distinct().all()
+    else:
+        rows = db.query(SyncRecord.un).filter(SyncRecord.domain == 'cartera').distinct().all()
+    uns = sorted({str(r[0] or '').strip().upper() for r in rows if str(r[0] or '').strip()})
+    return uns

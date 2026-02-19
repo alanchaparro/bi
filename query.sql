@@ -95,6 +95,5 @@ LEFT JOIN epem.contract_situations cs
     ON cs.contract_id = c.id 
     AND cs.type = 3 
     AND cs.status = 1
-WHERE ccd.closed_date > '2020-12-31'
-    AND e.name NOT LIKE '%ALIVIO%'
-    AND e.name NOT LIKE '%TAPO%'
+WHERE ccd.closed_date > '2020-12-31' AND
+    c.enterprise_id IN (1, 2, 5)

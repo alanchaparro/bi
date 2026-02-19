@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """
-Inserta datos de prueba en analytics_contract_snapshot para desarrollo y pruebas.
+Inserta datos de PRUEBA (inventados) en analytics_contract_snapshot.
+SOLO para desarrollo local. NO usar en producción.
 
-Uso:
-    python scripts/seed_brokers_analytics.py
-
-Los supervisores FVBROKEREAS, FVBROKEREASCDE deben estar habilitados en
-Supervisores Brokers para que los filtros muestren datos.
+Para datos reales: use scripts/sync_analytics_to_snapshot.py tras generar
+analytics_monthly.csv con "Generar Analytics Mensual (SQL)".
 """
 import sys
 from pathlib import Path

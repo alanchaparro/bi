@@ -22,7 +22,7 @@ def upgrade() -> None:
         sa.Column('username', sa.String(length=128), nullable=False),
         sa.Column('password_hash', sa.String(length=255), nullable=False),
         sa.Column('role', sa.String(length=32), nullable=False, server_default='viewer'),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('1')),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('updated_at', sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint('id'),

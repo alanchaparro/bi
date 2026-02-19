@@ -1,4 +1,4 @@
-﻿from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
 
@@ -10,6 +10,11 @@ class Settings(BaseSettings):
     app_port: int = Field(default=8000, alias='APP_PORT')
 
     database_url: str = Field(default='sqlite:///./data/app_v1.db', alias='DATABASE_URL')
+    postgres_db: str = Field(default='cobranzas_prod', alias='POSTGRES_DB')
+    postgres_user: str = Field(default='cobranzas_user', alias='POSTGRES_USER')
+    postgres_password: str = Field(default='', alias='POSTGRES_PASSWORD')
+    postgres_host: str = Field(default='postgres', alias='POSTGRES_HOST')
+    postgres_port: int = Field(default=5432, alias='POSTGRES_PORT')
 
     jwt_secret_key: str = Field(default='change_me_jwt_secret', alias='JWT_SECRET_KEY')
     jwt_refresh_secret_key: str = Field(default='change_me_refresh_secret', alias='JWT_REFRESH_SECRET_KEY')
@@ -31,6 +36,18 @@ class Settings(BaseSettings):
     demo_admin_password: str = Field(default='admin123', alias='DEMO_ADMIN_PASSWORD')
     demo_analyst_user: str = Field(default='analyst', alias='DEMO_ANALYST_USER')
     demo_analyst_password: str = Field(default='analyst123', alias='DEMO_ANALYST_PASSWORD')
+
+    mysql_host: str = Field(default='localhost', alias='MYSQL_HOST')
+    mysql_port: int = Field(default=3306, alias='MYSQL_PORT')
+    mysql_user: str = Field(default='root', alias='MYSQL_USER')
+    mysql_password: str = Field(default='', alias='MYSQL_PASSWORD')
+    mysql_database: str = Field(default='', alias='MYSQL_DATABASE')
+    sync_window_months: int = Field(default=3, alias='SYNC_WINDOW_MONTHS')
+    sync_max_rows: int = Field(default=250000, alias='SYNC_MAX_ROWS')
+    sync_fetch_batch_size: int = Field(default=5000, alias='SYNC_FETCH_BATCH_SIZE')
+    analytics_sync_mode: str = Field(default='incremental', alias='ANALYTICS_SYNC_MODE')
+    analytics_sync_window_months: int = Field(default=3, alias='ANALYTICS_SYNC_WINDOW_MONTHS')
+    read_from_fact_tables: bool = Field(default=True, alias='READ_FROM_FACT_TABLES')
 
 
 settings = Settings()

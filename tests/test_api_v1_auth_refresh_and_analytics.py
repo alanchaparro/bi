@@ -73,11 +73,49 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
         token = login.json()['access_token']
         headers = {'Authorization': f'Bearer {token}'}
 
-        fake_payload = {'total': 10, 'vigente': 8, 'moroso': 2}
-        with patch('app.services.analytics_service.AnalyticsService.fetch_legacy', return_value=fake_payload):
+        fake_payload = {'total_contracts': 10, 'debt_total': 1000.0, 'expired_total': 100.0, 'charts': {}}
+        with patch('app.services.analytics_service.AnalyticsService.fetch_portfolio_summary_v1', return_value=fake_payload):
             r = self.client.post('/api/v1/analytics/portfolio/summary', json={}, headers=headers)
             self.assertEqual(r.status_code, 200)
-            self.assertEqual(r.json().get('total'), 10)
+            self.assertEqual(r.json().get('total_contracts'), 10)
+
+    def test_analytics_portfolio_options_uses_cache(self):
+        login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
+        token = login.json()['access_token']
+        headers = {'Authorization': f'Bearer {token}'}
+
+        fake_options = {
+            'options': {
+                'uns': ['ODONTOLOGIA'],
+                'tramos': ['0', '1'],
+                'categories': ['VIGENTE'],
+                'months': ['01/2021'],
+            },
+            'meta': {'source_table': 'cartera_fact', 'generated_at': '2026-01-01T00:00:00'},
+        }
+        with patch('app.services.analytics_service.AnalyticsService.fetch_portfolio_options_v1', return_value=fake_options) as mocked:
+            payload = {'un': ['__CACHE_TEST__']}
+            r1 = self.client.post('/api/v1/analytics/portfolio/options', json=payload, headers=headers)
+            r2 = self.client.post('/api/v1/analytics/portfolio/options', json=payload, headers=headers)
+            self.assertEqual(r1.status_code, 200)
+            self.assertEqual(r2.status_code, 200)
+            self.assertEqual(r1.json().get('options', {}).get('uns'), ['ODONTOLOGIA'])
+            self.assertEqual(mocked.call_count, 1)
+
+    def test_analytics_portfolio_summary_uses_cache_when_include_rows_false(self):
+        login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
+        token = login.json()['access_token']
+        headers = {'Authorization': f'Bearer {token}'}
+
+        fake_summary = {'total_contracts': 20, 'debt_total': 200.0, 'expired_total': 20.0, 'charts': {}, 'rows': []}
+        with patch('app.services.analytics_service.AnalyticsService.fetch_portfolio_summary_v1', return_value=fake_summary) as mocked:
+            payload = {'un': ['__CACHE_SUMMARY__'], 'include_rows': False}
+            r1 = self.client.post('/api/v1/analytics/portfolio/summary', json=payload, headers=headers)
+            r2 = self.client.post('/api/v1/analytics/portfolio/summary', json=payload, headers=headers)
+            self.assertEqual(r1.status_code, 200)
+            self.assertEqual(r2.status_code, 200)
+            self.assertEqual(r1.json().get('total_contracts'), 20)
+            self.assertEqual(mocked.call_count, 1)
 
     def test_analytics_export_csv_requires_permission(self):
         login = self.client.post('/api/v1/auth/login', json={'username': TEST_ANALYST_USER, 'password': TEST_ANALYST_PASSWORD})

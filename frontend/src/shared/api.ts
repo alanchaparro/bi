@@ -157,3 +157,107 @@ export async function saveBrokersPreferences(
   const response = await api.post<BrokersPreferences>("/brokers/preferences", payload);
   return response.data;
 }
+
+export async function getCarteraPreferences(): Promise<BrokersPreferences> {
+  const response = await api.get<BrokersPreferences>("/brokers/preferences/cartera");
+  return response.data;
+}
+
+export async function saveCarteraPreferences(
+  payload: BrokersPreferences
+): Promise<BrokersPreferences> {
+  const response = await api.post<BrokersPreferences>("/brokers/preferences/cartera", payload);
+  return response.data;
+}
+
+export type SyncDomain = "analytics" | "cartera" | "cobranzas" | "contratos" | "gestores";
+
+export type PortfolioOptionsResponse = {
+  options: {
+    uns?: string[];
+    vias?: string[];
+    tramos?: string[];
+    categories?: string[];
+    months?: string[];
+    close_months?: string[];
+  };
+  meta?: {
+    generated_at?: string;
+    source_table?: string;
+  };
+};
+
+export type SyncRunResponse = {
+  job_id: string;
+  domain: SyncDomain;
+  mode: "full_all" | "full_year" | "full_month" | "range_months";
+  year_from?: number | null;
+  close_month?: string | null;
+  close_month_from?: string | null;
+  close_month_to?: string | null;
+  target_table?: string | null;
+  started_at?: string;
+  status: "accepted";
+};
+
+export type SyncStatusResponse = {
+  job_id?: string | null;
+  domain: SyncDomain;
+  running: boolean;
+  started_at?: string | null;
+  finished_at?: string | null;
+  stage?: string | null;
+  progress_pct?: number;
+  status_message?: string | null;
+  mode?: string | null;
+  year_from?: number | null;
+  close_month?: string | null;
+  close_month_from?: string | null;
+  close_month_to?: string | null;
+  rows_inserted?: number;
+  rows_updated?: number;
+  rows_skipped?: number;
+  rows_read?: number;
+  rows_upserted?: number;
+  rows_unchanged?: number;
+  target_table?: string | null;
+  duplicates_detected?: number;
+  duration_sec?: number | null;
+  log?: string[];
+  error?: string | null;
+};
+
+export async function runSync(payload: {
+  domain: SyncDomain;
+  year_from?: number;
+  close_month?: string;
+  close_month_from?: string;
+  close_month_to?: string;
+}): Promise<SyncRunResponse> {
+  const response = await api.post<SyncRunResponse>("/sync/run", payload, { timeout: 60000 });
+  return response.data;
+}
+
+export async function getSyncStatus(params: {
+  domain: SyncDomain;
+  job_id?: string;
+}): Promise<SyncStatusResponse> {
+  const response = await api.get<SyncStatusResponse>("/sync/status", { params });
+  return response.data;
+}
+
+export async function getPortfolioOptions(payload: {
+  supervisor?: string[];
+  un?: string[];
+  via_cobro?: string[];
+  anio?: string[];
+  contract_month?: string[];
+  gestion_month?: string[];
+  close_month?: string[];
+  via_pago?: string[];
+  categoria?: string[];
+  tramo?: string[];
+}): Promise<PortfolioOptionsResponse> {
+  const response = await api.post<PortfolioOptionsResponse>("/analytics/portfolio/options", payload);
+  return response.data;
+}

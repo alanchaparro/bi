@@ -16,13 +16,14 @@ class AnalyticsFilters(BaseModel):
     anio: list[str] = Field(default_factory=list)
     gestion_month: list[str] = Field(default_factory=list)
     contract_month: list[str] = Field(default_factory=list)
+    close_month: list[str] = Field(default_factory=list)
     via_cobro: list[str] = Field(default_factory=list)
     via_pago: list[str] = Field(default_factory=list)
     categoria: list[str] = Field(default_factory=list)
     supervisor: list[str] = Field(default_factory=list)
     tramo: list[str] = Field(default_factory=list)
 
-    @field_validator('gestion_month', 'contract_month')
+    @field_validator('gestion_month', 'contract_month', 'close_month')
     @classmethod
     def validate_months(cls, values: list[str]):
         for v in values:
@@ -43,3 +44,12 @@ class ExportRequest(BaseModel):
     format: str | None = Field(default=None, pattern='^(csv|pdf)$')
     endpoint: str = Field(min_length=3, max_length=64)
     filters: AnalyticsFilters = Field(default_factory=AnalyticsFilters)
+
+
+class PortfolioSummaryIn(AnalyticsFilters):
+    include_rows: bool = Field(default=False)
+
+
+class PortfolioOptionsOut(BaseModel):
+    options: dict[str, list[str]]
+    meta: dict[str, str]

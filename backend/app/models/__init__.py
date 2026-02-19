@@ -1,12 +1,19 @@
 from app.models.brokers import (
+    AnalyticsFact,
     AnalyticsContractSnapshot,
     AuditLog,
     AuthSession,
     AuthUser,
     AuthUserState,
     BrokersSupervisorScope,
+    CarteraFact,
     CommissionRules,
+    CobranzasFact,
+    ContratosFact,
+    GestoresFact,
     PrizeRules,
+    SyncRecord,
+    SyncRun,
     UserPreference,
 )
 
@@ -19,5 +26,12 @@ __all__ = [
     'AuthUser',
     'AuthUserState',
     'AnalyticsContractSnapshot',
+    'AnalyticsFact',
+    'CarteraFact',
+    'CobranzasFact',
+    'ContratosFact',
+    'GestoresFact',
+    'SyncRun',
+    'SyncRecord',
     'UserPreference',
 ]
