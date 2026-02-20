@@ -9,8 +9,9 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 import mysql.connector
-from sqlalchemy import func, text as sa_text
+from sqlalchemy import Integer, Numeric, and_, case, cast, func, literal, text as sa_text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
@@ -21,12 +22,14 @@ from app.models.brokers import (
     AnalyticsContractSnapshot,
     AnalyticsFact,
     CarteraFact,
+    CarteraCorteAgg,
     CobranzasFact,
     ContratosFact,
     GestoresFact,
     SyncRecord,
     SyncRun,
 )
+from app.services.brokers_config_service import BrokersConfigService
 
 
 SYNC_DOMAIN_QUERIES = {
@@ -154,6 +157,25 @@ def _parse_iso_date(value: object) -> date | None:
         return None
 
 
+def _parse_payment_date(row: dict) -> date | None:
+    day = _normalize_key(row, 'Dia', 'day')
+    month = _normalize_key(row, 'Mes', 'mes', 'month')
+    year = _normalize_key(row, 'Año', 'AÃ±o', 'AÃƒÂ±o', 'anio', 'year')
+    if day.isdigit() and month.isdigit() and year.isdigit():
+        try:
+            return date(int(year), int(month), int(day))
+        except Exception:
+            pass
+    return _parse_iso_date(_normalize_key(row, 'date', 'payment_date', 'Actualizado_al'))
+
+
+def _normalize_payment_via_class(value: str) -> str:
+    text = str(value or '').strip().upper()
+    if text == 'COBRADOR':
+        return 'COBRADOR'
+    return 'DEBITO'
+
+
 def _normalize_key(row: dict, *candidates: str) -> str:
     for key in candidates:
         if key in row and str(row.get(key) or '').strip():
@@ -173,7 +195,7 @@ def _normalize_record(domain: str, row: dict, seq: int) -> dict:
 
     gestion_month = _normalize_key(row, 'gestion_month')
     if not gestion_month:
-        y = _normalize_key(row, 'Año', 'anio', 'year')
+        y = _normalize_key(row, 'Año', 'AÃ±o', 'AÃƒÂ±o', 'anio', 'year')
         m = _normalize_key(row, 'Mes', 'mes', 'month')
         if y.isdigit() and m.isdigit():
             gestion_month = f'{int(m):02d}/{y}'
@@ -208,6 +230,19 @@ def _normalize_record(domain: str, row: dict, seq: int) -> dict:
     payload_json = json.dumps(row, ensure_ascii=False, sort_keys=True, default=str)
     source_hash = hashlib.sha256(payload_json.encode('utf-8')).hexdigest()
     close_date = _parse_date_key(_normalize_key(row, 'fecha_cierre', 'closed_date', 'close_date'))
+    payment_date = None
+    payment_month = ''
+    payment_year = 0
+    payment_amount = 0.0
+    payment_via_class = ''
+    if domain == 'cobranzas':
+        parsed_payment_date = _parse_payment_date(row)
+        payment_date = parsed_payment_date.strftime('%Y-%m-%d') if parsed_payment_date else ''
+        payment_month = _parse_month(parsed_payment_date.strftime('%Y-%m-%d') if parsed_payment_date else '') or gestion_month
+        payment_year = _year_of(payment_month) or datetime.utcnow().year
+        payment_amount = _to_float(_normalize_key(row, 'monto', 'amount', 'payment_amount'))
+        payment_via_class = _normalize_payment_via_class(via)
+
     return {
         'domain': domain,
         'contract_id': str(contract_id)[:64],
@@ -217,6 +252,11 @@ def _normalize_record(domain: str, row: dict, seq: int) -> dict:
         'via': str(via)[:32],
         'tramo': tramo,
         'close_date': close_date,
+        'payment_date': payment_date,
+        'payment_month': payment_month,
+        'payment_year': payment_year,
+        'payment_amount': payment_amount,
+        'payment_via_class': payment_via_class,
         'payload_json': payload_json,
         'source_hash': source_hash,
     }
@@ -275,6 +315,25 @@ def _fact_row_from_normalized(domain: str, normalized: dict) -> dict:
             'debt_total': _to_float(payload.get('debt_total') or payload.get('debt') or payload.get('total_saldo')),
             'paid_total': _to_float(payload.get('paid_total') or payload.get('paid')),
         }
+    if domain == 'cobranzas':
+        payment_date = _parse_iso_date(normalized.get('payment_date'))
+        if payment_date is None:
+            try:
+                payment_date = datetime.strptime(f'01/{gestion_month}', '%d/%m/%Y').date()
+            except ValueError:
+                payment_date = datetime.utcnow().date()
+        payment_month = str(normalized.get('payment_month') or gestion_month)[:7]
+        payment_year = int(normalized.get('payment_year') or _year_of(payment_month) or datetime.utcnow().year)
+        return {
+            **base,
+            'via': normalized['via'],
+            'tramo': tramo,
+            'payment_date': payment_date,
+            'payment_month': payment_month,
+            'payment_year': payment_year,
+            'payment_amount': _to_float(normalized.get('payment_amount') or payload.get('monto')),
+            'payment_via_class': _normalize_payment_via_class(normalized.get('payment_via_class') or normalized['via']),
+        }
     return {
         **base,
         'via': normalized['via'],
@@ -295,6 +354,14 @@ def _source_dedupe_key(normalized: dict) -> tuple:
             normalized.get('domain'),
             normalized.get('contract_id'),
             close_date,
+        )
+    if domain == 'cobranzas':
+        return (
+            normalized.get('domain'),
+            normalized.get('contract_id'),
+            normalized.get('payment_date') or normalized.get('gestion_month'),
+            normalized.get('payment_amount'),
+            normalized.get('payment_via_class') or normalized.get('via'),
         )
     return tuple(normalized[k] for k in BUSINESS_KEY_FIELDS)
 
@@ -370,23 +437,33 @@ def _upsert_sync_records(db: Session, rows: list[dict]) -> int:
     if not rows:
         return 0
     now = datetime.utcnow()
-    values = []
+    # PostgreSQL raises CardinalityViolation when a single INSERT ... ON CONFLICT
+    # contains duplicate keys for the same unique index. Collapse duplicates first.
+    by_business_key: dict[tuple, dict] = {}
     for row in rows:
-        values.append(
-            {
-                'domain': row['domain'],
-                'contract_id': row['contract_id'],
-                'gestion_month': row['gestion_month'],
-                'supervisor': row['supervisor'],
-                'un': row['un'],
-                'via': row['via'],
-                'tramo': row['tramo'],
-                'payload_json': row['payload_json'],
-                'source_hash': row['source_hash'],
-                'created_at': now,
-                'updated_at': now,
-            }
+        key = (
+            row['domain'],
+            row['contract_id'],
+            row['gestion_month'],
+            row['supervisor'],
+            row['un'],
+            row['via'],
+            row['tramo'],
         )
+        by_business_key[key] = {
+            'domain': row['domain'],
+            'contract_id': row['contract_id'],
+            'gestion_month': row['gestion_month'],
+            'supervisor': row['supervisor'],
+            'un': row['un'],
+            'via': row['via'],
+            'tramo': row['tramo'],
+            'payload_json': row['payload_json'],
+            'source_hash': row['source_hash'],
+            'created_at': now,
+            'updated_at': now,
+        }
+    values = list(by_business_key.values())
     table = SyncRecord.__table__
     dialect = engine.dialect.name
     index_cols = [
@@ -485,6 +562,13 @@ def _delete_target_window_fact(
             pass
         elif target_months:
             q = q.filter(CarteraFact.close_month.in_(target_months))
+    elif domain == 'cobranzas':
+        if mode == 'full_year' and year_from is not None:
+            q = q.filter(CobranzasFact.payment_year == int(year_from))
+        elif mode == 'full_all':
+            pass
+        elif target_months:
+            q = q.filter(CobranzasFact.payment_month.in_(target_months))
     else:
         if mode == 'full_year' and year_from is not None:
             q = q.filter(func.substr(model.gestion_month, 4, 4) == str(year_from))
@@ -511,6 +595,8 @@ def _upsert_fact_rows(db: Session, domain: str, rows: list[dict]) -> tuple[int, 
 
     if domain == 'cartera':
         index_cols = [table.c.contract_id, table.c.close_date]
+    elif domain == 'cobranzas':
+        index_cols = [table.c.contract_id, table.c.payment_date, table.c.payment_amount, table.c.payment_via_class]
     else:
         index_cols = [table.c.contract_id, table.c.gestion_month, table.c.supervisor, table.c.un, table.c.via, table.c.tramo]
 
@@ -552,6 +638,19 @@ def _upsert_fact_rows(db: Session, domain: str, rows: list[dict]) -> tuple[int, 
                     'paid_total': excluded.paid_total,
                 }
             )
+        elif domain == 'cobranzas':
+            set_map.update(
+                {
+                    'gestion_month': excluded.gestion_month,
+                    'supervisor': excluded.supervisor,
+                    'un': excluded.un,
+                    'via': excluded.via,
+                    'tramo': excluded.tramo,
+                    'payment_month': excluded.payment_month,
+                    'payment_year': excluded.payment_year,
+                    'payment_date': excluded.payment_date,
+                }
+            )
     stmt = insert_stmt.on_conflict_do_update(
         index_elements=index_cols,
         set_=set_map,
@@ -576,6 +675,230 @@ def _to_int(value: object, default: int = 0) -> int:
         return int(float(value))
     except Exception:
         return default
+
+
+def _build_cartera_categoria_expr(db: Session):
+    cfg = BrokersConfigService.get_cartera_tramo_rules(db)
+    category_expr = case((CarteraFact.tramo > 3, literal('MOROSO')), else_=literal('VIGENTE'))
+    for rule in (cfg.get('rules') or []):
+        if not isinstance(rule, dict):
+            continue
+        un_rule = str(rule.get('un') or '').strip().upper()
+        category = str(rule.get('category') or '').strip().upper()
+        if not un_rule or category not in {'VIGENTE', 'MOROSO'}:
+            continue
+        tramos_raw = rule.get('tramos', [])
+        tramos_norm: list[int] = []
+        if isinstance(tramos_raw, list):
+            for t in tramos_raw:
+                try:
+                    tramos_norm.append(max(0, min(7, int(float(t)))))
+                except Exception:
+                    continue
+        if tramos_norm:
+            category_expr = case(
+                (and_(CarteraFact.un == un_rule, CarteraFact.tramo.in_(tramos_norm)), literal(category)),
+                else_=category_expr,
+            )
+    return category_expr
+
+
+def _build_cartera_contract_year_expr():
+    if engine.dialect.name == 'postgresql':
+        fecha_contrato_expr = cast(CarteraFact.payload_json, JSONB).op('->>')('fecha_contrato')
+        return case(
+            (fecha_contrato_expr.op('~')(r'^\d{4}[-/]'), cast(func.substring(fecha_contrato_expr, 1, 4), Integer)),
+            (fecha_contrato_expr.op('~')(r'^\d{2}/\d{2}/\d{4}$'), cast(func.substring(fecha_contrato_expr, 7, 4), Integer)),
+            else_=None,
+        )
+    return CarteraFact.close_year
+
+
+def _refresh_cartera_corte_agg(db: Session, affected_months: set[str]) -> tuple[int, int]:
+    months = sorted({str(m).strip() for m in (affected_months or set()) if str(m).strip()}, key=_month_serial)
+    if not months:
+        return 0, 0
+
+    deleted = db.query(CarteraCorteAgg).filter(CarteraCorteAgg.gestion_month.in_(months)).delete(synchronize_session=False)
+    db.commit()
+
+    categoria_expr = _build_cartera_categoria_expr(db)
+    contract_year_expr = _build_cartera_contract_year_expr()
+    if engine.dialect.name == 'postgresql':
+        monto_cuota_text = cast(CarteraFact.payload_json, JSONB).op('->>')('monto_cuota')
+        monto_cuota_expr = case(
+            (monto_cuota_text.op('~')(r'^-?\d+(\.\d+)?$'), cast(monto_cuota_text, Numeric)),
+            else_=literal(0),
+        )
+    else:
+        monto_cuota_expr = literal(0)
+    via_cartera_class_expr = case(
+        (func.upper(func.coalesce(CarteraFact.via_cobro, '')) == literal('COBRADOR'), literal('COBRADOR')),
+        else_=literal('DEBITO'),
+    )
+    supervisor_sq = (
+        db.query(
+            AnalyticsFact.contract_id.label('contract_id'),
+            AnalyticsFact.gestion_month.label('gestion_month'),
+            func.max(
+                case(
+                    (func.upper(func.coalesce(AnalyticsFact.supervisor, '')) != 'S/D', AnalyticsFact.supervisor),
+                    else_=literal(''),
+                )
+            ).label('supervisor'),
+        )
+        .filter(AnalyticsFact.gestion_month.in_(months))
+        .group_by(AnalyticsFact.contract_id, AnalyticsFact.gestion_month)
+        .subquery()
+    )
+    supervisor_expr = case(
+        (func.upper(func.coalesce(CarteraFact.supervisor, '')) != 'S/D', CarteraFact.supervisor),
+        (func.coalesce(supervisor_sq.c.supervisor, '') != '', supervisor_sq.c.supervisor),
+        else_=literal('S/D'),
+    )
+
+    paid_sq = (
+        db.query(
+            CobranzasFact.contract_id.label('contract_id'),
+            CobranzasFact.payment_month.label('payment_month'),
+            func.coalesce(func.sum(CobranzasFact.payment_amount), 0.0).label('paid_total'),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (CobranzasFact.payment_via_class == 'COBRADOR', CobranzasFact.payment_amount),
+                        else_=literal(0.0),
+                    )
+                ),
+                0.0,
+            ).label('paid_via_cobrador'),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (CobranzasFact.payment_via_class == 'DEBITO', CobranzasFact.payment_amount),
+                        else_=literal(0.0),
+                    )
+                ),
+                0.0,
+            ).label('paid_via_debito'),
+            func.max(case((CobranzasFact.payment_amount > 0, literal(1)), else_=literal(0))).label('contracts_paid_total'),
+            func.max(
+                case(
+                    (and_(CobranzasFact.payment_via_class == 'COBRADOR', CobranzasFact.payment_amount > 0), literal(1)),
+                    else_=literal(0),
+                )
+            ).label('contracts_paid_via_cobrador'),
+            func.max(
+                case(
+                    (and_(CobranzasFact.payment_via_class == 'DEBITO', CobranzasFact.payment_amount > 0), literal(1)),
+                    else_=literal(0),
+                )
+            ).label('contracts_paid_via_debito'),
+        )
+        .filter(CobranzasFact.payment_month.in_(months))
+        .group_by(CobranzasFact.contract_id, CobranzasFact.payment_month)
+        .subquery()
+    )
+
+    grouped_rows = (
+        db.query(
+            CarteraFact.gestion_month.label('gestion_month'),
+            CarteraFact.close_month.label('close_month'),
+            CarteraFact.close_year.label('close_year'),
+            contract_year_expr.label('contract_year'),
+            CarteraFact.un.label('un'),
+            supervisor_expr.label('supervisor'),
+            via_cartera_class_expr.label('via_cobro'),
+            categoria_expr.label('categoria'),
+            CarteraFact.tramo.label('tramo'),
+            func.coalesce(func.sum(CarteraFact.contracts_total), 0).label('contracts_total'),
+            func.coalesce(
+                func.sum(case((categoria_expr == 'VIGENTE', CarteraFact.contracts_total), else_=literal(0))),
+                0,
+            ).label('vigentes_total'),
+            func.coalesce(
+                func.sum(case((categoria_expr == 'MOROSO', CarteraFact.contracts_total), else_=literal(0))),
+                0,
+            ).label('morosos_total'),
+            func.coalesce(func.sum(monto_cuota_expr + CarteraFact.monto_vencido), 0.0).label('monto_total'),
+            func.coalesce(func.sum(CarteraFact.monto_vencido), 0.0).label('monto_vencido_total'),
+            func.coalesce(
+                func.sum(case((via_cartera_class_expr == 'COBRADOR', CarteraFact.contracts_total), else_=literal(0))),
+                0,
+            ).label('contracts_cobrador'),
+            func.coalesce(
+                func.sum(case((via_cartera_class_expr == 'DEBITO', CarteraFact.contracts_total), else_=literal(0))),
+                0,
+            ).label('contracts_debito'),
+            func.coalesce(func.sum(paid_sq.c.paid_total), 0.0).label('paid_total'),
+            func.coalesce(func.sum(paid_sq.c.paid_via_cobrador), 0.0).label('paid_via_cobrador'),
+            func.coalesce(func.sum(paid_sq.c.paid_via_debito), 0.0).label('paid_via_debito'),
+            func.coalesce(func.sum(paid_sq.c.contracts_paid_total), 0).label('contracts_paid_total'),
+            func.coalesce(func.sum(paid_sq.c.contracts_paid_via_cobrador), 0).label('contracts_paid_via_cobrador'),
+            func.coalesce(func.sum(paid_sq.c.contracts_paid_via_debito), 0).label('contracts_paid_via_debito'),
+        )
+        .outerjoin(
+            paid_sq,
+            and_(
+                paid_sq.c.contract_id == CarteraFact.contract_id,
+                paid_sq.c.payment_month == CarteraFact.gestion_month,
+            ),
+        )
+        .outerjoin(
+            supervisor_sq,
+            and_(
+                supervisor_sq.c.contract_id == CarteraFact.contract_id,
+                supervisor_sq.c.gestion_month == CarteraFact.gestion_month,
+            ),
+        )
+        .filter(CarteraFact.gestion_month.in_(months))
+        .group_by(
+            CarteraFact.gestion_month,
+            CarteraFact.close_month,
+            CarteraFact.close_year,
+            contract_year_expr,
+            CarteraFact.un,
+            supervisor_expr,
+            via_cartera_class_expr,
+            categoria_expr,
+            CarteraFact.tramo,
+        )
+        .all()
+    )
+
+    now = datetime.utcnow()
+    mappings: list[dict] = []
+    for row in grouped_rows:
+        mappings.append(
+            {
+                'gestion_month': str(row.gestion_month),
+                'close_month': str(row.close_month),
+                'close_year': int(row.close_year or 0),
+                'contract_year': int(row.contract_year) if row.contract_year is not None else 0,
+                'un': str(row.un or 'S/D'),
+                'supervisor': str(row.supervisor or 'S/D'),
+                'via_cobro': str(row.via_cobro or 'S/D'),
+                'categoria': str(row.categoria or 'VIGENTE'),
+                'tramo': int(row.tramo or 0),
+                'contracts_total': int(row.contracts_total or 0),
+                'vigentes_total': int(row.vigentes_total or 0),
+                'morosos_total': int(row.morosos_total or 0),
+                'monto_total': float(row.monto_total or 0.0),
+                'monto_vencido_total': float(row.monto_vencido_total or 0.0),
+                'contracts_cobrador': int(row.contracts_cobrador or 0),
+                'contracts_debito': int(row.contracts_debito or 0),
+                'paid_total': float(row.paid_total or 0.0),
+                'paid_via_cobrador': float(row.paid_via_cobrador or 0.0),
+                'paid_via_debito': float(row.paid_via_debito or 0.0),
+                'contracts_paid_total': int(row.contracts_paid_total or 0),
+                'contracts_paid_via_cobrador': int(row.contracts_paid_via_cobrador or 0),
+                'contracts_paid_via_debito': int(row.contracts_paid_via_debito or 0),
+                'updated_at': now,
+            }
+        )
+    if mappings:
+        db.bulk_insert_mappings(CarteraCorteAgg, mappings)
+        db.commit()
+    return int(deleted or 0), len(mappings)
 
 
 def _refresh_analytics_snapshot(
@@ -715,6 +1038,11 @@ def _execute_job(
                 'rows_read': 0,
                 'rows_upserted': 0,
                 'rows_unchanged': 0,
+                'affected_months': [],
+                'agg_refresh_started': False,
+                'agg_refresh_completed': False,
+                'agg_rows_written': 0,
+                'agg_duration_sec': None,
                 'duplicates_detected': 0,
                 'error': None,
                 'started_at': started_at.replace(tzinfo=None),
@@ -751,6 +1079,11 @@ def _execute_job(
                 'rows_read': 0,
                 'rows_upserted': 0,
                 'rows_unchanged': 0,
+                'affected_months': [],
+                'agg_refresh_started': False,
+                'agg_refresh_completed': False,
+                'agg_rows_written': 0,
+                'agg_duration_sec': None,
                 'duplicates_detected': 0,
                 'error': None,
                 'log': [
@@ -774,7 +1107,9 @@ def _execute_job(
             raise RuntimeError(f'No existe query para dominio {domain}: {query_path.name}')
         _set_state(domain, {'stage': 'connecting_mysql', 'progress_pct': 8, 'status_message': 'Conectando a MySQL'})
         _append_log(domain, 'Conectando a MySQL...')
-        max_rows = max(1, int(settings.sync_max_rows or 250000))
+        configured_max_rows = int(settings.sync_max_rows) if settings.sync_max_rows is not None else 250000
+        # SYNC_MAX_ROWS <= 0 disables hard cap for full loads.
+        max_rows = configured_max_rows if configured_max_rows > 0 else None
         source_rows = 0
         _set_state(domain, {'stage': 'normalizing', 'progress_pct': 35, 'status_message': 'Normalizando filas'})
 
@@ -848,7 +1183,9 @@ def _execute_job(
         _set_state(domain, {'stage': 'replacing_window', 'progress_pct': 55, 'status_message': 'Reemplazando ventana'})
         _delete_target_window(db, domain, mode, year_from, target_months)
         _delete_target_window_fact(db, domain, mode, year_from, close_month, target_months)
-        _append_log(domain, f'Meses objetivo: {", ".join(sorted(target_months, key=_month_serial)) or "-"}')
+        ordered_target_months = sorted(target_months, key=_month_serial)
+        _set_state(domain, {'affected_months': ordered_target_months})
+        _append_log(domain, f'Meses objetivo: {", ".join(ordered_target_months) or "-"}')
 
         _set_state(domain, {'stage': 'upserting', 'progress_pct': 75, 'status_message': 'Aplicando UPSERT'})
         rows_inserted = 0
@@ -1014,6 +1351,36 @@ def _execute_job(
             _set_state(domain, {'stage': 'refreshing_snapshot', 'progress_pct': 88, 'status_message': 'Actualizando snapshot analytics'})
             _refresh_analytics_snapshot(db, mode, year_from, target_months, normalized_rows)
 
+        agg_rows_written = 0
+        agg_duration_sec = None
+        if domain in {'cartera', 'cobranzas'}:
+            agg_started_at = datetime.now(timezone.utc)
+            _set_state(
+                domain,
+                {
+                    'stage': 'refreshing_corte_agg',
+                    'progress_pct': 96,
+                    'status_message': 'Recalculando agregados de corte',
+                    'agg_refresh_started': True,
+                    'agg_refresh_completed': False,
+                },
+            )
+            _append_log(domain, 'Iniciando recÃƒÂ¡lculo de cartera_corte_agg...')
+            deleted_agg, agg_rows_written = _refresh_cartera_corte_agg(db, target_months)
+            agg_duration_sec = round((datetime.now(timezone.utc) - agg_started_at).total_seconds(), 2)
+            _set_state(
+                domain,
+                {
+                    'agg_refresh_completed': True,
+                    'agg_rows_written': int(agg_rows_written),
+                    'agg_duration_sec': agg_duration_sec,
+                },
+            )
+            _append_log(
+                domain,
+                f'Agregado corte actualizado: borradas={deleted_agg}, insertadas={agg_rows_written}, duracion={agg_duration_sec}s',
+            )
+
         finished_at = datetime.now(timezone.utc)
         duration_sec = round((finished_at - started_at).total_seconds(), 2)
         log = list((_state_by_domain.get(domain) or {}).get('log') or [])
@@ -1041,7 +1408,12 @@ def _execute_job(
             'rows_read': source_rows,
             'rows_upserted': rows_upserted,
             'rows_unchanged': rows_unchanged,
+            'affected_months': ordered_target_months,
             'target_table': _target_table_name(domain),
+            'agg_refresh_started': domain in {'cartera', 'cobranzas'},
+            'agg_refresh_completed': domain in {'cartera', 'cobranzas'},
+            'agg_rows_written': int(agg_rows_written),
+            'agg_duration_sec': agg_duration_sec,
             'duplicates_detected': duplicates_detected,
             'error': None,
             'log': log[-200:],
@@ -1053,9 +1425,24 @@ def _execute_job(
         if domain == 'cartera':
             invalidated_options = invalidate_prefix('portfolio/options')
             invalidated_summary = invalidate_prefix('portfolio/summary')
+            invalidated_corte_options = invalidate_prefix('portfolio/corte/options')
+            invalidated_corte_summary = invalidate_prefix('portfolio/corte/summary')
             _append_log(
                 domain,
-                f'Cache invalido: portfolio/options={invalidated_options}, portfolio/summary={invalidated_summary}',
+                (
+                    'Cache invalido: '
+                    f'portfolio/options={invalidated_options}, '
+                    f'portfolio/summary={invalidated_summary}, '
+                    f'portfolio/corte/options={invalidated_corte_options}, '
+                    f'portfolio/corte/summary={invalidated_corte_summary}'
+                ),
+            )
+        if domain == 'cobranzas':
+            invalidated_corte_options = invalidate_prefix('portfolio/corte/options')
+            invalidated_corte_summary = invalidate_prefix('portfolio/corte/summary')
+            _append_log(
+                domain,
+                f'Cache invalido: portfolio/corte/options={invalidated_corte_options}, portfolio/corte/summary={invalidated_corte_summary}',
             )
         logger.info(
             '[sync:%s:%s] completed rows_inserted=%s duplicates=%s duration_sec=%s',
@@ -1085,7 +1472,12 @@ def _execute_job(
                 'rows_read': source_rows,
                 'rows_upserted': rows_upserted,
                 'rows_unchanged': rows_unchanged,
+                'affected_months': ordered_target_months,
                 'target_table': _target_table_name(domain),
+                'agg_refresh_started': domain in {'cartera', 'cobranzas'},
+                'agg_refresh_completed': domain in {'cartera', 'cobranzas'},
+                'agg_rows_written': int(agg_rows_written),
+                'agg_duration_sec': agg_duration_sec,
                 'duplicates_detected': duplicates_detected,
                 'error': None,
                 'finished_at': finished_at.replace(tzinfo=None),
@@ -1227,7 +1619,12 @@ class SyncService:
                 'rows_read': int(getattr(row, 'rows_read', 0) or 0),
                 'rows_upserted': int(getattr(row, 'rows_upserted', 0) or 0),
                 'rows_unchanged': int(getattr(row, 'rows_unchanged', 0) or 0),
+                'affected_months': [],
                 'target_table': getattr(row, 'target_table', None),
+                'agg_refresh_started': False,
+                'agg_refresh_completed': False,
+                'agg_rows_written': 0,
+                'agg_duration_sec': None,
                 'duplicates_detected': int(row.duplicates_detected or 0),
                 'error': row.error,
                 'log': json.loads(row.log_json or '[]'),

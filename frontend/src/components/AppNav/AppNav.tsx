@@ -20,7 +20,7 @@ function groupSections(sections: NavSection[]) {
 export function AppNav({ sections, activeId = null }: Props) {
   const groups = groupSections(sections)
   return (
-    <nav className="app-nav" aria-label="Menú principal">
+    <nav className="app-nav" aria-label="Menu principal">
       {Array.from(groups.entries()).map(([groupName, items]) => (
         <div key={groupName || 'default'} className="app-nav-group">
           {groupName ? <span className="app-nav-group-label">{groupName}</span> : null}

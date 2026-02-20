@@ -70,3 +70,28 @@ class CarteraTramoRulesOut(BaseModel):
 
 class CarteraUnsOut(BaseModel):
     uns: list[str] = Field(default_factory=list)
+
+
+class AuthUserItemOut(BaseModel):
+    username: str
+    role: str
+    is_active: bool
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class AuthUsersOut(BaseModel):
+    users: list[AuthUserItemOut] = Field(default_factory=list)
+
+
+class AuthUserCreateIn(BaseModel):
+    username: str = Field(min_length=3, max_length=128)
+    password: str = Field(min_length=6, max_length=256)
+    role: str = Field(default='viewer', min_length=3, max_length=32)
+    is_active: bool = True
+
+
+class AuthUserUpdateIn(BaseModel):
+    role: str | None = Field(default=None, min_length=3, max_length=32)
+    is_active: bool | None = None
+    password: str | None = Field(default=None, min_length=6, max_length=256)

@@ -27,6 +27,13 @@ SELECT
     c.inscription AS inscripcion,
     c.observation AS observacion,
     pml.name AS producto,
+    CONCAT_WS(' ', seller.first_name, seller.last_name) AS Vendedor,
+    CASE
+        WHEN UPPER(REPLACE(REPLACE(TRIM(CONCAT_WS(' ', sup.first_name, sup.last_name)), '.', ''), '  ', ' ')) = 'FVBROKEREAS'
+         AND UPPER(REPLACE(REPLACE(TRIM(CONCAT_WS(' ', seller.first_name, seller.last_name)), '.', ''), '  ', ' ')) = 'FVBROKEREASCDE'
+        THEN CONCAT_WS(' ', seller.first_name, seller.last_name)
+        ELSE CONCAT_WS(' ', sup.first_name, sup.last_name)
+    END AS Supervisor,
     DATE_FORMAT(ccd.closed_date, '%Y/%m/%d') AS fecha_cierre,
     ccd.quotas_expirations AS cuotas_vencidas,
     ccd.expired_amount AS monto_vencido,
@@ -91,6 +98,10 @@ LEFT JOIN epem.insurances i
     ON c.insurance_id = i.id
 LEFT JOIN epem.product_money_loans pml 
     ON c.product_money_loan_id = pml.id
+LEFT JOIN epem.users seller
+    ON c.seller_id = seller.id
+LEFT JOIN epem.users sup
+    ON c.seller_supervisor_id = sup.id
 LEFT JOIN epem.contract_situations cs 
     ON cs.contract_id = c.id 
     AND cs.type = 3 

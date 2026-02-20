@@ -17,8 +17,17 @@ import { NAV_SECTIONS } from './config/navSections'
 import { SidebarNav } from './components/SidebarNav'
 import { ConfigView } from './modules/config/ConfigView'
 import { AnalisisCarteraView } from './modules/analisisCartera/AnalisisCarteraView'
+import { AnalisisCobranzasCohorteView } from './modules/analisisCobranzasCohorte/AnalisisCobranzasCohorteView'
 
 export default function App() {
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    try {
+      const saved = localStorage.getItem('ui-theme')
+      return saved === 'light' ? 'light' : 'dark'
+    } catch {
+      return 'dark'
+    }
+  })
   const [auth, setAuth] = useState<LoginResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [loginError, setLoginError] = useState<string | null>(null)
@@ -48,7 +57,7 @@ export default function App() {
   useEffect(() => {
     setOnUnauthorized(() => {
       setAuth(null)
-      setError('Sesion expirada. Volve a iniciar sesion.')
+      setError('Sesión expirada. Vuelve a iniciar sesión.')
     })
     return () => setOnUnauthorized(null)
   }, [])
@@ -65,6 +74,15 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    try {
+      localStorage.setItem('ui-theme', theme)
+    } catch {
+      // ignore storage failures
+    }
+  }, [theme])
 
   useEffect(() => {
     const boot = async () => {
@@ -85,7 +103,7 @@ export default function App() {
   }, [])
 
   if (loading) {
-    return <div className="loading-page">Cargando...</div>
+    return <div className="loading-page">Cargando aplicación...</div>
   }
 
   if (!auth) {
@@ -120,8 +138,17 @@ export default function App() {
         </div>
         <div className="user-info">
           <span>Rol: <strong>{role || '-'}</strong></span>
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+            title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+            aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
           <button type="button" className="btn btn-secondary" onClick={handleLogout}>
-            Cerrar sesion
+            Cerrar sesión
           </button>
         </div>
       </header>
@@ -131,6 +158,10 @@ export default function App() {
 
         <section id="analisisCartera" className={`app-section ${activeSectionId === 'analisisCartera' ? '' : 'hidden'}`}>
           <AnalisisCarteraView />
+        </section>
+
+        <section id="analisisCobranzaCohorte" className={`app-section ${activeSectionId === 'analisisCobranzaCohorte' ? '' : 'hidden'}`}>
+          <AnalisisCobranzasCohorteView />
         </section>
 
         <section id="config" className={`app-section ${activeSectionId === 'config' ? '' : 'hidden'}`}>

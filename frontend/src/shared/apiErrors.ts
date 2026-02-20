@@ -34,5 +34,13 @@ export function parseApiError(e: unknown): ApiErrorDetail {
     if (res?.status === 504)
       return { message: msg || 'Sincronización excedió el tiempo. Comprueba MYSQL_HOST (host.docker.internal si MySQL está en el host).', trace_id: res?.data?.trace_id };
   }
+
+  if (e instanceof Error && e.message.trim()) {
+    return { message: e.message.trim() };
+  }
+  if (typeof e === 'string' && e.trim()) {
+    return { message: e.trim() };
+  }
+
   return { message: 'Error de conexión. Revisa que la API esté disponible.' };
 }

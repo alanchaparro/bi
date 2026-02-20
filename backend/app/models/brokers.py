@@ -199,6 +199,11 @@ class CobranzasFact(Base):
     supervisor = Column(String(128), nullable=False, default='S/D')
     un = Column(String(128), nullable=False, default='S/D')
     via = Column(String(32), nullable=False, default='S/D')
+    payment_date = Column(Date, nullable=False, index=True)
+    payment_month = Column(String(7), nullable=False, index=True)
+    payment_year = Column(Integer, nullable=False, index=True)
+    payment_amount = Column(Float, nullable=False, default=0.0)
+    payment_via_class = Column(String(16), nullable=False, default='COBRADOR')
     tramo = Column(Integer, nullable=False, default=0)
     source_hash = Column(String(64), nullable=False)
     payload_json = Column(Text, nullable=False, default='{}')
@@ -235,6 +240,35 @@ class GestoresFact(Base):
     source_hash = Column(String(64), nullable=False)
     payload_json = Column(Text, nullable=False, default='{}')
     loaded_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CarteraCorteAgg(Base):
+    __tablename__ = 'cartera_corte_agg'
+
+    id = Column(Integer, primary_key=True, index=True)
+    gestion_month = Column(String(7), nullable=False, index=True)
+    close_month = Column(String(7), nullable=False, index=True)
+    close_year = Column(Integer, nullable=False, index=True)
+    contract_year = Column(Integer, nullable=False, default=0, index=True)
+    un = Column(String(128), nullable=False, default='S/D')
+    supervisor = Column(String(128), nullable=False, default='S/D')
+    via_cobro = Column(String(32), nullable=False, default='S/D')
+    categoria = Column(String(16), nullable=False, default='VIGENTE')
+    tramo = Column(Integer, nullable=False, default=0)
+    contracts_total = Column(Integer, nullable=False, default=0)
+    vigentes_total = Column(Integer, nullable=False, default=0)
+    morosos_total = Column(Integer, nullable=False, default=0)
+    monto_total = Column(Float, nullable=False, default=0.0)
+    monto_vencido_total = Column(Float, nullable=False, default=0.0)
+    contracts_cobrador = Column(Integer, nullable=False, default=0)
+    contracts_debito = Column(Integer, nullable=False, default=0)
+    paid_total = Column(Float, nullable=False, default=0.0)
+    paid_via_cobrador = Column(Float, nullable=False, default=0.0)
+    paid_via_debito = Column(Float, nullable=False, default=0.0)
+    contracts_paid_total = Column(Integer, nullable=False, default=0)
+    contracts_paid_via_cobrador = Column(Integer, nullable=False, default=0)
+    contracts_paid_via_debito = Column(Integer, nullable=False, default=0)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -275,14 +309,13 @@ Index('ix_analytics_fact_un_gestion_month', AnalyticsFact.un, AnalyticsFact.gest
 Index(
     'ux_cobranzas_fact_business_key',
     CobranzasFact.contract_id,
-    CobranzasFact.gestion_month,
-    CobranzasFact.supervisor,
-    CobranzasFact.un,
-    CobranzasFact.via,
-    CobranzasFact.tramo,
+    CobranzasFact.payment_date,
+    CobranzasFact.payment_amount,
+    CobranzasFact.payment_via_class,
     unique=True,
 )
 Index('ix_cobranzas_fact_un_gestion_month', CobranzasFact.un, CobranzasFact.gestion_month)
+Index('ix_cobranzas_fact_payment_month_un', CobranzasFact.payment_month, CobranzasFact.un)
 Index(
     'ux_contratos_fact_business_key',
     ContratosFact.contract_id,
@@ -305,3 +338,20 @@ Index(
     unique=True,
 )
 Index('ix_gestores_fact_un_gestion_month', GestoresFact.un, GestoresFact.gestion_month)
+Index(
+    'ux_cartera_corte_agg_key',
+    CarteraCorteAgg.gestion_month,
+    CarteraCorteAgg.close_month,
+    CarteraCorteAgg.un,
+    CarteraCorteAgg.supervisor,
+    CarteraCorteAgg.via_cobro,
+    CarteraCorteAgg.categoria,
+    CarteraCorteAgg.tramo,
+    CarteraCorteAgg.contract_year,
+    unique=True,
+)
+Index('ix_cartera_corte_agg_gestion_un', CarteraCorteAgg.gestion_month, CarteraCorteAgg.un)
+Index('ix_cartera_corte_agg_gestion_supervisor', CarteraCorteAgg.gestion_month, CarteraCorteAgg.supervisor)
+Index('ix_cartera_corte_agg_gestion_via', CarteraCorteAgg.gestion_month, CarteraCorteAgg.via_cobro)
+Index('ix_cartera_corte_agg_gestion_categoria_tramo', CarteraCorteAgg.gestion_month, CarteraCorteAgg.categoria, CarteraCorteAgg.tramo)
+Index('ix_cartera_corte_agg_close_un_tramo', CarteraCorteAgg.close_month, CarteraCorteAgg.un, CarteraCorteAgg.tramo)

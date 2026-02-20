@@ -170,6 +170,41 @@ export async function saveCarteraPreferences(
   return response.data;
 }
 
+export type UserItem = {
+  username: string;
+  role: "admin" | "analyst" | "viewer" | string;
+  is_active: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export async function listUsers(): Promise<{ users: UserItem[] }> {
+  const response = await api.get<{ users: UserItem[] }>("/brokers/users");
+  return response.data;
+}
+
+export async function createUser(payload: {
+  username: string;
+  password: string;
+  role: "admin" | "analyst" | "viewer" | string;
+  is_active: boolean;
+}): Promise<UserItem> {
+  const response = await api.post<UserItem>("/brokers/users", payload);
+  return response.data;
+}
+
+export async function updateUser(
+  username: string,
+  payload: {
+    role?: "admin" | "analyst" | "viewer" | string;
+    is_active?: boolean;
+    password?: string;
+  }
+): Promise<UserItem> {
+  const response = await api.put<UserItem>(`/brokers/users/${encodeURIComponent(username)}`, payload);
+  return response.data;
+}
+
 export type SyncDomain = "analytics" | "cartera" | "cobranzas" | "contratos" | "gestores";
 
 export type PortfolioOptionsResponse = {
@@ -184,6 +219,100 @@ export type PortfolioOptionsResponse = {
   meta?: {
     generated_at?: string;
     source_table?: string;
+  };
+};
+
+export type PortfolioCorteOptionsResponse = {
+  options: {
+    uns?: string[];
+    supervisors?: string[];
+    vias?: string[];
+    tramos?: string[];
+    categories?: string[];
+    gestion_months?: string[];
+    close_months?: string[];
+    contract_years?: string[];
+  };
+  meta?: {
+    generated_at?: string;
+    source_table?: string;
+  };
+};
+
+export type PortfolioCorteSummaryResponse = {
+  kpis?: {
+    total_cartera?: number;
+    vigentes_total?: number;
+    morosos_total?: number;
+    via_cobrador_total?: number;
+    via_debito_total?: number;
+    monto_total_corte?: number;
+    monto_vencido_total?: number;
+    paid_total?: number;
+  };
+  charts?: {
+    by_un?: Record<string, number>;
+    by_tramo?: Record<string, number>;
+    by_via?: Record<string, number>;
+    by_contract_year?: Record<string, number>;
+    series_vigente_moroso_by_month?: Record<string, { vigente?: number; moroso?: number }>;
+    series_cobrador_debito_by_month?: Record<string, { cobrador?: number; debito?: number }>;
+  };
+  meta?: {
+    source?: string;
+    source_table?: string;
+    generated_at?: string;
+  };
+};
+
+export type CobranzasCohorteOptionsResponse = {
+  options: {
+    cutoff_months?: string[];
+    uns?: string[];
+    supervisors?: string[];
+    vias?: string[];
+    categories?: string[];
+  };
+  default_cutoff?: string | null;
+  meta?: {
+    source?: string;
+    source_table?: string;
+    generated_at?: string;
+  };
+};
+
+export type CobranzasCohorteSummaryResponse = {
+  cutoff_month: string;
+  effective_cartera_month?: string;
+  totals: {
+    activos: number;
+    pagaron: number;
+    deberia: number;
+    cobrado: number;
+    pct_pago_contratos: number;
+    pct_cobertura_monto: number;
+  };
+  by_sale_month: Array<{
+    sale_month: string;
+    activos: number;
+    pagaron: number;
+    deberia: number;
+    cobrado: number;
+    pct_pago_contratos: number;
+    pct_cobertura_monto: number;
+  }>;
+  by_year: Record<string, {
+    activos: number;
+    pagaron: number;
+    deberia: number;
+    cobrado: number;
+    pct_pago_contratos: number;
+    pct_cobertura_monto: number;
+  }>;
+  meta?: {
+    source?: string;
+    source_table?: string;
+    generated_at?: string;
   };
 };
 
@@ -220,7 +349,12 @@ export type SyncStatusResponse = {
   rows_read?: number;
   rows_upserted?: number;
   rows_unchanged?: number;
+  affected_months?: string[];
   target_table?: string | null;
+  agg_refresh_started?: boolean;
+  agg_refresh_completed?: boolean;
+  agg_rows_written?: number;
+  agg_duration_sec?: number | null;
   duplicates_detected?: number;
   duration_sec?: number | null;
   log?: string[];
@@ -259,5 +393,60 @@ export async function getPortfolioOptions(payload: {
   tramo?: string[];
 }): Promise<PortfolioOptionsResponse> {
   const response = await api.post<PortfolioOptionsResponse>("/analytics/portfolio/options", payload);
+  return response.data;
+}
+
+export async function getPortfolioCorteOptions(payload: {
+  supervisor?: string[];
+  un?: string[];
+  via_cobro?: string[];
+  anio?: string[];
+  contract_month?: string[];
+  gestion_month?: string[];
+  close_month?: string[];
+  via_pago?: string[];
+  categoria?: string[];
+  tramo?: string[];
+}): Promise<PortfolioCorteOptionsResponse> {
+  const response = await api.post<PortfolioCorteOptionsResponse>("/analytics/portfolio/corte/options", payload);
+  return response.data;
+}
+
+export async function getPortfolioCorteSummary(payload: {
+  supervisor?: string[];
+  un?: string[];
+  via_cobro?: string[];
+  anio?: string[];
+  contract_month?: string[];
+  gestion_month?: string[];
+  close_month?: string[];
+  via_pago?: string[];
+  categoria?: string[];
+  tramo?: string[];
+  include_rows?: boolean;
+}): Promise<PortfolioCorteSummaryResponse> {
+  const response = await api.post<PortfolioCorteSummaryResponse>("/analytics/portfolio/corte/summary", payload);
+  return response.data;
+}
+
+export async function getCobranzasCohorteOptions(payload: {
+  cutoff_month?: string;
+  un?: string[];
+  via_cobro?: string[];
+  categoria?: string[];
+  supervisor?: string[];
+}): Promise<CobranzasCohorteOptionsResponse> {
+  const response = await api.post<CobranzasCohorteOptionsResponse>("/analytics/cobranzas-cohorte/options", payload);
+  return response.data;
+}
+
+export async function getCobranzasCohorteSummary(payload: {
+  cutoff_month?: string;
+  un?: string[];
+  via_cobro?: string[];
+  categoria?: string[];
+  supervisor?: string[];
+}): Promise<CobranzasCohorteSummaryResponse> {
+  const response = await api.post<CobranzasCohorteSummaryResponse>("/analytics/cobranzas-cohorte/summary", payload);
   return response.data;
 }

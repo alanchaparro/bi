@@ -10,25 +10,26 @@ type Props = {
   onCloseSidebar: () => void
 }
 
-const SECTION_EMOJI: Record<string, string> = {
-  cartera: '📊',
-  cobranzas: '💰',
-  analisisCartera: '🗂️',
-  acaMovimiento: '↳',
-  acaAnuales: '↳',
-  rendimiento: '📈',
-  cosecha: '🌾',
-  ltv: '🧮',
-  ltvAge: '⏳',
-  analisisCobranza: '🧾',
-  culminados: '✅',
-  gestores: '💼',
-  brokers: '🤝',
-  brokersCommissions: '↳',
-  brokersPrizes: '↳',
-  brokersSupervisors: '↳',
-  brokersMora: '↳',
-  config: '⚙️',
+const SECTION_ICON: Record<string, string> = {
+  cartera: '[]',
+  cobranzas: '$',
+  analisisCartera: 'AC',
+  acaMovimiento: '->',
+  acaAnuales: '->',
+  rendimiento: 'R',
+  cosecha: 'C',
+  ltv: 'LTV',
+  ltvAge: 'LA',
+  analisisCobranza: 'AN',
+  analisisCobranzaCohorte: 'CO',
+  culminados: 'OK',
+  gestores: 'GS',
+  brokers: 'BR',
+  brokersCommissions: '->',
+  brokersPrizes: '->',
+  brokersSupervisors: '->',
+  brokersMora: '->',
+  config: 'CF',
 }
 
 const SUB_IDS = new Set([
@@ -73,6 +74,7 @@ export function SidebarNav({
         onClick={onToggleSidebar}
         aria-label={sidebarOpen ? 'Cerrar menú' : 'Abrir menú'}
         aria-expanded={sidebarOpen}
+        title={sidebarOpen ? 'Cerrar menú' : 'Abrir menú'}
       >
         ☰
       </button>
@@ -90,8 +92,7 @@ export function SidebarNav({
             ) : null}
             {items.map((s) => {
               const isSub = SUB_IDS.has(s.id)
-              const emoji = SECTION_EMOJI[s.id] ?? ''
-              const label = isSub && emoji === '↳' ? `↳ ${s.label}` : `${emoji} ${s.label}`
+              const icon = SECTION_ICON[s.id] ?? ''
               return (
                 <button
                   key={s.id}
@@ -99,8 +100,10 @@ export function SidebarNav({
                   className={`tab-btn ${isSub ? 'tab-sub-btn' : ''} ${activeId === s.id ? 'active' : ''}`}
                   onClick={() => handleClick(s.id)}
                   aria-current={activeId === s.id ? 'true' : undefined}
+                  title={s.label}
                 >
-                  {label}
+                  <span className="tab-icon" aria-hidden>{icon}</span>
+                  <span className="tab-label">{s.label}</span>
                 </button>
               )
             })}

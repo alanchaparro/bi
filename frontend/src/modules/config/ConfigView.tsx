@@ -1,6 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
-import { api, getSyncStatus, runSync, type SyncDomain, type SyncStatusResponse } from '../../shared/api'
+import {
+  api,
+  createUser,
+  getSyncStatus,
+  listUsers,
+  runSync,
+  updateUser,
+  type SyncDomain,
+  type SyncStatusResponse,
+  type UserItem,
+} from '../../shared/api'
 import { getApiErrorMessage } from '../../shared/apiErrors'
 
 type Props = {
@@ -33,6 +43,10 @@ type TramoRule = {
   tramos: number[]
 }
 
+type RoleType = 'admin' | 'analyst' | 'viewer'
+type ConfigSection = 'usuarios' | 'negocio' | 'importaciones'
+const ROLE_OPTIONS: RoleType[] = ['admin', 'analyst', 'viewer']
+
 const SYNC_DOMAINS: Array<{ value: SyncDomain; label: string }> = [
   { value: 'analytics', label: 'Analytics' },
   { value: 'cartera', label: 'Cartera' },
@@ -62,6 +76,7 @@ function monthSerial(mmYyyy: string): number {
 }
 
 export function ConfigView({ onReloadBrokers }: Props) {
+  const [configSection, setConfigSection] = useState<ConfigSection>('usuarios')
   const [health, setHealth] = useState<{ ok?: boolean; db_ok?: boolean; service?: string; error?: string } | null>(null)
   const [healthLoading, setHealthLoading] = useState(false)
   const [reloadLoading, setReloadLoading] = useState(false)
@@ -84,6 +99,16 @@ export function ConfigView({ onReloadBrokers }: Props) {
   const [ruleCategory, setRuleCategory] = useState<RuleCategory>('VIGENTE')
   const [ruleTramos, setRuleTramos] = useState<number[]>([])
   const [tramoRules, setTramoRules] = useState<TramoRule[]>([])
+
+  const [usersLoading, setUsersLoading] = useState(false)
+  const [usersSaving, setUsersSaving] = useState(false)
+  const [usersMessage, setUsersMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  const [users, setUsers] = useState<UserItem[]>([])
+  const [newUsername, setNewUsername] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [newRole, setNewRole] = useState<RoleType>('viewer')
+  const [newIsActive, setNewIsActive] = useState(true)
+  const [rowPasswordDraft, setRowPasswordDraft] = useState<Record<string, string>>({})
 
   const hasCarteraSelected = selectedDomains.includes('cartera')
   const closeMonthFromValue = useMemo(() => {
@@ -120,6 +145,7 @@ export function ConfigView({ onReloadBrokers }: Props) {
 
   const busy = syncLoading || reloadLoading
   const configBusy = tramoConfigLoading || tramoConfigSaving
+  const usersBusy = usersLoading || usersSaving
 
   const toggleDomain = useCallback((domain: SyncDomain, checked: boolean) => {
     setSelectedDomains((prev) => {
@@ -160,9 +186,26 @@ export function ConfigView({ onReloadBrokers }: Props) {
     }
   }, [])
 
+  const loadUsers = useCallback(async () => {
+    setUsersLoading(true)
+    setUsersMessage(null)
+    try {
+      const res = await listUsers()
+      setUsers((res.users || []).slice().sort((a, b) => String(a.username || '').localeCompare(String(b.username || ''))))
+    } catch (e: unknown) {
+      setUsersMessage({ ok: false, text: getApiErrorMessage(e) })
+    } finally {
+      setUsersLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     void loadTramoConfig()
   }, [loadTramoConfig])
+
+  useEffect(() => {
+    void loadUsers()
+  }, [loadUsers])
 
   const checkHealth = useCallback(async () => {
     setHealthLoading(true)
@@ -260,6 +303,59 @@ export function ConfigView({ onReloadBrokers }: Props) {
       setTramoConfigSaving(false)
     }
   }, [tramoRules])
+
+  const handleCreateUser = useCallback(async () => {
+    const username = newUsername.trim().toLowerCase()
+    const password = newPassword
+    if (!username) {
+      setUsersMessage({ ok: false, text: 'Ingrese username.' })
+      return
+    }
+    if (password.length < 6) {
+      setUsersMessage({ ok: false, text: 'La contrasena debe tener al menos 6 caracteres.' })
+      return
+    }
+    setUsersSaving(true)
+    setUsersMessage(null)
+    try {
+      await createUser({
+        username,
+        password,
+        role: newRole,
+        is_active: newIsActive,
+      })
+      setUsersMessage({ ok: true, text: 'Usuario creado.' })
+      setNewUsername('')
+      setNewPassword('')
+      setNewRole('viewer')
+      setNewIsActive(true)
+      await loadUsers()
+    } catch (e: unknown) {
+      setUsersMessage({ ok: false, text: getApiErrorMessage(e) })
+    } finally {
+      setUsersSaving(false)
+    }
+  }, [loadUsers, newIsActive, newPassword, newRole, newUsername])
+
+  const handleUpdateUser = useCallback(async (row: UserItem) => {
+    const pwd = (rowPasswordDraft[row.username] || '').trim()
+    setUsersSaving(true)
+    setUsersMessage(null)
+    try {
+      await updateUser(row.username, {
+        role: row.role,
+        is_active: row.is_active,
+        password: pwd || undefined,
+      })
+      setUsersMessage({ ok: true, text: `Usuario ${row.username} actualizado.` })
+      setRowPasswordDraft((prev) => ({ ...prev, [row.username]: '' }))
+      await loadUsers()
+    } catch (e: unknown) {
+      setUsersMessage({ ok: false, text: getApiErrorMessage(e) })
+    } finally {
+      setUsersSaving(false)
+    }
+  }, [loadUsers, rowPasswordDraft])
 
   const pollDomainStatus = useCallback(
     async (
@@ -428,40 +524,189 @@ export function ConfigView({ onReloadBrokers }: Props) {
   return (
     <section className="card config-card">
       <h2>Configuracion</h2>
+      <div className="config-submenu" role="tablist" aria-label="Subsecciones de configuracion">
+        <button
+          type="button"
+          className={`btn btn-secondary config-submenu-btn ${configSection === 'usuarios' ? 'active' : ''}`}
+          onClick={() => setConfigSection('usuarios')}
+          role="tab"
+          aria-selected={configSection === 'usuarios'}
+        >
+          Usuarios
+        </button>
+        <button
+          type="button"
+          className={`btn btn-secondary config-submenu-btn ${configSection === 'negocio' ? 'active' : ''}`}
+          onClick={() => setConfigSection('negocio')}
+          role="tab"
+          aria-selected={configSection === 'negocio'}
+        >
+          Configuracion de negocio
+        </button>
+        <button
+          type="button"
+          className={`btn btn-secondary config-submenu-btn ${configSection === 'importaciones' ? 'active' : ''}`}
+          onClick={() => setConfigSection('importaciones')}
+          role="tab"
+          aria-selected={configSection === 'importaciones'}
+        >
+          Importaciones
+        </button>
+      </div>
       <div className="config-form-wrap">
-        <div>
-          <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>API</h3>
-          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', margin: 0 }}>
-            Base URL: <code>{baseUrl}</code>
-          </p>
-        </div>
+        {configSection === 'negocio' && (
+        <>
+          <div>
+            <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>API</h3>
+            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', margin: 0 }}>
+              Base URL: <code>{baseUrl}</code>
+            </p>
+          </div>
 
+          <div>
+            <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Estado de conexion</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-secondary" onClick={checkHealth} disabled={healthLoading}>
+                {healthLoading ? 'Comprobando...' : 'Comprobar conexion'}
+              </button>
+              {health && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ color: health.ok ? 'var(--color-primary)' : 'var(--color-error)', fontWeight: 500 }}>
+                    {health.ok ? 'OK Conectado' : 'ERROR Sin conexion'}
+                    {health.db_ok !== undefined && ` (DB: ${health.db_ok ? 'OK' : 'Error'})`}
+                  </span>
+                  {health.error && (
+                    <div className="alert-error" style={{ fontSize: '0.85rem', maxWidth: '40rem' }}>
+                      {health.error}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+        )}
+
+        {configSection === 'usuarios' && (
         <div>
-          <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Estado de conexion</h3>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn-secondary" onClick={checkHealth} disabled={healthLoading}>
-              {healthLoading ? 'Comprobando...' : 'Comprobar conexion'}
+          <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Usuarios y Roles</h3>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', marginTop: 0 }}>
+            Crear usuarios, asignar rol y activar/desactivar acceso.
+          </p>
+
+          <div className="config-grid-3" style={{ marginTop: '0.75rem' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Username</span>
+              <input
+                className="input"
+                value={newUsername}
+                placeholder="ej: operador1"
+                onChange={(e) => setNewUsername(e.target.value.toLowerCase())}
+                disabled={usersBusy}
+              />
+            </label>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Contrasena</span>
+              <input
+                className="input"
+                type="password"
+                value={newPassword}
+                placeholder="min. 6 caracteres"
+                onChange={(e) => setNewPassword(e.target.value)}
+                disabled={usersBusy}
+              />
+            </label>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Rol</span>
+              <select className="input" value={newRole} onChange={(e) => setNewRole((e.target.value as RoleType) || 'viewer')} disabled={usersBusy}>
+                {ROLE_OPTIONS.map((r) => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div style={{ marginTop: '0.55rem', display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+              <input type="checkbox" checked={newIsActive} onChange={(e) => setNewIsActive(e.target.checked)} disabled={usersBusy} />
+              <span>Activo</span>
+            </label>
+            <button type="button" className="btn btn-primary" onClick={() => void handleCreateUser()} disabled={usersBusy}>
+              {usersSaving ? 'Guardando...' : 'Crear usuario'}
             </button>
-            {health && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <span style={{ color: health.ok ? 'var(--color-primary)' : 'var(--color-error)', fontWeight: 500 }}>
-                  {health.ok ? 'OK Conectado' : 'ERROR Sin conexion'}
-                  {health.db_ok !== undefined && ` (DB: ${health.db_ok ? 'OK' : 'Error'})`}
-                </span>
-                {health.error && (
-                  <div className="alert-error" style={{ fontSize: '0.85rem', maxWidth: '40rem' }}>
-                    {health.error}
+            <button type="button" className="btn btn-secondary" onClick={() => void loadUsers()} disabled={usersBusy}>
+              {usersLoading ? 'Cargando...' : 'Recargar usuarios'}
+            </button>
+            {usersMessage && (
+              <span style={{ color: usersMessage.ok ? 'var(--color-primary)' : 'var(--color-error)', fontWeight: 500 }}>
+                {usersMessage.text}
+              </span>
+            )}
+          </div>
+
+          <div style={{ marginTop: '0.75rem', display: 'grid', gap: '0.45rem' }}>
+            {users.length === 0 ? (
+              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', margin: 0 }}>
+                Sin usuarios en base de datos.
+              </p>
+            ) : (
+              users.map((u) => (
+                <div key={u.username} className="config-grid-3" style={{ alignItems: 'center' }}>
+                  <input className="input" value={u.username} readOnly />
+
+                  <select
+                    className="input"
+                    value={u.role}
+                    onChange={(e) => {
+                      const role = (e.target.value as RoleType) || 'viewer'
+                      setUsers((prev) => prev.map((x) => (x.username === u.username ? { ...x, role } : x)))
+                    }}
+                    disabled={usersBusy}
+                  >
+                    {ROLE_OPTIONS.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+
+                  <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(u.is_active)}
+                        onChange={(e) => {
+                          const is_active = e.target.checked
+                          setUsers((prev) => prev.map((x) => (x.username === u.username ? { ...x, is_active } : x)))
+                        }}
+                        disabled={usersBusy}
+                      />
+                      <span>Activo</span>
+                    </label>
+                    <input
+                      className="input"
+                      type="password"
+                      placeholder="Nueva contrasena (opcional)"
+                      value={rowPasswordDraft[u.username] || ''}
+                      onChange={(e) => setRowPasswordDraft((prev) => ({ ...prev, [u.username]: e.target.value }))}
+                      disabled={usersBusy}
+                    />
+                    <button type="button" className="btn btn-secondary" onClick={() => void handleUpdateUser(u)} disabled={usersBusy}>
+                      Guardar
+                    </button>
                   </div>
-                )}
-              </div>
+                </div>
+              ))
             )}
           </div>
         </div>
+        )}
 
+        {configSection === 'negocio' && (
         <div>
           <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Reglas de Tramo por Unidad de Negocio</h3>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', marginTop: 0 }}>
-            Elegi varios tramos + Unidad de Negocio + Categoria, luego agrega la regla.
+            Elige varios tramos + Unidad de Negocio + Categoria, luego agrega la regla.
           </p>
 
           <div className="config-grid-3" style={{ marginTop: '0.75rem' }}>
@@ -549,7 +794,9 @@ export function ConfigView({ onReloadBrokers }: Props) {
             )}
           </div>
         </div>
+        )}
 
+        {configSection === 'importaciones' && (
         <div>
           <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Carga dual SQL</h3>
 
@@ -634,7 +881,7 @@ export function ConfigView({ onReloadBrokers }: Props) {
           </div>
 
           <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', marginTop: '0.5rem' }}>
-            Modo resuelto: <strong>{modeLabel}</strong>
+            Modo de carga: <strong>{modeLabel}</strong>
           </p>
 
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -704,6 +951,7 @@ export function ConfigView({ onReloadBrokers }: Props) {
             </div>
           )}
         </div>
+        )}
       </div>
     </section>
   )

@@ -113,7 +113,12 @@ class SyncStatusOut(BaseModel):
     rows_read: int = 0
     rows_upserted: int = 0
     rows_unchanged: int = 0
+    affected_months: list[str] = Field(default_factory=list)
     target_table: str | None = None
+    agg_refresh_started: bool = False
+    agg_refresh_completed: bool = False
+    agg_rows_written: int = 0
+    agg_duration_sec: float | None = None
     duplicates_detected: int = 0
     error: str | None = None
     log: list[str] = Field(default_factory=list)

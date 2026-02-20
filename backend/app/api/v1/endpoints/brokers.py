@@ -4,6 +4,10 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_permission, write_rate_limiter
 from app.db.session import get_db
 from app.schemas.brokers import (
+    AuthUserCreateIn,
+    AuthUserItemOut,
+    AuthUsersOut,
+    AuthUserUpdateIn,
     BrokersPreferencesIn,
     BrokersPreferencesOut,
     CarteraTramoRulesIn,
@@ -20,9 +24,76 @@ from app.services.sync_service import SyncService
 router = APIRouter()
 
 
+def _user_to_out(row) -> AuthUserItemOut:
+    return AuthUserItemOut(
+        username=str(row.username or ''),
+        role=str(row.role or 'viewer'),
+        is_active=bool(row.is_active),
+        created_at=row.created_at.isoformat() if getattr(row, 'created_at', None) else None,
+        updated_at=row.updated_at.isoformat() if getattr(row, 'updated_at', None) else None,
+    )
+
+
 @router.get('/sync-analytics/status')
 def sync_analytics_status(user=Depends(require_permission('brokers:read'))):
     return SyncService.status(domain='analytics')
+
+
+@router.get('/users', response_model=AuthUsersOut)
+def list_users(
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('brokers:read')),
+):
+    rows = BrokersConfigService.list_auth_users(db)
+    return AuthUsersOut(users=[_user_to_out(r) for r in rows])
+
+
+@router.post('/users', response_model=AuthUserItemOut)
+def create_user(
+    payload: AuthUserCreateIn,
+    _rl=Depends(write_rate_limiter),
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('brokers:write_config')),
+):
+    try:
+        row = BrokersConfigService.create_auth_user(
+            db,
+            username=payload.username,
+            password=payload.password,
+            role=payload.role,
+            is_active=payload.is_active,
+            actor=str(user.get('sub', 'system')),
+        )
+        return _user_to_out(row)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)})
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail={'message': str(exc)})
+
+
+@router.put('/users/{username}', response_model=AuthUserItemOut)
+def update_user(
+    username: str,
+    payload: AuthUserUpdateIn,
+    _rl=Depends(write_rate_limiter),
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('brokers:write_config')),
+):
+    try:
+        row = BrokersConfigService.update_auth_user(
+            db,
+            username=username,
+            role=payload.role,
+            is_active=payload.is_active,
+            password=payload.password,
+            actor=str(user.get('sub', 'system')),
+            actor_username=str(user.get('sub', '')),
+        )
+        return _user_to_out(row)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail={'message': str(exc)})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)})
 
 
 @router.get('/supervisors-scope', response_model=SupervisorsScopeOut)

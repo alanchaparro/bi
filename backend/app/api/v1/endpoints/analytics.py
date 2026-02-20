@@ -4,13 +4,26 @@ from sqlalchemy.orm import Session
 from app.core.analytics_cache import get as cache_get, set as cache_set
 from app.core.deps import require_permission, write_rate_limiter
 from app.db.session import get_db
-from app.schemas.analytics import AnalyticsFilters, ExportRequest, PortfolioOptionsOut, PortfolioSummaryIn
+from app.schemas.analytics import (
+    AnalyticsFilters,
+    CobranzasCohorteIn,
+    CobranzasCohorteOptionsOut,
+    ExportRequest,
+    PortfolioCorteOptionsOut,
+    PortfolioCorteSummaryOut,
+    PortfolioOptionsOut,
+    PortfolioSummaryIn,
+)
 from app.services.analytics_service import AnalyticsService
 
 router = APIRouter()
 BROKERS_SUMMARY_CACHE_TTL = 60
 PORTFOLIO_OPTIONS_CACHE_TTL = 600
 PORTFOLIO_SUMMARY_CACHE_TTL = 180
+PORTFOLIO_CORTE_OPTIONS_CACHE_TTL = 600
+PORTFOLIO_CORTE_SUMMARY_CACHE_TTL = 180
+COHORTE_OPTIONS_CACHE_TTL = 1800
+COHORTE_SUMMARY_CACHE_TTL = 120
 
 
 def _call(endpoint: str, filters: AnalyticsFilters):
@@ -84,6 +97,36 @@ def portfolio_summary(
     return AnalyticsService.fetch_portfolio_summary_v1(db, filters)
 
 
+@router.post('/portfolio/corte/options', response_model=PortfolioCorteOptionsOut)
+def portfolio_corte_options(
+    filters: AnalyticsFilters,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('analytics:read')),
+):
+    cached = cache_get('portfolio/corte/options', filters)
+    if cached is not None:
+        return cached
+    result = AnalyticsService.fetch_portfolio_corte_options_v2(db, filters)
+    cache_set('portfolio/corte/options', filters, result, ttl_seconds=PORTFOLIO_CORTE_OPTIONS_CACHE_TTL)
+    return result
+
+
+@router.post('/portfolio/corte/summary', response_model=PortfolioCorteSummaryOut)
+def portfolio_corte_summary(
+    filters: PortfolioSummaryIn,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('analytics:read')),
+):
+    if not bool(filters.include_rows):
+        cached = cache_get('portfolio/corte/summary', filters)
+        if cached is not None:
+            return cached
+        result = AnalyticsService.fetch_portfolio_corte_summary_v2(db, filters)
+        cache_set('portfolio/corte/summary', filters, result, ttl_seconds=PORTFOLIO_CORTE_SUMMARY_CACHE_TTL)
+        return result
+    return AnalyticsService.fetch_portfolio_corte_summary_v2(db, filters)
+
+
 @router.post('/rendimiento/summary')
 def rendimiento_summary(filters: AnalyticsFilters, user=Depends(require_permission('analytics:read'))):
     return _call('/analytics/performance/by-management-month', filters)
@@ -108,6 +151,34 @@ def brokers_summary(
         return cached
     result = AnalyticsService.fetch_brokers_summary_v1(db, filters)
     cache_set('brokers/summary', filters, result, ttl_seconds=BROKERS_SUMMARY_CACHE_TTL)
+    return result
+
+
+@router.post('/cobranzas-cohorte/options', response_model=CobranzasCohorteOptionsOut)
+def cobranzas_cohorte_options(
+    filters: CobranzasCohorteIn,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('analytics:read')),
+):
+    cached = cache_get('cobranzas-cohorte/options', filters)
+    if cached is not None:
+        return cached
+    result = AnalyticsService.fetch_cobranzas_cohorte_options_v1(db, filters)
+    cache_set('cobranzas-cohorte/options', filters, result, ttl_seconds=COHORTE_OPTIONS_CACHE_TTL)
+    return result
+
+
+@router.post('/cobranzas-cohorte/summary')
+def cobranzas_cohorte_summary(
+    filters: CobranzasCohorteIn,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('analytics:read')),
+):
+    cached = cache_get('cobranzas-cohorte/summary', filters)
+    if cached is not None:
+        return cached
+    result = AnalyticsService.fetch_cobranzas_cohorte_summary_v1(db, filters)
+    cache_set('cobranzas-cohorte/summary', filters, result, ttl_seconds=COHORTE_SUMMARY_CACHE_TTL)
     return result
 
 

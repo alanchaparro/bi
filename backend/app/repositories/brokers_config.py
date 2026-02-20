@@ -4,7 +4,16 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.brokers import AuditLog, BrokersSupervisorScope, CarteraFact, CommissionRules, PrizeRules, SyncRecord, UserPreference
+from app.models.brokers import (
+    AuditLog,
+    AuthUser,
+    BrokersSupervisorScope,
+    CarteraFact,
+    CommissionRules,
+    PrizeRules,
+    SyncRecord,
+    UserPreference,
+)
 
 
 def _upsert_singleton(db: Session, model, field_name: str, value_json: str):
@@ -167,3 +176,54 @@ def get_cartera_uns(db: Session) -> list[str]:
         rows = db.query(SyncRecord.un).filter(SyncRecord.domain == 'cartera').distinct().all()
     uns = sorted({str(r[0] or '').strip().upper() for r in rows if str(r[0] or '').strip()})
     return uns
+
+
+def list_auth_users(db: Session) -> list[AuthUser]:
+    return db.query(AuthUser).order_by(AuthUser.username.asc()).all()
+
+
+def get_auth_user(db: Session, username: str) -> AuthUser | None:
+    return db.query(AuthUser).filter(AuthUser.username == username).first()
+
+
+def create_auth_user(
+    db: Session,
+    username: str,
+    password_hash: str,
+    role: str,
+    is_active: bool,
+    actor: str,
+) -> AuthUser:
+    row = AuthUser(
+        username=username,
+        password_hash=password_hash,
+        role=role,
+        is_active=bool(is_active),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    add_audit(db, 'auth_users', 'create', actor, {'username': row.username, 'role': row.role, 'is_active': row.is_active})
+    return row
+
+
+def update_auth_user(
+    db: Session,
+    row: AuthUser,
+    role: str | None,
+    is_active: bool | None,
+    password_hash: str | None,
+    actor: str,
+) -> AuthUser:
+    if role is not None:
+        row.role = role
+    if is_active is not None:
+        row.is_active = bool(is_active)
+    if password_hash:
+        row.password_hash = password_hash
+    row.updated_at = datetime.utcnow()
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    add_audit(db, 'auth_users', 'update', actor, {'username': row.username, 'role': row.role, 'is_active': row.is_active})
+    return row

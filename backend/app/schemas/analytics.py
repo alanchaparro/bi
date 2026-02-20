@@ -53,3 +53,37 @@ class PortfolioSummaryIn(AnalyticsFilters):
 class PortfolioOptionsOut(BaseModel):
     options: dict[str, list[str]]
     meta: dict[str, str]
+
+
+class PortfolioCorteOptionsOut(BaseModel):
+    options: dict[str, list[str]]
+    meta: dict[str, str]
+
+
+class PortfolioCorteSummaryOut(BaseModel):
+    kpis: dict[str, float | int]
+    charts: dict[str, dict]
+    meta: dict[str, str]
+
+
+class CobranzasCohorteIn(BaseModel):
+    cutoff_month: str | None = None
+    un: list[str] = Field(default_factory=list)
+    via_cobro: list[str] = Field(default_factory=list)
+    categoria: list[str] = Field(default_factory=list)
+    supervisor: list[str] = Field(default_factory=list)
+
+    @field_validator('cutoff_month')
+    @classmethod
+    def validate_cutoff_month(cls, value: str | None):
+        if value is None or value == '':
+            return None
+        if not _is_month(value):
+            raise ValueError(f'mes inválido: {value}')
+        return value
+
+
+class CobranzasCohorteOptionsOut(BaseModel):
+    options: dict[str, list[str]]
+    default_cutoff: str | None = None
+    meta: dict[str, str]
