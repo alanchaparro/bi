@@ -14,19 +14,28 @@ os.environ.setdefault('JWT_SECRET_KEY', 'test_secret_key')
 os.environ.setdefault('JWT_REFRESH_SECRET_KEY', 'test_refresh_secret')
 
 from app.main import app  # noqa: E402
+from app.core.rate_limit import rate_limiter  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
-from app.models.brokers import AnalyticsContractSnapshot, AuthUser  # noqa: E402
+from app.models.brokers import AnalyticsContractSnapshot, AuthUser, AuthUserState  # noqa: E402
 
-TEST_ADMIN_USER = os.environ.get('TEST_ADMIN_USER', 'admin')
-TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', 'change_me_demo_admin_password')
-TEST_ANALYST_USER = os.environ.get('TEST_ANALYST_USER', 'analyst')
-TEST_ANALYST_PASSWORD = os.environ.get('TEST_ANALYST_PASSWORD', 'change_me_demo_analyst_password')
+TEST_ADMIN_USER = os.environ.get('TEST_ADMIN_USER', os.environ.get('DEMO_ADMIN_USER', 'admin'))
+TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', os.environ.get('DEMO_ADMIN_PASSWORD', 'change_me_demo_admin_password'))
+TEST_ANALYST_USER = os.environ.get('TEST_ANALYST_USER', os.environ.get('DEMO_ANALYST_USER', 'analyst'))
+TEST_ANALYST_PASSWORD = os.environ.get('TEST_ANALYST_PASSWORD', os.environ.get('DEMO_ANALYST_PASSWORD', 'change_me_demo_analyst_password'))
 
 
 class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        db = SessionLocal()
+        try:
+            db.query(AuthUserState).delete()
+            db.query(AuthUser).filter(AuthUser.username.in_([TEST_ADMIN_USER, TEST_ANALYST_USER])).delete(synchronize_session=False)
+            db.commit()
+        finally:
+            db.close()
+        rate_limiter._events.clear()
         cls.client = TestClient(app)
 
     def test_login_refresh_revoke_flow(self):

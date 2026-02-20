@@ -12,17 +12,28 @@ os.environ.setdefault('DATABASE_URL', 'sqlite:///./data/test_app_v1.db')
 os.environ.setdefault('JWT_SECRET_KEY', 'test_secret_key')
 
 from app.main import app  # noqa: E402
+from app.core.rate_limit import rate_limiter  # noqa: E402
+from app.db.session import SessionLocal  # noqa: E402
+from app.models.brokers import AuthUser, AuthUserState  # noqa: E402
 
 # Credenciales de test: por defecto usuarios demo (dev). Para DB-only usar TEST_* con usuario creado en DB.
-TEST_ADMIN_USER = os.environ.get('TEST_ADMIN_USER', 'admin')
-TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', 'change_me_demo_admin_password')
-TEST_ANALYST_USER = os.environ.get('TEST_ANALYST_USER', 'analyst')
-TEST_ANALYST_PASSWORD = os.environ.get('TEST_ANALYST_PASSWORD', 'change_me_demo_analyst_password')
+TEST_ADMIN_USER = os.environ.get('TEST_ADMIN_USER', os.environ.get('DEMO_ADMIN_USER', 'admin'))
+TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', os.environ.get('DEMO_ADMIN_PASSWORD', 'change_me_demo_admin_password'))
+TEST_ANALYST_USER = os.environ.get('TEST_ANALYST_USER', os.environ.get('DEMO_ANALYST_USER', 'analyst'))
+TEST_ANALYST_PASSWORD = os.environ.get('TEST_ANALYST_PASSWORD', os.environ.get('DEMO_ANALYST_PASSWORD', 'change_me_demo_analyst_password'))
 
 
 class ApiV1BrokersConfigTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        db = SessionLocal()
+        try:
+            db.query(AuthUserState).delete()
+            db.query(AuthUser).filter(AuthUser.username.in_([TEST_ADMIN_USER, TEST_ANALYST_USER])).delete(synchronize_session=False)
+            db.commit()
+        finally:
+            db.close()
+        rate_limiter._events.clear()
         cls.client = TestClient(app)
         r = cls.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
         assert r.status_code == 200, r.json()
