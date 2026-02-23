@@ -51,6 +51,8 @@ type SyncLive = {
   error?: string | null
 }
 
+type SyncTagTone = 'ok' | 'warn' | 'info' | 'error'
+
 type RuleCategory = 'VIGENTE' | 'MOROSO'
 
 type TramoRule = {
@@ -105,6 +107,10 @@ function formatSyncTimestamp(value?: string | null): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return String(value)
   return date.toLocaleString()
+}
+
+function toneClass(tone: SyncTagTone): string {
+  return `sync-progress-tag sync-progress-tag--${tone}`
 }
 
 export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
@@ -184,6 +190,18 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
     return SYNC_DOMAINS.find((d) => d.value === syncLive.currentDomain)?.label || syncLive.currentDomain
   }, [syncLive?.currentDomain])
   const syncQueryFile = syncLive?.currentQueryFile || (syncLive?.currentDomain ? SYNC_QUERY_FILES[syncLive.currentDomain] : '-')
+  const chunkTone: SyncTagTone = syncLive?.error
+    ? 'error'
+    : syncLive?.chunkStatus === 'changed'
+      ? 'ok'
+      : syncLive?.chunkStatus === 'unchanged'
+        ? 'warn'
+        : 'info'
+  const queueTone: SyncTagTone = typeof syncLive?.queuePosition === 'number'
+    ? (syncLive.queuePosition > 0 ? 'warn' : 'ok')
+    : 'info'
+  const watermarkTone: SyncTagTone = syncLive?.watermark?.lastUpdatedAt ? 'ok' : 'warn'
+  const throughputTone: SyncTagTone = (syncLive?.throughputRowsPerSec || 0) > 0 ? 'ok' : 'warn'
 
   useEffect(() => {
     onSyncLiveChange?.(syncLive)
@@ -1005,15 +1023,15 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                 <div className="sync-progress-details">
                   <div className="sync-progress-title">{syncLive.message || 'Sincronizando...'}</div>
                   <div className="sync-progress-tags">
-                    <span className="sync-progress-tag">Dominio: <strong>{syncDomainLabel}</strong></span>
-                    <span className="sync-progress-tag">Query: <code>{syncQueryFile}</code></span>
-                    <span className="sync-progress-tag">Etapa: <strong>{syncLive.jobStep || syncLive.stage || '-'}</strong></span>
-                    <span className="sync-progress-tag">ETA: <strong>{syncLive.etaSeconds && syncLive.etaSeconds > 0 ? `${syncLive.etaSeconds}s` : '-'}</strong></span>
-                    <span className="sync-progress-tag">Throughput: <strong>{syncLive.throughputRowsPerSec ? `${syncLive.throughputRowsPerSec.toFixed(1)} filas/s` : '-'}</strong></span>
-                    <span className="sync-progress-tag">Cola: <strong>{typeof syncLive.queuePosition === 'number' ? syncLive.queuePosition : '-'}</strong></span>
-                    <span className="sync-progress-tag">Chunk: <strong>{syncLive.chunkStatus || '-'}</strong></span>
-                    <span className="sync-progress-tag">Chunk key: <code>{syncLive.chunkKey || '-'}</code></span>
-                    <span className="sync-progress-tag">Watermark: <code>{syncLive.watermark?.partitionKey || '-'}</code></span>
+                    <span className={toneClass('info')}>Dominio: <strong>{syncDomainLabel}</strong></span>
+                    <span className={toneClass('info')}>Query: <code>{syncQueryFile}</code></span>
+                    <span className={toneClass('info')}>Etapa: <strong>{syncLive.jobStep || syncLive.stage || '-'}</strong></span>
+                    <span className={toneClass((syncLive.etaSeconds && syncLive.etaSeconds > 0) ? 'warn' : 'ok')}>ETA: <strong>{syncLive.etaSeconds && syncLive.etaSeconds > 0 ? `${syncLive.etaSeconds}s` : '-'}</strong></span>
+                    <span className={toneClass(throughputTone)}>Throughput: <strong>{syncLive.throughputRowsPerSec ? `${syncLive.throughputRowsPerSec.toFixed(1)} filas/s` : '-'}</strong></span>
+                    <span className={toneClass(queueTone)}>Cola: <strong>{typeof syncLive.queuePosition === 'number' ? syncLive.queuePosition : '-'}</strong></span>
+                    <span className={toneClass(chunkTone)}>Chunk: <strong>{syncLive.chunkStatus || '-'}</strong></span>
+                    <span className={toneClass(chunkTone)}>Chunk key: <code>{syncLive.chunkKey || '-'}</code></span>
+                    <span className={toneClass(watermarkTone)}>Watermark: <code>{syncLive.watermark?.partitionKey || '-'}</code></span>
                   </div>
                 </div>
               </div>

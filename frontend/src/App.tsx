@@ -31,6 +31,7 @@ type GlobalSyncLive = {
   chunkKey?: string | null
   chunkStatus?: string | null
   skippedUnchangedChunks?: number
+  error?: string | null
 }
 
 export default function App() {
@@ -54,6 +55,13 @@ export default function App() {
   const globalSyncPct = Math.max(0, Math.min(100, Math.round(globalSyncLive?.progressPct || 0)))
   const globalSyncQuery = globalSyncLive?.currentQueryFile || '-'
   const showGlobalSync = Boolean(globalSyncLive?.running)
+  const globalSyncTone = globalSyncLive?.error
+    ? 'error'
+    : globalSyncLive?.chunkStatus === 'changed'
+      ? 'ok'
+      : globalSyncLive?.chunkStatus === 'unchanged'
+        ? 'warn'
+        : 'info'
 
   const handleLogin = useCallback(async (payload: LoginRequest) => {
     setLoginError(null)
@@ -158,7 +166,7 @@ export default function App() {
           {showGlobalSync ? (
             <button
               type="button"
-              className="header-sync-pill"
+              className={`header-sync-pill header-sync-pill--${globalSyncTone}`}
               onClick={() => setActiveSectionId('config')}
               title={
                 `${globalSyncLive?.message || 'Sincronizando...'}`
@@ -172,7 +180,7 @@ export default function App() {
               }
               aria-label={`Sincronizacion en curso ${globalSyncPct} por ciento`}
             >
-              <span className="header-sync-icon" aria-hidden />
+              <span className={`header-sync-icon header-sync-icon--${globalSyncTone}`} aria-hidden />
               <span className="header-sync-text">{globalSyncPct}%</span>
               <span className="header-sync-domain">{String(globalSyncLive?.currentDomain || '-')}</span>
             </button>

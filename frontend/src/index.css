@@ -165,6 +165,21 @@ body.sidebar-open {
   transition: transform 0.15s ease, background 0.2s ease;
 }
 
+.header-sync-pill--ok {
+  border-color: color-mix(in srgb, #22c55e 46%, var(--color-border));
+  background: color-mix(in srgb, #22c55e 14%, transparent);
+}
+
+.header-sync-pill--warn {
+  border-color: color-mix(in srgb, #f59e0b 46%, var(--color-border));
+  background: color-mix(in srgb, #f59e0b 14%, transparent);
+}
+
+.header-sync-pill--error {
+  border-color: color-mix(in srgb, #ef4444 46%, var(--color-border));
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+}
+
 .header-sync-pill:hover {
   transform: translateY(-1px);
   background: color-mix(in srgb, var(--color-primary) 22%, transparent);
@@ -182,6 +197,18 @@ body.sidebar-open {
   border: 2px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
   border-top-color: var(--color-primary);
   animation: header-sync-spin 0.9s linear infinite;
+}
+
+.header-sync-icon--ok {
+  border-top-color: #22c55e;
+}
+
+.header-sync-icon--warn {
+  border-top-color: #f59e0b;
+}
+
+.header-sync-icon--error {
+  border-top-color: #ef4444;
 }
 
 .header-sync-text {
@@ -1866,6 +1893,30 @@ label.input-label {
   background: color-mix(in srgb, var(--color-surface) 84%, transparent);
   color: var(--color-text-muted);
   font-size: 0.76rem;
+}
+
+.sync-progress-tag--info {
+  border-color: color-mix(in srgb, #0ea5e9 35%, var(--color-border));
+  background: color-mix(in srgb, #0ea5e9 12%, transparent);
+  color: color-mix(in srgb, #e0f2fe 82%, var(--color-text));
+}
+
+.sync-progress-tag--ok {
+  border-color: color-mix(in srgb, #22c55e 36%, var(--color-border));
+  background: color-mix(in srgb, #22c55e 12%, transparent);
+  color: color-mix(in srgb, #dcfce7 82%, var(--color-text));
+}
+
+.sync-progress-tag--warn {
+  border-color: color-mix(in srgb, #f59e0b 38%, var(--color-border));
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  color: color-mix(in srgb, #fef3c7 82%, var(--color-text));
+}
+
+.sync-progress-tag--error {
+  border-color: color-mix(in srgb, #ef4444 38%, var(--color-border));
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+  color: color-mix(in srgb, #fee2e2 82%, var(--color-text));
 }
 
 .sync-progress-tag code {
