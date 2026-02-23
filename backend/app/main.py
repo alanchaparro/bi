@@ -9,10 +9,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.router import router as v1_router
 from app.core.config import settings
+from app.db.bootstrap import bootstrap_database_with_demo_probe
 from app.db.base import Base
 from app.db.session import engine
 
-if settings.app_env != 'prod':
+if settings.app_env != 'prod' and not settings.db_bootstrap_on_start:
     Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title=settings.app_name, version='1.0.0')
@@ -110,3 +111,9 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
 
 
 app.include_router(v1_router)
+
+
+@app.on_event('startup')
+def _bootstrap_db_on_startup() -> None:
+    if settings.db_bootstrap_on_start:
+        bootstrap_database_with_demo_probe()

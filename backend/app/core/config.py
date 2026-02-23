@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     app_name: str = 'cobranzas-api-v1'
     app_env: str = Field(default='dev', alias='APP_ENV')
     app_port: int = Field(default=8000, alias='APP_PORT')
+    db_bootstrap_on_start: bool = Field(default=True, alias='DB_BOOTSTRAP_ON_START')
+    db_demo_probe_on_start: bool = Field(default=True, alias='DB_DEMO_PROBE_ON_START')
 
     database_url: str = Field(default='sqlite:///./data/app_v1.db', alias='DATABASE_URL')
     postgres_db: str = Field(default='cobranzas_prod', alias='POSTGRES_DB')
