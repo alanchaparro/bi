@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.deps import require_permission, write_rate_limiter
-from app.schemas.sync import SyncRunIn, SyncRunOut, SyncStatusOut
+from app.schemas.sync import SyncPerfSummaryOut, SyncRunIn, SyncRunOut, SyncStatusOut
 from app.services.sync_service import SyncService
 
 router = APIRouter()
@@ -34,3 +34,11 @@ def sync_status(
     user=Depends(require_permission('brokers:read')),
 ):
     return SyncService.status(domain=domain.strip().lower(), job_id=job_id)
+
+
+@router.get('/perf/summary', response_model=SyncPerfSummaryOut)
+def sync_perf_summary(
+    limit: int = Query(default=200, ge=20, le=1000),
+    user=Depends(require_permission('brokers:read')),
+):
+    return SyncService.perf_summary(limit=limit)

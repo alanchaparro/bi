@@ -15,7 +15,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from app.core.analytics_cache import invalidate_prefix
+from app.core.analytics_cache import invalidate_endpoint, invalidate_prefix
 from app.core.config import settings
 from app.db.session import SessionLocal, engine
 from app.models.brokers import (
@@ -27,6 +27,7 @@ from app.models.brokers import (
     ContratosFact,
     GestoresFact,
     SyncRecord,
+    SyncJobStep,
     SyncRun,
 )
 from app.services.brokers_config_service import BrokersConfigService
@@ -52,6 +53,26 @@ FACT_TABLE_BY_DOMAIN = {
 
 def _target_table_name(domain: str) -> str:
     return FACT_TABLE_BY_DOMAIN[domain].__tablename__
+
+
+def _query_file_for(domain: str) -> str:
+    return SYNC_DOMAIN_QUERIES.get(domain, '')
+
+
+def _job_step_from_stage(stage: str | None) -> str | None:
+    mapping = {
+        'starting': 'bootstrap',
+        'connecting_mysql': 'extract',
+        'normalizing': 'normalize',
+        'replacing_window': 'replace_window',
+        'upserting': 'upsert',
+        'refreshing_snapshot': 'refresh_snapshot',
+        'refreshing_corte_agg': 'refresh_agg',
+        'analyzing': 'analyze',
+        'completed': 'finalize',
+        'failed': 'failed',
+    }
+    return mapping.get(str(stage or '').strip().lower())
 
 _state_lock = threading.Lock()
 _state_by_domain: dict[str, dict] = {}
@@ -370,6 +391,29 @@ def _set_state(domain: str, updates: dict) -> None:
     with _state_lock:
         current = dict(_state_by_domain.get(domain) or {})
         current.update(updates)
+        started_at_raw = current.get('started_at')
+        started_at_dt = None
+        if isinstance(started_at_raw, str) and started_at_raw:
+            try:
+                started_at_dt = datetime.fromisoformat(started_at_raw.replace('Z', '+00:00'))
+            except Exception:
+                started_at_dt = None
+        if started_at_dt is not None:
+            now = datetime.now(timezone.utc)
+            if started_at_dt.tzinfo is None:
+                started_at_dt = started_at_dt.replace(tzinfo=timezone.utc)
+            elapsed = max(1.0, (now - started_at_dt).total_seconds())
+            progress = float(current.get('progress_pct') or 0.0)
+            rows_read = float(current.get('rows_read') or 0.0)
+            rows_processed = float(current.get('rows_upserted') or 0.0) + float(current.get('rows_unchanged') or 0.0)
+            throughput = rows_read / elapsed if rows_read > 0 else rows_processed / elapsed
+            current['throughput_rows_per_sec'] = round(throughput, 2) if throughput > 0 else 0.0
+            if current.get('running') and progress > 0 and progress < 100:
+                current['eta_seconds'] = int((elapsed * (100.0 - progress)) / progress)
+            else:
+                current['eta_seconds'] = 0
+        current['current_query_file'] = _query_file_for(domain)
+        current['job_step'] = _job_step_from_stage(current.get('stage'))
         _state_by_domain[domain] = current
 
 
@@ -430,6 +474,27 @@ def _delete_target_window(db: Session, domain: str, mode: str, year_from: int | 
     elif target_months:
         q = q.filter(SyncRecord.gestion_month.in_(target_months))
     q.delete(synchronize_session=False)
+    db.commit()
+
+
+def _adaptive_chunk_size(domain: str, configured: int) -> int:
+    base = max(500, int(configured or 5000))
+    domain_hint = {
+        'cobranzas': 4000,
+        'cartera': 2500,
+        'analytics': 5000,
+        'contratos': 6000,
+        'gestores': 6000,
+    }.get(domain, base)
+    return max(500, min(12000, int((base + domain_hint) / 2)))
+
+
+def _analyze_after_sync(db: Session, domain: str) -> None:
+    targets = [FACT_TABLE_BY_DOMAIN[domain].__tablename__]
+    if domain == 'cartera':
+        targets.append(CarteraCorteAgg.__tablename__)
+    for table_name in targets:
+        db.execute(sa_text(f'ANALYZE {table_name}'))
     db.commit()
 
 
@@ -961,6 +1026,49 @@ def _persist_sync_run(db: Session, payload: dict) -> None:
     db.commit()
 
 
+def _persist_job_step(db: Session, job_id: str, domain: str, step_name: str, status: str, details: dict | None = None) -> None:
+    now = datetime.utcnow()
+    row = (
+        db.query(SyncJobStep)
+        .filter(SyncJobStep.job_id == job_id, SyncJobStep.domain == domain, SyncJobStep.step_name == step_name)
+        .order_by(SyncJobStep.started_at.desc())
+        .first()
+    )
+    details_json = json.dumps(details or {}, ensure_ascii=False)
+    if status == 'running':
+        row = SyncJobStep(
+            job_id=job_id,
+            domain=domain,
+            step_name=step_name,
+            status='running',
+            details_json=details_json,
+            started_at=now,
+        )
+        db.add(row)
+        db.commit()
+        return
+    if row is None:
+        row = SyncJobStep(
+            job_id=job_id,
+            domain=domain,
+            step_name=step_name,
+            status=status,
+            details_json=details_json,
+            started_at=now,
+            finished_at=now,
+            duration_sec=0.0,
+        )
+        db.add(row)
+        db.commit()
+        return
+    row.status = status
+    row.details_json = details_json
+    row.finished_at = now
+    if row.started_at:
+        row.duration_sec = round((now - row.started_at).total_seconds(), 2)
+    db.commit()
+
+
 def _cleanup_stale_running_jobs() -> None:
     """
     After process/container restarts, jobs can remain running=true in DB
@@ -1038,6 +1146,10 @@ def _execute_job(
                 'rows_read': 0,
                 'rows_upserted': 0,
                 'rows_unchanged': 0,
+                'throughput_rows_per_sec': 0.0,
+                'eta_seconds': 0,
+                'current_query_file': _query_file_for(domain),
+                'job_step': 'bootstrap',
                 'affected_months': [],
                 'agg_refresh_started': False,
                 'agg_refresh_completed': False,
@@ -1079,6 +1191,10 @@ def _execute_job(
                 'rows_read': 0,
                 'rows_upserted': 0,
                 'rows_unchanged': 0,
+                'throughput_rows_per_sec': 0.0,
+                'eta_seconds': 0,
+                'current_query_file': _query_file_for(domain),
+                'job_step': 'bootstrap',
                 'affected_months': [],
                 'agg_refresh_started': False,
                 'agg_refresh_completed': False,
@@ -1098,6 +1214,7 @@ def _execute_job(
                 'duration_sec': None,
             },
         )
+        _persist_job_step(db, job_id, domain, 'bootstrap', 'running', {'mode': mode})
 
         range_months = _month_range(close_month_from or '', close_month_to or '') if mode == 'range_months' else []
         range_months_set = set(range_months)
@@ -1105,12 +1222,15 @@ def _execute_job(
         query_path = _query_path_for(domain)
         if not query_path.exists():
             raise RuntimeError(f'No existe query para dominio {domain}: {query_path.name}')
+        _persist_job_step(db, job_id, domain, 'extract', 'running', {'query_file': _query_file_for(domain)})
         _set_state(domain, {'stage': 'connecting_mysql', 'progress_pct': 8, 'status_message': 'Conectando a MySQL'})
         _append_log(domain, 'Conectando a MySQL...')
         configured_max_rows = int(settings.sync_max_rows) if settings.sync_max_rows is not None else 250000
         # SYNC_MAX_ROWS <= 0 disables hard cap for full loads.
         max_rows = configured_max_rows if configured_max_rows > 0 else None
         source_rows = 0
+        _persist_job_step(db, job_id, domain, 'extract', 'completed', {'rows_read': 0})
+        _persist_job_step(db, job_id, domain, 'normalize', 'running')
         _set_state(domain, {'stage': 'normalizing', 'progress_pct': 35, 'status_message': 'Normalizando filas'})
 
         normalized_rows: list[dict] = []
@@ -1177,16 +1297,20 @@ def _execute_job(
                 temp_rows_file.close()
 
         _append_log(domain, f'Filas fuente: {source_rows}')
+        _persist_job_step(db, job_id, domain, 'normalize', 'completed', {'rows_read': source_rows, 'normalized': normalized_count})
         target_months = set(source_months)
         _ensure_cartera_partitions(db, target_months if domain == 'cartera' else set())
 
+        _persist_job_step(db, job_id, domain, 'replace_window', 'running', {'months': sorted(target_months, key=_month_serial)})
         _set_state(domain, {'stage': 'replacing_window', 'progress_pct': 55, 'status_message': 'Reemplazando ventana'})
         _delete_target_window(db, domain, mode, year_from, target_months)
         _delete_target_window_fact(db, domain, mode, year_from, close_month, target_months)
+        _persist_job_step(db, job_id, domain, 'replace_window', 'completed', {'months': sorted(target_months, key=_month_serial)})
         ordered_target_months = sorted(target_months, key=_month_serial)
         _set_state(domain, {'affected_months': ordered_target_months})
         _append_log(domain, f'Meses objetivo: {", ".join(ordered_target_months) or "-"}')
 
+        _persist_job_step(db, job_id, domain, 'upsert', 'running')
         _set_state(domain, {'stage': 'upserting', 'progress_pct': 75, 'status_message': 'Aplicando UPSERT'})
         rows_inserted = 0
         rows_upserted = 0
@@ -1206,7 +1330,7 @@ def _execute_job(
                             continue
                         month_counts[month_key] = month_counts.get(month_key, 0) + 1
                         processed_by_month.setdefault(month_key, 0)
-            chunk_size = max(500, int(settings.sync_fetch_batch_size or 5000))
+            chunk_size = _adaptive_chunk_size(domain, int(settings.sync_fetch_batch_size or 5000))
             processed = 0
             if domain == 'cartera' and month_counts:
                 ordered_months = sorted(month_counts.keys(), key=_month_serial)
@@ -1347,14 +1471,29 @@ def _execute_job(
                     'target_table': _target_table_name(domain),
                 },
             )
+        _persist_job_step(
+            db,
+            job_id,
+            domain,
+            'upsert',
+            'completed',
+            {
+                'rows_inserted': rows_inserted,
+                'rows_upserted': rows_upserted,
+                'rows_unchanged': rows_unchanged,
+            },
+        )
         if domain == 'analytics':
+            _persist_job_step(db, job_id, domain, 'refresh_snapshot', 'running')
             _set_state(domain, {'stage': 'refreshing_snapshot', 'progress_pct': 88, 'status_message': 'Actualizando snapshot analytics'})
             _refresh_analytics_snapshot(db, mode, year_from, target_months, normalized_rows)
+            _persist_job_step(db, job_id, domain, 'refresh_snapshot', 'completed')
 
         agg_rows_written = 0
         agg_duration_sec = None
         if domain in {'cartera', 'cobranzas'}:
             agg_started_at = datetime.now(timezone.utc)
+            _persist_job_step(db, job_id, domain, 'refresh_agg', 'running')
             _set_state(
                 domain,
                 {
@@ -1380,6 +1519,19 @@ def _execute_job(
                 domain,
                 f'Agregado corte actualizado: borradas={deleted_agg}, insertadas={agg_rows_written}, duracion={agg_duration_sec}s',
             )
+            _persist_job_step(
+                db,
+                job_id,
+                domain,
+                'refresh_agg',
+                'completed',
+                {'agg_rows_written': int(agg_rows_written), 'agg_duration_sec': agg_duration_sec},
+            )
+
+        _persist_job_step(db, job_id, domain, 'analyze', 'running')
+        _set_state(domain, {'stage': 'analyzing', 'progress_pct': 98, 'status_message': 'Actualizando estadisticas (ANALYZE)'})
+        _analyze_after_sync(db, domain)
+        _persist_job_step(db, job_id, domain, 'analyze', 'completed')
 
         finished_at = datetime.now(timezone.utc)
         duration_sec = round((finished_at - started_at).total_seconds(), 2)
@@ -1408,6 +1560,10 @@ def _execute_job(
             'rows_read': source_rows,
             'rows_upserted': rows_upserted,
             'rows_unchanged': rows_unchanged,
+            'throughput_rows_per_sec': float((_state_by_domain.get(domain) or {}).get('throughput_rows_per_sec') or 0.0),
+            'eta_seconds': 0,
+            'current_query_file': _query_file_for(domain),
+            'job_step': 'finalize',
             'affected_months': ordered_target_months,
             'target_table': _target_table_name(domain),
             'agg_refresh_started': domain in {'cartera', 'cobranzas'},
@@ -1422,11 +1578,25 @@ def _execute_job(
             'duration_sec': duration_sec,
         }
         _set_state(domain, final_state)
+        _persist_job_step(db, job_id, domain, 'bootstrap', 'completed')
+        _persist_job_step(db, job_id, domain, 'finalize', 'completed', {'duration_sec': duration_sec})
         if domain == 'cartera':
             invalidated_options = invalidate_prefix('portfolio/options')
             invalidated_summary = invalidate_prefix('portfolio/summary')
-            invalidated_corte_options = invalidate_prefix('portfolio/corte/options')
-            invalidated_corte_summary = invalidate_prefix('portfolio/corte/summary')
+            target_months_set = set(ordered_target_months)
+            invalidated_corte_options = invalidate_endpoint(
+                'portfolio/corte/options',
+                lambda _: True,
+            )
+            invalidated_corte_summary = invalidate_endpoint(
+                'portfolio/corte/summary',
+                lambda filters: (
+                    not target_months_set
+                    or not isinstance(filters, dict)
+                    or not filters.get('gestion_month')
+                    or bool(set(filters.get('gestion_month') or []).intersection(target_months_set))
+                ),
+            )
             _append_log(
                 domain,
                 (
@@ -1438,11 +1608,36 @@ def _execute_job(
                 ),
             )
         if domain == 'cobranzas':
-            invalidated_corte_options = invalidate_prefix('portfolio/corte/options')
-            invalidated_corte_summary = invalidate_prefix('portfolio/corte/summary')
+            target_months_set = set(ordered_target_months)
+            invalidated_corte_options = invalidate_endpoint('portfolio/corte/options', lambda _: True)
+            invalidated_corte_summary = invalidate_endpoint(
+                'portfolio/corte/summary',
+                lambda filters: (
+                    not target_months_set
+                    or not isinstance(filters, dict)
+                    or not filters.get('gestion_month')
+                    or bool(set(filters.get('gestion_month') or []).intersection(target_months_set))
+                ),
+            )
+            invalidated_cohorte_summary = invalidate_endpoint(
+                'cobranzas-cohorte/summary',
+                lambda filters: (
+                    not target_months_set
+                    or not isinstance(filters, dict)
+                    or not filters.get('cutoff_month')
+                    or str(filters.get('cutoff_month')) in target_months_set
+                ),
+            )
+            invalidated_cohorte_options = invalidate_endpoint('cobranzas-cohorte/options', lambda _: True)
             _append_log(
                 domain,
-                f'Cache invalido: portfolio/corte/options={invalidated_corte_options}, portfolio/corte/summary={invalidated_corte_summary}',
+                (
+                    'Cache invalido: '
+                    f'portfolio/corte/options={invalidated_corte_options}, '
+                    f'portfolio/corte/summary={invalidated_corte_summary}, '
+                    f'cobranzas-cohorte/options={invalidated_cohorte_options}, '
+                    f'cobranzas-cohorte/summary={invalidated_cohorte_summary}'
+                ),
             )
         logger.info(
             '[sync:%s:%s] completed rows_inserted=%s duplicates=%s duration_sec=%s',
@@ -1472,6 +1667,10 @@ def _execute_job(
                 'rows_read': source_rows,
                 'rows_upserted': rows_upserted,
                 'rows_unchanged': rows_unchanged,
+                'throughput_rows_per_sec': float((_state_by_domain.get(domain) or {}).get('throughput_rows_per_sec') or 0.0),
+                'eta_seconds': 0,
+                'current_query_file': _query_file_for(domain),
+                'job_step': 'finalize',
                 'affected_months': ordered_target_months,
                 'target_table': _target_table_name(domain),
                 'agg_refresh_started': domain in {'cartera', 'cobranzas'},
@@ -1492,6 +1691,7 @@ def _execute_job(
         error = str(exc)
         _append_log(domain, f'Error: {error}')
         logger.exception('[sync:%s:%s] failed: %s', domain, job_id, error)
+        state_snapshot = dict(_state_by_domain.get(domain) or {})
         failed_state = {
             'running': False,
             'stage': 'failed',
@@ -1502,6 +1702,8 @@ def _execute_job(
             'duration_sec': duration_sec,
         }
         _set_state(domain, failed_state)
+        failed_step = _job_step_from_stage((_state_by_domain.get(domain) or {}).get('stage')) or 'bootstrap'
+        _persist_job_step(db, job_id, domain, failed_step, 'failed', {'error': error})
         _persist_sync_run(
             db,
             {
@@ -1517,9 +1719,13 @@ def _execute_job(
                 'stage': 'failed',
                 'progress_pct': 100,
                 'status_message': 'Sincronizacion con error',
-                'rows_read': 0,
-                'rows_upserted': 0,
-                'rows_unchanged': 0,
+                'rows_read': int(state_snapshot.get('rows_read') or 0),
+                'rows_upserted': int(state_snapshot.get('rows_upserted') or 0),
+                'rows_unchanged': int(state_snapshot.get('rows_unchanged') or 0),
+                'throughput_rows_per_sec': float(state_snapshot.get('throughput_rows_per_sec') or 0.0),
+                'eta_seconds': 0,
+                'current_query_file': _query_file_for(domain),
+                'job_step': 'failed',
                 'error': error,
                 'finished_at': finished_at.replace(tzinfo=None),
                 'duration_sec': duration_sec,
@@ -1619,6 +1825,10 @@ class SyncService:
                 'rows_read': int(getattr(row, 'rows_read', 0) or 0),
                 'rows_upserted': int(getattr(row, 'rows_upserted', 0) or 0),
                 'rows_unchanged': int(getattr(row, 'rows_unchanged', 0) or 0),
+                'throughput_rows_per_sec': float(getattr(row, 'throughput_rows_per_sec', 0.0) or 0.0),
+                'eta_seconds': int(getattr(row, 'eta_seconds', 0) or 0),
+                'current_query_file': getattr(row, 'current_query_file', None) or _query_file_for(domain),
+                'job_step': getattr(row, 'job_step', None) or _job_step_from_stage(row.stage),
                 'affected_months': [],
                 'target_table': getattr(row, 'target_table', None),
                 'agg_refresh_started': False,
@@ -1631,6 +1841,102 @@ class SyncService:
                 'started_at': row.started_at.isoformat() if row.started_at else None,
                 'finished_at': row.finished_at.isoformat() if row.finished_at else None,
                 'duration_sec': row.duration_sec,
+            }
+        finally:
+            db.close()
+
+    @staticmethod
+    def perf_summary(limit: int = 200) -> dict:
+        db = SessionLocal()
+        try:
+            capped = max(20, min(1000, int(limit or 200)))
+            rows = (
+                db.query(SyncRun)
+                .order_by(SyncRun.started_at.desc())
+                .limit(capped)
+                .all()
+            )
+            totals = {
+                'jobs': 0,
+                'completed': 0,
+                'failed': 0,
+                'avg_duration_sec': 0.0,
+                'avg_throughput_rows_per_sec': 0.0,
+            }
+            by_domain: dict[str, dict[str, int | float]] = {}
+            slowest: list[dict[str, str | int | float | None]] = []
+            duration_sum = 0.0
+            throughput_sum = 0.0
+            throughput_count = 0
+            for row in rows:
+                domain = str(row.domain or 'unknown')
+                totals['jobs'] += 1
+                if str(row.stage or '').lower() == 'completed':
+                    totals['completed'] += 1
+                if str(row.stage or '').lower() == 'failed' or bool(row.error):
+                    totals['failed'] += 1
+                dur = float(row.duration_sec or 0.0)
+                th = float(getattr(row, 'throughput_rows_per_sec', 0.0) or 0.0)
+                duration_sum += dur
+                if th > 0:
+                    throughput_sum += th
+                    throughput_count += 1
+                bucket = by_domain.setdefault(
+                    domain,
+                    {
+                        'jobs': 0,
+                        'completed': 0,
+                        'failed': 0,
+                        'avg_duration_sec': 0.0,
+                        'avg_throughput_rows_per_sec': 0.0,
+                        '_duration_sum': 0.0,
+                        '_throughput_sum': 0.0,
+                        '_throughput_count': 0,
+                    },
+                )
+                bucket['jobs'] += 1
+                if str(row.stage or '').lower() == 'completed':
+                    bucket['completed'] += 1
+                if str(row.stage or '').lower() == 'failed' or bool(row.error):
+                    bucket['failed'] += 1
+                bucket['_duration_sum'] += dur
+                if th > 0:
+                    bucket['_throughput_sum'] += th
+                    bucket['_throughput_count'] += 1
+                slowest.append(
+                    {
+                        'job_id': row.job_id,
+                        'domain': domain,
+                        'mode': row.mode,
+                        'stage': row.stage,
+                        'duration_sec': dur,
+                        'rows_read': int(row.rows_read or 0),
+                        'rows_upserted': int(row.rows_upserted or 0),
+                        'started_at': row.started_at.isoformat() if row.started_at else None,
+                        'finished_at': row.finished_at.isoformat() if row.finished_at else None,
+                    }
+                )
+            if totals['jobs'] > 0:
+                totals['avg_duration_sec'] = round(duration_sum / totals['jobs'], 2)
+                totals['avg_throughput_rows_per_sec'] = round(
+                    throughput_sum / max(1, throughput_count),
+                    2,
+                )
+            for domain, bucket in by_domain.items():
+                jobs = int(bucket['jobs'] or 0)
+                bucket['avg_duration_sec'] = round(float(bucket['_duration_sum']) / max(1, jobs), 2)
+                tcount = int(bucket['_throughput_count'] or 0)
+                bucket['avg_throughput_rows_per_sec'] = round(float(bucket['_throughput_sum']) / max(1, tcount), 2)
+                bucket.pop('_duration_sum', None)
+                bucket.pop('_throughput_sum', None)
+                bucket.pop('_throughput_count', None)
+                by_domain[domain] = bucket
+            top_slowest_jobs = sorted(slowest, key=lambda item: float(item.get('duration_sec') or 0.0), reverse=True)[:10]
+            return {
+                'generated_at': datetime.utcnow().isoformat(),
+                'totals': totals,
+                'by_domain': by_domain,
+                'top_slowest_jobs': top_slowest_jobs,
             }
         finally:
             db.close()

@@ -120,6 +120,10 @@ class SyncRun(Base):
     rows_read = Column(Integer, nullable=False, default=0)
     rows_upserted = Column(Integer, nullable=False, default=0)
     rows_unchanged = Column(Integer, nullable=False, default=0)
+    throughput_rows_per_sec = Column(Float, nullable=True)
+    eta_seconds = Column(Integer, nullable=True)
+    current_query_file = Column(String(128), nullable=True)
+    job_step = Column(String(64), nullable=True)
     duplicates_detected = Column(Integer, nullable=False, default=0)
     error = Column(Text, nullable=True)
     log_json = Column(Text, nullable=False, default='[]')
@@ -127,6 +131,20 @@ class SyncRun(Base):
     finished_at = Column(DateTime, nullable=True)
     duration_sec = Column(Float, nullable=True)
     actor = Column(String(128), nullable=False, default='system')
+
+
+class SyncJobStep(Base):
+    __tablename__ = 'sync_job_steps'
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(String(64), nullable=False, index=True)
+    domain = Column(String(32), nullable=False, index=True)
+    step_name = Column(String(64), nullable=False, index=True)
+    status = Column(String(16), nullable=False, default='running', index=True)
+    details_json = Column(Text, nullable=False, default='{}')
+    started_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    finished_at = Column(DateTime, nullable=True)
+    duration_sec = Column(Float, nullable=True)
 
 
 class SyncRecord(Base):
@@ -278,6 +296,7 @@ Index('ix_acs_close_month', AnalyticsContractSnapshot.close_month)
 Index('ix_acs_supervisor', AnalyticsContractSnapshot.supervisor)
 Index('ix_acs_un', AnalyticsContractSnapshot.un)
 Index('ix_acs_via', AnalyticsContractSnapshot.via)
+Index('ix_sync_job_steps_job_domain_step', SyncJobStep.job_id, SyncJobStep.domain, SyncJobStep.step_name)
 Index('ux_user_preferences_username_key', UserPreference.username, UserPreference.pref_key, unique=True)
 Index(
     'ux_sync_records_business_key',

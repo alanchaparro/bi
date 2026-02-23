@@ -7,10 +7,10 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from typing import Any
+from typing import Any, Callable
 
-# (key -> (payload, expiry_ts))
-_cache: dict[str, tuple[Any, float]] = {}
+# (key -> (payload, expiry_ts, endpoint, filters_data))
+_cache: dict[str, tuple[Any, float, str, dict[str, Any]]] = {}
 _DEFAULT_TTL_SECONDS = 60
 
 
@@ -30,7 +30,7 @@ def get(endpoint: str, filters: Any) -> Any | None:
     entry = _cache.get(key)
     if not entry:
         return None
-    payload, expiry = entry
+    payload, expiry, _, _ = entry
     if time.time() > expiry:
         del _cache[key]
         return None
@@ -39,7 +39,28 @@ def get(endpoint: str, filters: Any) -> Any | None:
 
 def set(endpoint: str, filters: Any, payload: Any, ttl_seconds: int = _DEFAULT_TTL_SECONDS) -> None:
     key = f"{endpoint}:{_signature(filters)}"
-    _cache[key] = (payload, time.time() + ttl_seconds)
+    if hasattr(filters, 'model_dump'):
+        filters_data = filters.model_dump()
+    elif isinstance(filters, dict):
+        filters_data = filters
+    else:
+        filters_data = {}
+    _cache[key] = (payload, time.time() + ttl_seconds, endpoint, filters_data)
+
+
+def invalidate_endpoint(endpoint: str, predicate: Callable[[dict[str, Any]], bool] | None = None) -> int:
+    removed = 0
+    for key in list(_cache.keys()):
+        entry = _cache.get(key)
+        if not entry:
+            continue
+        _, _, cached_endpoint, filters_data = entry
+        if cached_endpoint != endpoint:
+            continue
+        if predicate is None or predicate(filters_data or {}):
+            _cache.pop(key, None)
+            removed += 1
+    return removed
 
 
 def invalidate_prefix(prefix: str) -> int:

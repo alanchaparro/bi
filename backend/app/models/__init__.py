@@ -14,6 +14,7 @@ from app.models.brokers import (
     GestoresFact,
     PrizeRules,
     SyncRecord,
+    SyncJobStep,
     SyncRun,
     UserPreference,
 )
@@ -34,6 +35,7 @@ __all__ = [
     'ContratosFact',
     'GestoresFact',
     'SyncRun',
+    'SyncJobStep',
     'SyncRecord',
     'UserPreference',
 ]

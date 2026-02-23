@@ -113,6 +113,10 @@ class SyncStatusOut(BaseModel):
     rows_read: int = 0
     rows_upserted: int = 0
     rows_unchanged: int = 0
+    throughput_rows_per_sec: float | None = None
+    eta_seconds: int | None = None
+    current_query_file: str | None = None
+    job_step: str | None = None
     affected_months: list[str] = Field(default_factory=list)
     target_table: str | None = None
     agg_refresh_started: bool = False
@@ -125,3 +129,10 @@ class SyncStatusOut(BaseModel):
     started_at: str | None = None
     finished_at: str | None = None
     duration_sec: float | None = None
+
+
+class SyncPerfSummaryOut(BaseModel):
+    generated_at: str
+    totals: dict[str, int | float]
+    by_domain: dict[str, dict[str, int | float]]
+    top_slowest_jobs: list[dict[str, str | int | float | None]] = Field(default_factory=list)
