@@ -20,6 +20,7 @@ from app.models.brokers import (
     BrokersSupervisorScope,
     CarteraCorteAgg,
     CarteraFact,
+    CobranzasCohorteAgg,
     CobranzasFact,
     CommissionRules,
     PrizeRules,
@@ -804,7 +805,9 @@ class AnalyticsService:
 
     @staticmethod
     def fetch_cobranzas_cohorte_options_v1(db: Session, filters: CobranzasCohorteIn) -> dict:
-        cutoff_rows = db.query(CobranzasFact.payment_month).distinct().all()
+        cutoff_rows = db.query(CobranzasCohorteAgg.cutoff_month).distinct().all()
+        if not cutoff_rows:
+            cutoff_rows = db.query(CobranzasFact.payment_month).distinct().all()
         cutoff_months = sorted(
             {str(v[0]).strip() for v in cutoff_rows if str(v[0] or '').strip()},
             key=_month_serial,
@@ -814,24 +817,48 @@ class AnalyticsService:
         # Use aggregated table for instant options in UI preload.
         uns = [
             str(v[0] or '').strip().upper()
-            for v in db.query(CarteraCorteAgg.un).distinct().all()
+            for v in db.query(CobranzasCohorteAgg.un).distinct().all()
             if str(v[0] or '').strip()
         ]
         supervisors = [
             str(v[0] or '').strip().upper()
-            for v in db.query(CarteraCorteAgg.supervisor).distinct().all()
+            for v in db.query(CobranzasCohorteAgg.supervisor).distinct().all()
             if str(v[0] or '').strip()
         ]
         vias = [
             str(v[0] or '').strip().upper()
-            for v in db.query(CarteraCorteAgg.via_cobro).distinct().all()
+            for v in db.query(CobranzasCohorteAgg.via_cobro).distinct().all()
             if str(v[0] or '').strip()
         ]
         categories = [
             str(v[0] or '').strip().upper()
-            for v in db.query(CarteraCorteAgg.categoria).distinct().all()
+            for v in db.query(CobranzasCohorteAgg.categoria).distinct().all()
             if str(v[0] or '').strip()
         ]
+        if not uns:
+            uns = [
+                str(v[0] or '').strip().upper()
+                for v in db.query(CarteraCorteAgg.un).distinct().all()
+                if str(v[0] or '').strip()
+            ]
+        if not supervisors:
+            supervisors = [
+                str(v[0] or '').strip().upper()
+                for v in db.query(CarteraCorteAgg.supervisor).distinct().all()
+                if str(v[0] or '').strip()
+            ]
+        if not vias:
+            vias = [
+                str(v[0] or '').strip().upper()
+                for v in db.query(CarteraCorteAgg.via_cobro).distinct().all()
+                if str(v[0] or '').strip()
+            ]
+        if not categories:
+            categories = [
+                str(v[0] or '').strip().upper()
+                for v in db.query(CarteraCorteAgg.categoria).distinct().all()
+                if str(v[0] or '').strip()
+            ]
 
         return {
             'options': {
@@ -844,7 +871,7 @@ class AnalyticsService:
             'default_cutoff': default_cutoff,
             'meta': {
                 'source': 'api-v1',
-                'source_table': 'cartera_corte_agg + cobranzas_fact',
+                'source_table': 'cobranzas_cohorte_agg',
                 'generated_at': datetime.utcnow().isoformat(),
             },
         }
@@ -897,6 +924,98 @@ class AnalyticsService:
         supervisor_filter = _normalize_str_set(filters.supervisor)
         via_filter = _normalize_str_set(filters.via_cobro)
         category_filter = _normalize_str_set(filters.categoria)
+        preagg_q = db.query(CobranzasCohorteAgg).filter(CobranzasCohorteAgg.cutoff_month == resolved_cutoff)
+        if un_filter:
+            preagg_q = preagg_q.filter(CobranzasCohorteAgg.un.in_(un_filter))
+        if supervisor_filter:
+            preagg_q = preagg_q.filter(CobranzasCohorteAgg.supervisor.in_(supervisor_filter))
+        if via_filter:
+            preagg_q = preagg_q.filter(CobranzasCohorteAgg.via_cobro.in_(via_filter))
+        if category_filter:
+            preagg_q = preagg_q.filter(CobranzasCohorteAgg.categoria.in_(category_filter))
+
+        preagg_rows = preagg_q.all()
+        if preagg_rows:
+            totals = {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0, 'transacciones': 0}
+            by_sale_month: dict[str, dict[str, float | int]] = {}
+            by_year: dict[str, dict[str, float | int]] = {}
+            for row in preagg_rows:
+                sale_month = str(row.sale_month or '')
+                activos = int(row.activos or 0)
+                pagaron = int(row.pagaron or 0)
+                deberia = float(row.deberia or 0.0)
+                cobrado = float(row.cobrado or 0.0)
+                transacciones = int(row.transacciones or 0)
+                bucket = by_sale_month.setdefault(sale_month, {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0})
+                bucket['activos'] = int(bucket['activos']) + activos
+                bucket['pagaron'] = int(bucket['pagaron']) + pagaron
+                bucket['deberia'] = float(bucket['deberia']) + deberia
+                bucket['cobrado'] = float(bucket['cobrado']) + cobrado
+                year = sale_month.split('/')[1] if '/' in sale_month else 'S/D'
+                yb = by_year.setdefault(year, {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0})
+                yb['activos'] = int(yb['activos']) + activos
+                yb['pagaron'] = int(yb['pagaron']) + pagaron
+                yb['deberia'] = float(yb['deberia']) + deberia
+                yb['cobrado'] = float(yb['cobrado']) + cobrado
+                totals['activos'] += activos
+                totals['pagaron'] += pagaron
+                totals['deberia'] += deberia
+                totals['cobrado'] += cobrado
+                totals['transacciones'] += transacciones
+
+            rows = []
+            for sale_month, values in sorted(by_sale_month.items(), key=lambda item: _month_serial(item[0])):
+                activos = int(values['activos'] or 0)
+                pagaron = int(values['pagaron'] or 0)
+                deberia = float(values['deberia'] or 0.0)
+                cobrado = float(values['cobrado'] or 0.0)
+                rows.append(
+                    {
+                        'sale_month': sale_month,
+                        'activos': activos,
+                        'pagaron': pagaron,
+                        'deberia': round(deberia, 2),
+                        'cobrado': round(cobrado, 2),
+                        'pct_pago_contratos': round((pagaron / activos) if activos > 0 else 0.0, 6),
+                        'pct_cobertura_monto': round((cobrado / deberia) if deberia > 0 else 0.0, 6),
+                    }
+                )
+
+            by_year_out: dict[str, dict] = {}
+            for year, values in by_year.items():
+                activos = int(values['activos'] or 0)
+                pagaron = int(values['pagaron'] or 0)
+                deberia = float(values['deberia'] or 0.0)
+                cobrado = float(values['cobrado'] or 0.0)
+                by_year_out[year] = {
+                    'activos': activos,
+                    'pagaron': pagaron,
+                    'deberia': round(deberia, 2),
+                    'cobrado': round(cobrado, 2),
+                    'pct_pago_contratos': round((pagaron / activos) if activos > 0 else 0.0, 6),
+                    'pct_cobertura_monto': round((cobrado / deberia) if deberia > 0 else 0.0, 6),
+                }
+
+            return {
+                'cutoff_month': resolved_cutoff,
+                'effective_cartera_month': resolved_cutoff,
+                'totals': {
+                    'activos': int(totals['activos']),
+                    'pagaron': int(totals['pagaron']),
+                    'deberia': round(float(totals['deberia']), 2),
+                    'cobrado': round(float(totals['cobrado']), 2),
+                    'transacciones': int(totals['transacciones']),
+                    'pct_pago_contratos': round((totals['pagaron'] / totals['activos']) if totals['activos'] > 0 else 0.0, 6),
+                    'pct_cobertura_monto': round((totals['cobrado'] / totals['deberia']) if totals['deberia'] > 0 else 0.0, 6),
+                },
+                'by_sale_month': rows,
+                'by_year': by_year_out,
+                'meta': {
+                    'source': 'api-v1',
+                    'source_table': 'cobranzas_cohorte_agg',
+                    'generated_at': datetime.utcnow().isoformat(),
+                },
+            }
 
         tramo_rules_cfg = BrokersConfigService.get_cartera_tramo_rules(db)
         tramo_by_un_category: dict[str, dict[str, set[int]]] = {}

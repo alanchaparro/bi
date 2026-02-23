@@ -7,6 +7,7 @@ import tempfile
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import mysql.connector
 from sqlalchemy import Integer, Numeric, and_, case, cast, func, literal, text as sa_text
@@ -23,11 +24,13 @@ from app.models.brokers import (
     AnalyticsFact,
     CarteraFact,
     CarteraCorteAgg,
+    CobranzasCohorteAgg,
     CobranzasFact,
     ContratosFact,
     GestoresFact,
     SyncRecord,
     SyncJobStep,
+    SyncJob,
     SyncRun,
 )
 from app.services.brokers_config_service import BrokersConfigService
@@ -489,6 +492,30 @@ def _adaptive_chunk_size(domain: str, configured: int) -> int:
     return max(500, min(12000, int((base + domain_hint) / 2)))
 
 
+def _max_rows_for_domain(domain: str) -> int | None:
+    per_domain = {
+        'analytics': int(settings.sync_max_rows_analytics or 0),
+        'cartera': int(settings.sync_max_rows_cartera or 0),
+        'cobranzas': int(settings.sync_max_rows_cobranzas or 0),
+        'contratos': int(settings.sync_max_rows_contratos or 0),
+        'gestores': int(settings.sync_max_rows_gestores or 0),
+    }.get(domain, 0)
+    if per_domain > 0:
+        return per_domain
+    global_cap = int(settings.sync_max_rows or 0)
+    return global_cap if global_cap > 0 else None
+
+
+def _matches_mode(gestion_month: str, mode: str, year_from: int | None, close_month: str | None, range_months_set: set[str]) -> bool:
+    if mode == 'full_month' and close_month:
+        return gestion_month == close_month
+    if mode == 'range_months' and range_months_set:
+        return gestion_month in range_months_set
+    if mode == 'full_year' and year_from is not None:
+        return _year_of(gestion_month) == year_from
+    return True
+
+
 def _analyze_after_sync(db: Session, domain: str) -> None:
     targets = [FACT_TABLE_BY_DOMAIN[domain].__tablename__]
     if domain == 'cartera':
@@ -742,6 +769,31 @@ def _to_int(value: object, default: int = 0) -> int:
         return default
 
 
+def _month_from_any(value: object) -> str:
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    if len(text) == 7 and text[2] == '/':
+        return text
+    if len(text) >= 7 and text[4] in {'-', '/'}:
+        y = text[0:4]
+        m = text[5:7]
+        if y.isdigit() and m.isdigit():
+            return f'{int(m):02d}/{y}'
+    if len(text) == 10 and text[2] == '/' and text[5] == '/':
+        dd, mm, yyyy = text[0:2], text[3:5], text[6:10]
+        if mm.isdigit() and yyyy.isdigit():
+            return f'{int(mm):02d}/{yyyy}'
+    return ''
+
+
+def _year_from_month(mm_yyyy: str) -> int:
+    parts = str(mm_yyyy or '').split('/')
+    if len(parts) != 2 or not parts[1].isdigit():
+        return 0
+    return int(parts[1])
+
+
 def _build_cartera_categoria_expr(db: Session):
     cfg = BrokersConfigService.get_cartera_tramo_rules(db)
     category_expr = case((CarteraFact.tramo > 3, literal('MOROSO')), else_=literal('VIGENTE'))
@@ -966,6 +1018,123 @@ def _refresh_cartera_corte_agg(db: Session, affected_months: set[str]) -> tuple[
     return int(deleted or 0), len(mappings)
 
 
+def _refresh_cobranzas_cohorte_agg(db: Session, affected_months: set[str]) -> tuple[int, int]:
+    months = sorted({str(m).strip() for m in (affected_months or set()) if str(m).strip()}, key=_month_serial)
+    if not months:
+        return 0, 0
+    deleted = db.query(CobranzasCohorteAgg).filter(CobranzasCohorteAgg.cutoff_month.in_(months)).delete(synchronize_session=False)
+    db.commit()
+
+    categoria_expr = _build_cartera_categoria_expr(db)
+    via_expr = case(
+        (func.upper(func.coalesce(CarteraFact.via_cobro, '')) == literal('COBRADOR'), literal('COBRADOR')),
+        else_=literal('DEBITO'),
+    )
+    if engine.dialect.name == 'postgresql':
+        monto_cuota_text = cast(CarteraFact.payload_json, JSONB).op('->>')('monto_cuota')
+        monto_cuota_expr = case(
+            (monto_cuota_text.op('~')(r'^-?\d+(\.\d+)?$'), cast(monto_cuota_text, Numeric)),
+            else_=literal(0),
+        )
+    else:
+        monto_cuota_expr = literal(0)
+
+    payments = (
+        db.query(
+            CobranzasFact.payment_month.label('cutoff_month'),
+            CobranzasFact.contract_id.label('contract_id'),
+            func.coalesce(func.sum(CobranzasFact.payment_amount), 0.0).label('cobrado'),
+            func.coalesce(
+                func.sum(case((CobranzasFact.payment_amount > 0, literal(1)), else_=literal(0))),
+                0,
+            ).label('transacciones'),
+        )
+        .filter(CobranzasFact.payment_month.in_(months))
+        .group_by(CobranzasFact.payment_month, CobranzasFact.contract_id)
+        .all()
+    )
+    payment_map: dict[tuple[str, str], tuple[float, int]] = {}
+    for row in payments:
+        payment_map[(str(row.cutoff_month), str(row.contract_id))] = (float(row.cobrado or 0.0), int(row.transacciones or 0))
+
+    cartera_rows = (
+        db.query(
+            CarteraFact.contract_id,
+            CarteraFact.gestion_month,
+            CarteraFact.un,
+            CarteraFact.supervisor,
+            via_expr.label('via'),
+            categoria_expr.label('categoria'),
+            CarteraFact.monto_vencido,
+            monto_cuota_expr.label('monto_cuota'),
+            CarteraFact.payload_json,
+        )
+        .filter(CarteraFact.gestion_month.in_(months))
+        .all()
+    )
+    now = datetime.utcnow()
+    bucket: dict[tuple[str, str, str, str, str, str], dict[str, float | int]] = {}
+    for row in cartera_rows:
+        contract_id = str(row.contract_id or '').strip()
+        if not contract_id:
+            continue
+        payload = {}
+        try:
+            payload = json.loads(row.payload_json or '{}')
+        except Exception:
+            payload = {}
+        sale_month = _month_from_any(payload.get('fecha_contrato'))
+        if _month_serial(sale_month) <= 0:
+            continue
+        cutoff_month = str(row.gestion_month or '').strip()
+        if _month_serial(cutoff_month) <= 0:
+            continue
+        should_pay = float(_to_float(row.monto_cuota) + _to_float(row.monto_vencido))
+        paid, tx = payment_map.get((cutoff_month, contract_id), (0.0, 0))
+        key = (
+            cutoff_month,
+            sale_month,
+            str(row.un or 'S/D').strip().upper(),
+            str(row.supervisor or 'S/D').strip().upper(),
+            str(row.via or 'DEBITO').strip().upper(),
+            str(row.categoria or 'VIGENTE').strip().upper(),
+        )
+        acc = bucket.setdefault(
+            key,
+            {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0, 'transacciones': 0},
+        )
+        acc['activos'] = int(acc['activos']) + 1
+        acc['pagaron'] = int(acc['pagaron']) + (1 if paid > 0 else 0)
+        acc['deberia'] = float(acc['deberia']) + should_pay
+        acc['cobrado'] = float(acc['cobrado']) + float(paid)
+        acc['transacciones'] = int(acc['transacciones']) + int(tx)
+
+    mappings: list[dict] = []
+    for key, values in bucket.items():
+        cutoff_month, sale_month, un, supervisor, via, categoria = key
+        mappings.append(
+            {
+                'cutoff_month': cutoff_month,
+                'sale_month': sale_month,
+                'sale_year': _year_from_month(sale_month),
+                'un': un,
+                'supervisor': supervisor,
+                'via_cobro': via,
+                'categoria': categoria,
+                'activos': int(values['activos'] or 0),
+                'pagaron': int(values['pagaron'] or 0),
+                'deberia': float(values['deberia'] or 0.0),
+                'cobrado': float(values['cobrado'] or 0.0),
+                'transacciones': int(values['transacciones'] or 0),
+                'updated_at': now,
+            }
+        )
+    if mappings:
+        db.bulk_insert_mappings(CobranzasCohorteAgg, mappings)
+        db.commit()
+    return int(deleted or 0), len(mappings)
+
+
 def _refresh_analytics_snapshot(
     db: Session,
     mode: str,
@@ -1101,6 +1270,105 @@ def _cleanup_stale_running_jobs() -> None:
         db.close()
 
 
+def _cleanup_stale_running_queue_jobs() -> None:
+    db = SessionLocal()
+    try:
+        stale = db.query(SyncJob).filter(SyncJob.status == 'running').all()
+        if not stale:
+            return
+        now = datetime.utcnow()
+        for row in stale:
+            row.status = 'failed'
+            row.error = 'job_interrupted_on_restart'
+            row.finished_at = now
+        db.commit()
+    finally:
+        db.close()
+
+
+def _queue_has_running_or_pending(db: Session) -> bool:
+    row = (
+        db.query(SyncJob.id)
+        .filter(SyncJob.status.in_(['pending', 'running']))
+        .first()
+    )
+    return row is not None
+
+
+def _queue_job(
+    db: Session,
+    *,
+    job_id: str,
+    domain: str,
+    mode: str,
+    actor: str,
+    year_from: int | None,
+    close_month: str | None,
+    close_month_from: str | None,
+    close_month_to: str | None,
+) -> None:
+    row = SyncJob(
+        job_id=job_id,
+        domain=domain,
+        status='pending',
+        mode=mode,
+        actor=actor,
+        year_from=year_from,
+        close_month=close_month,
+        close_month_from=close_month_from,
+        close_month_to=close_month_to,
+        priority=100,
+        max_retries=1,
+        retries=0,
+    )
+    db.add(row)
+    db.commit()
+
+
+def _claim_next_job(worker_name: str) -> dict[str, Any] | None:
+    db = SessionLocal()
+    try:
+        row = (
+            db.query(SyncJob)
+            .filter(SyncJob.status == 'pending')
+            .order_by(SyncJob.priority.asc(), SyncJob.created_at.asc())
+            .first()
+        )
+        if row is None:
+            return None
+        row.status = 'running'
+        row.locked_by = worker_name
+        row.locked_at = datetime.utcnow()
+        row.started_at = datetime.utcnow()
+        db.commit()
+        return {
+            'job_id': row.job_id,
+            'actor': row.actor,
+            'domain': row.domain,
+            'mode': row.mode,
+            'year_from': row.year_from,
+            'close_month': row.close_month,
+            'close_month_from': row.close_month_from,
+            'close_month_to': row.close_month_to,
+        }
+    finally:
+        db.close()
+
+
+def _mark_queue_job_done(job_id: str, status: str, error: str | None = None) -> None:
+    db = SessionLocal()
+    try:
+        row = db.query(SyncJob).filter(SyncJob.job_id == job_id).first()
+        if row is None:
+            return
+        row.status = status
+        row.error = error
+        row.finished_at = datetime.utcnow()
+        db.commit()
+    finally:
+        db.close()
+
+
 def _execute_job(
     job_id: str,
     actor: str,
@@ -1225,9 +1493,7 @@ def _execute_job(
         _persist_job_step(db, job_id, domain, 'extract', 'running', {'query_file': _query_file_for(domain)})
         _set_state(domain, {'stage': 'connecting_mysql', 'progress_pct': 8, 'status_message': 'Conectando a MySQL'})
         _append_log(domain, 'Conectando a MySQL...')
-        configured_max_rows = int(settings.sync_max_rows) if settings.sync_max_rows is not None else 250000
-        # SYNC_MAX_ROWS <= 0 disables hard cap for full loads.
-        max_rows = configured_max_rows if configured_max_rows > 0 else None
+        max_rows = _max_rows_for_domain(domain)
         source_rows = 0
         _persist_job_step(db, job_id, domain, 'extract', 'completed', {'rows_read': 0})
         _persist_job_step(db, job_id, domain, 'normalize', 'running')
@@ -1270,11 +1536,7 @@ def _execute_job(
                 for row in batch:
                     n = _normalize_record(domain, row, seq)
                     seq += 1
-                    if mode == 'full_month' and close_month and n['gestion_month'] != close_month:
-                        continue
-                    if mode == 'range_months' and range_months_set and n['gestion_month'] not in range_months_set:
-                        continue
-                    if mode == 'full_year' and year_from is not None and _year_of(n['gestion_month']) != year_from:
+                    if not _matches_mode(n['gestion_month'], mode, year_from, close_month, range_months_set):
                         continue
                     source_months.add(n['gestion_month'])
                     key = _source_dedupe_key(n)
@@ -1506,6 +1768,8 @@ def _execute_job(
             )
             _append_log(domain, 'Iniciando recÃƒÂ¡lculo de cartera_corte_agg...')
             deleted_agg, agg_rows_written = _refresh_cartera_corte_agg(db, target_months)
+            deleted_cohorte, cohorte_rows_written = _refresh_cobranzas_cohorte_agg(db, target_months)
+            agg_rows_written += int(cohorte_rows_written)
             agg_duration_sec = round((datetime.now(timezone.utc) - agg_started_at).total_seconds(), 2)
             _set_state(
                 domain,
@@ -1517,7 +1781,11 @@ def _execute_job(
             )
             _append_log(
                 domain,
-                f'Agregado corte actualizado: borradas={deleted_agg}, insertadas={agg_rows_written}, duracion={agg_duration_sec}s',
+                (
+                    f'Agregado corte actualizado: borradas={deleted_agg}, '
+                    f'insertadas={agg_rows_written}, cohorte_borradas={deleted_cohorte}, '
+                    f'cohorte_insertadas={cohorte_rows_written}, duracion={agg_duration_sec}s'
+                ),
             )
             _persist_job_step(
                 db,
@@ -1741,6 +2009,22 @@ def _execute_job(
 
 class SyncService:
     @staticmethod
+    def resolve_mode(
+        domain: str,
+        year_from: int | None,
+        close_month: str | None,
+        close_month_from: str | None,
+        close_month_to: str | None,
+    ) -> str:
+        if domain == 'cartera' and close_month_from and close_month_to:
+            if close_month_from == close_month_to:
+                return 'full_month'
+            return 'range_months'
+        if domain == 'cartera' and close_month:
+            return 'full_month'
+        return 'full_year' if year_from is not None else 'full_all'
+
+    @staticmethod
     def start(
         domain: str,
         year_from: int | None,
@@ -1749,33 +2033,60 @@ class SyncService:
         close_month_to: str | None,
         actor: str,
     ) -> dict:
-        if domain == 'cartera' and close_month_from and close_month_to:
-            if close_month_from == close_month_to:
-                mode = 'full_month'
-                close_month = close_month_from
-            else:
-                mode = 'range_months'
-        elif domain == 'cartera' and close_month:
-            mode = 'full_month'
-        else:
-            mode = 'full_year' if year_from is not None else 'full_all'
-        _cleanup_stale_running_jobs()
-        with _state_lock:
-            if _running_by_domain:
-                running = ', '.join(sorted(_running_by_domain))
-                raise RuntimeError(f'Ya existe una sincronizacion en curso ({running})')
-            if domain in _running_by_domain:
-                raise RuntimeError(f'Ya existe una sincronizacion en curso para {domain}')
-            _running_by_domain.add(domain)
+        mode = SyncService.resolve_mode(domain, year_from, close_month, close_month_from, close_month_to)
+        if mode == 'full_month' and close_month_from and close_month_to and close_month_from == close_month_to:
+            close_month = close_month_from
         job_id = str(uuid.uuid4())
         started_at = datetime.now(timezone.utc).isoformat()
-        thread = threading.Thread(
-            target=_execute_job,
-            args=(job_id, actor, domain, mode, year_from, close_month, close_month_from, close_month_to),
-            daemon=True,
-            name=f'sync-{domain}-{job_id[:8]}',
-        )
-        thread.start()
+        db = SessionLocal()
+        try:
+            if _queue_has_running_or_pending(db):
+                raise RuntimeError('Ya existe una sincronizacion en curso')
+            _queue_job(
+                db,
+                job_id=job_id,
+                domain=domain,
+                mode=mode,
+                actor=actor,
+                year_from=year_from,
+                close_month=close_month,
+                close_month_from=close_month_from,
+                close_month_to=close_month_to,
+            )
+            _persist_sync_run(
+                db,
+                {
+                    'job_id': job_id,
+                    'domain': domain,
+                    'mode': mode,
+                    'year_from': year_from,
+                    'close_month': close_month,
+                    'target_table': _target_table_name(domain),
+                    'running': True,
+                    'stage': 'queued',
+                    'progress_pct': 0,
+                    'status_message': 'Sincronizacion en cola',
+                    'rows_inserted': 0,
+                    'rows_updated': 0,
+                    'rows_skipped': 0,
+                    'rows_read': 0,
+                    'rows_upserted': 0,
+                    'rows_unchanged': 0,
+                    'throughput_rows_per_sec': 0.0,
+                    'eta_seconds': None,
+                    'current_query_file': _query_file_for(domain),
+                    'job_step': 'queued',
+                    'duplicates_detected': 0,
+                    'error': None,
+                    'started_at': datetime.utcnow(),
+                    'finished_at': None,
+                    'duration_sec': None,
+                    'log': ['Estado: sincronizacion encolada. Esperando worker...'],
+                    'actor': actor,
+                },
+            )
+        finally:
+            db.close()
         return {
             'job_id': job_id,
             'domain': domain,
@@ -1788,6 +2099,95 @@ class SyncService:
             'started_at': started_at,
             'status': 'accepted',
         }
+
+    @staticmethod
+    def preview(
+        domain: str,
+        year_from: int | None,
+        close_month: str | None,
+        close_month_from: str | None,
+        close_month_to: str | None,
+    ) -> dict:
+        mode = SyncService.resolve_mode(domain, year_from, close_month, close_month_from, close_month_to)
+        if mode == 'full_month' and close_month_from and close_month_to and close_month_from == close_month_to:
+            close_month = close_month_from
+        range_months = _month_range(close_month_from or '', close_month_to or '') if mode == 'range_months' else []
+        range_months_set = set(range_months)
+        query_path = _query_path_for(domain)
+        if not query_path.exists():
+            raise RuntimeError(f'No existe query para dominio {domain}: {query_path.name}')
+        max_rows = _max_rows_for_domain(domain)
+        estimated = 0
+        sampled = False
+        seq = 0
+        for batch in _iter_from_mysql(query_path):
+            for row in batch:
+                n = _normalize_record(domain, row, seq)
+                seq += 1
+                if not _matches_mode(n['gestion_month'], mode, year_from, close_month, range_months_set):
+                    continue
+                estimated += 1
+                if max_rows is not None and estimated > max_rows:
+                    sampled = True
+                    return {
+                        'domain': domain,
+                        'mode': mode,
+                        'year_from': year_from,
+                        'close_month': close_month,
+                        'close_month_from': close_month_from,
+                        'close_month_to': close_month_to,
+                        'estimated_rows': estimated,
+                        'max_rows_allowed': max_rows,
+                        'would_exceed_limit': True,
+                        'sampled': sampled,
+                    }
+        return {
+            'domain': domain,
+            'mode': mode,
+            'year_from': year_from,
+            'close_month': close_month,
+            'close_month_from': close_month_from,
+            'close_month_to': close_month_to,
+            'estimated_rows': estimated,
+            'max_rows_allowed': max_rows,
+            'would_exceed_limit': bool(max_rows is not None and estimated > max_rows),
+            'sampled': sampled,
+        }
+
+    @staticmethod
+    def poll_and_run_next(worker_name: str = 'sync-worker') -> bool:
+        claimed = _claim_next_job(worker_name=worker_name)
+        if not claimed:
+            return False
+        job_id = str(claimed['job_id'])
+        try:
+            _execute_job(
+                job_id=job_id,
+                actor=str(claimed['actor'] or 'system'),
+                domain=str(claimed['domain']),
+                mode=str(claimed['mode']),
+                year_from=claimed.get('year_from'),
+                close_month=claimed.get('close_month'),
+                close_month_from=claimed.get('close_month_from'),
+                close_month_to=claimed.get('close_month_to'),
+            )
+            db = SessionLocal()
+            try:
+                row = db.query(SyncRun).filter(SyncRun.job_id == job_id).first()
+                if row is not None and (str(row.stage or '').lower() == 'failed' or bool(row.error)):
+                    _mark_queue_job_done(job_id, 'failed', str(row.error or 'sync_failed'))
+                else:
+                    _mark_queue_job_done(job_id, 'completed')
+            finally:
+                db.close()
+        except Exception as exc:
+            _mark_queue_job_done(job_id, 'failed', str(exc))
+        return True
+
+    @staticmethod
+    def worker_bootstrap_cleanup() -> None:
+        _cleanup_stale_running_jobs()
+        _cleanup_stale_running_queue_jobs()
 
     @staticmethod
     def status(domain: str, job_id: str | None = None) -> dict:

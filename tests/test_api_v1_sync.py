@@ -77,6 +77,24 @@ class ApiV1SyncTests(unittest.TestCase):
             self.assertEqual(r.status_code, 200)
             self.assertEqual(r.json().get('rows_inserted'), 10)
 
+    def test_sync_preview_contract(self):
+        with patch('app.api.v1.endpoints.sync.SyncService.preview') as mocked:
+            mocked.return_value = {
+                'domain': 'analytics',
+                'mode': 'full_all',
+                'year_from': None,
+                'close_month': None,
+                'close_month_from': None,
+                'close_month_to': None,
+                'estimated_rows': 1234,
+                'max_rows_allowed': 1000000,
+                'would_exceed_limit': False,
+                'sampled': False,
+            }
+            r = self.client.post('/api/v1/sync/preview', json={'domain': 'analytics'}, headers=self.headers)
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.json().get('estimated_rows'), 1234)
+
 
 if __name__ == '__main__':
     unittest.main()

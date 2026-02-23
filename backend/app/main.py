@@ -52,6 +52,7 @@ app.add_middleware(
 
 
 from app.core.logging_config import log_request, structured_log
+from app.core.request_metrics import observe
 
 
 @app.middleware('http')
@@ -62,6 +63,7 @@ async def trace_and_logging(request: Request, call_next):
     try:
         response = await call_next(request)
         latency = round((time.time() - start) * 1000, 2)
+        observe(request.url.path, latency)
         log_request(request.url.path, request.method, trace_id, latency, response.status_code)
         response.headers['x-trace-id'] = trace_id
         response.headers['x-latency-ms'] = str(latency)

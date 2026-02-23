@@ -136,3 +136,16 @@ class SyncPerfSummaryOut(BaseModel):
     totals: dict[str, int | float]
     by_domain: dict[str, dict[str, int | float]]
     top_slowest_jobs: list[dict[str, str | int | float | None]] = Field(default_factory=list)
+
+
+class SyncPreviewOut(BaseModel):
+    domain: str
+    mode: str
+    year_from: int | None = None
+    close_month: str | None = None
+    close_month_from: str | None = None
+    close_month_to: str | None = None
+    estimated_rows: int
+    max_rows_allowed: int | None = None
+    would_exceed_limit: bool = False
+    sampled: bool = False

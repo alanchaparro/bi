@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.deps import require_permission, write_rate_limiter
-from app.schemas.sync import SyncPerfSummaryOut, SyncRunIn, SyncRunOut, SyncStatusOut
+from app.schemas.sync import SyncPerfSummaryOut, SyncPreviewOut, SyncRunIn, SyncRunOut, SyncStatusOut
 from app.services.sync_service import SyncService
 
 router = APIRouter()
@@ -25,6 +25,20 @@ def run_sync(
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail={'message': str(exc)})
+
+
+@router.post('/preview', response_model=SyncPreviewOut)
+def preview_sync(
+    payload: SyncRunIn,
+    user=Depends(require_permission('brokers:read')),
+):
+    return SyncService.preview(
+        payload.domain,
+        payload.year_from,
+        payload.close_month,
+        payload.close_month_from,
+        payload.close_month_to,
+    )
 
 
 @router.get('/status', response_model=SyncStatusOut)

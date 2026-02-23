@@ -147,6 +147,30 @@ class SyncJobStep(Base):
     duration_sec = Column(Float, nullable=True)
 
 
+class SyncJob(Base):
+    __tablename__ = 'sync_jobs'
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(String(64), nullable=False, unique=True, index=True)
+    domain = Column(String(32), nullable=False, index=True)
+    status = Column(String(16), nullable=False, default='pending', index=True)
+    mode = Column(String(32), nullable=False)
+    actor = Column(String(128), nullable=False, default='system')
+    year_from = Column(Integer, nullable=True)
+    close_month = Column(String(7), nullable=True)
+    close_month_from = Column(String(7), nullable=True)
+    close_month_to = Column(String(7), nullable=True)
+    max_retries = Column(Integer, nullable=False, default=1)
+    retries = Column(Integer, nullable=False, default=0)
+    priority = Column(Integer, nullable=False, default=100, index=True)
+    locked_by = Column(String(128), nullable=True)
+    locked_at = Column(DateTime, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+
 class SyncRecord(Base):
     __tablename__ = 'sync_records'
 
@@ -290,12 +314,33 @@ class CarteraCorteAgg(Base):
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class CobranzasCohorteAgg(Base):
+    __tablename__ = 'cobranzas_cohorte_agg'
+
+    id = Column(Integer, primary_key=True, index=True)
+    cutoff_month = Column(String(7), nullable=False, index=True)
+    sale_month = Column(String(7), nullable=False, index=True)
+    sale_year = Column(Integer, nullable=False, index=True)
+    un = Column(String(128), nullable=False, default='S/D')
+    supervisor = Column(String(128), nullable=False, default='S/D')
+    via_cobro = Column(String(32), nullable=False, default='S/D')
+    categoria = Column(String(16), nullable=False, default='VIGENTE')
+    activos = Column(Integer, nullable=False, default=0)
+    pagaron = Column(Integer, nullable=False, default=0)
+    deberia = Column(Float, nullable=False, default=0.0)
+    cobrado = Column(Float, nullable=False, default=0.0)
+    transacciones = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 Index('ix_acs_contract_id', AnalyticsContractSnapshot.contract_id)
 Index('ix_acs_sale_month', AnalyticsContractSnapshot.sale_month)
 Index('ix_acs_close_month', AnalyticsContractSnapshot.close_month)
 Index('ix_acs_supervisor', AnalyticsContractSnapshot.supervisor)
 Index('ix_acs_un', AnalyticsContractSnapshot.un)
 Index('ix_acs_via', AnalyticsContractSnapshot.via)
+Index('ix_sync_jobs_status_priority_created', SyncJob.status, SyncJob.priority, SyncJob.created_at)
+Index('ix_sync_jobs_domain_status_created', SyncJob.domain, SyncJob.status, SyncJob.created_at)
 Index('ix_sync_job_steps_job_domain_step', SyncJobStep.job_id, SyncJobStep.domain, SyncJobStep.step_name)
 Index('ux_user_preferences_username_key', UserPreference.username, UserPreference.pref_key, unique=True)
 Index(
@@ -374,3 +419,16 @@ Index('ix_cartera_corte_agg_gestion_supervisor', CarteraCorteAgg.gestion_month, 
 Index('ix_cartera_corte_agg_gestion_via', CarteraCorteAgg.gestion_month, CarteraCorteAgg.via_cobro)
 Index('ix_cartera_corte_agg_gestion_categoria_tramo', CarteraCorteAgg.gestion_month, CarteraCorteAgg.categoria, CarteraCorteAgg.tramo)
 Index('ix_cartera_corte_agg_close_un_tramo', CarteraCorteAgg.close_month, CarteraCorteAgg.un, CarteraCorteAgg.tramo)
+Index(
+    'ux_cobranzas_cohorte_agg_key',
+    CobranzasCohorteAgg.cutoff_month,
+    CobranzasCohorteAgg.sale_month,
+    CobranzasCohorteAgg.un,
+    CobranzasCohorteAgg.supervisor,
+    CobranzasCohorteAgg.via_cobro,
+    CobranzasCohorteAgg.categoria,
+    unique=True,
+)
+Index('ix_cobranzas_cohorte_agg_cutoff_un', CobranzasCohorteAgg.cutoff_month, CobranzasCohorteAgg.un)
+Index('ix_cobranzas_cohorte_agg_cutoff_supervisor', CobranzasCohorteAgg.cutoff_month, CobranzasCohorteAgg.supervisor)
+Index('ix_cobranzas_cohorte_agg_cutoff_via', CobranzasCohorteAgg.cutoff_month, CobranzasCohorteAgg.via_cobro)
