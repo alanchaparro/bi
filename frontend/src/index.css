@@ -224,6 +224,26 @@ body.sidebar-open {
   letter-spacing: 0.04em;
 }
 
+.header-sync-live {
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.header-sync-live.is-live {
+  color: #86efac;
+  border-color: color-mix(in srgb, #22c55e 46%, var(--color-border));
+  background: color-mix(in srgb, #22c55e 14%, transparent);
+}
+
+.header-sync-live.is-stale {
+  color: #fde68a;
+  border-color: color-mix(in srgb, #f59e0b 46%, var(--color-border));
+  background: color-mix(in srgb, #f59e0b 14%, transparent);
+}
+
 @keyframes header-sync-spin {
   to {
     transform: rotate(360deg);

@@ -32,6 +32,7 @@ type GlobalSyncLive = {
   chunkStatus?: string | null
   skippedUnchangedChunks?: number
   error?: string | null
+  lastUpdatedAt?: string | null
 }
 
 export default function App() {
@@ -55,6 +56,12 @@ export default function App() {
   const globalSyncPct = Math.max(0, Math.min(100, Math.round(globalSyncLive?.progressPct || 0)))
   const globalSyncQuery = globalSyncLive?.currentQueryFile || '-'
   const showGlobalSync = Boolean(globalSyncLive?.running)
+  const headerLiveFresh = (() => {
+    const ts = globalSyncLive?.lastUpdatedAt ? new Date(globalSyncLive.lastUpdatedAt).getTime() : Number.NaN
+    if (Number.isNaN(ts)) return false
+    return (Date.now() - ts) <= 12000
+  })()
+  const headerLiveLabel = headerLiveFresh ? 'En vivo' : 'Desfasado'
   const globalSyncTone = globalSyncLive?.error
     ? 'error'
     : globalSyncLive?.chunkStatus === 'changed'
@@ -177,12 +184,14 @@ export default function App() {
                 + ` | Chunk ${globalSyncLive?.chunkStatus || '-'}`
                 + ` | Skipped ${globalSyncLive?.skippedUnchangedChunks ?? 0}`
                 + ` | ${globalSyncQuery}`
+                + ` | Estado ${headerLiveLabel}`
               }
               aria-label={`Sincronizacion en curso ${globalSyncPct} por ciento`}
             >
               <span className={`header-sync-icon header-sync-icon--${globalSyncTone}`} aria-hidden />
               <span className="header-sync-text">{globalSyncPct}%</span>
               <span className="header-sync-domain">{String(globalSyncLive?.currentDomain || '-')}</span>
+              <span className={`header-sync-live ${headerLiveFresh ? 'is-live' : 'is-stale'}`}>{headerLiveLabel}</span>
             </button>
           ) : null}
           <span>Rol: <strong>{role || '-'}</strong></span>

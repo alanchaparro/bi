@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
 import {
   api,
@@ -49,6 +49,7 @@ type SyncLive = {
   } | null
   targetTable?: string | null
   error?: string | null
+  lastUpdatedAt?: string | null
 }
 
 type SyncTagTone = 'ok' | 'warn' | 'info' | 'error'
@@ -114,6 +115,7 @@ function toneClass(tone: SyncTagTone): string {
 }
 
 export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
+  const resumeAttemptedRef = useRef(false)
   const [configSection, setConfigSection] = useState<ConfigSection>('usuarios')
   const [health, setHealth] = useState<{ ok?: boolean; db_ok?: boolean; service?: string; error?: string } | null>(null)
   const [healthLoading, setHealthLoading] = useState(false)
@@ -202,6 +204,14 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
     : 'info'
   const watermarkTone: SyncTagTone = syncLive?.watermark?.lastUpdatedAt ? 'ok' : 'warn'
   const throughputTone: SyncTagTone = (syncLive?.throughputRowsPerSec || 0) > 0 ? 'ok' : 'warn'
+  const lastUpdatedLabel = useMemo(() => formatSyncTimestamp(syncLive?.lastUpdatedAt), [syncLive?.lastUpdatedAt])
+  const isLiveFresh = useMemo(() => {
+    if (!syncLive?.lastUpdatedAt) return false
+    const ts = new Date(syncLive.lastUpdatedAt).getTime()
+    if (Number.isNaN(ts)) return false
+    return (Date.now() - ts) <= 12000
+  }, [syncLive?.lastUpdatedAt])
+  const liveTone: SyncTagTone = isLiveFresh ? 'ok' : 'warn'
 
   useEffect(() => {
     onSyncLiveChange?.(syncLive)
@@ -466,6 +476,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
             targetTable: status.target_table || null,
             duplicatesDetected: Number(status.duplicates_detected || 0),
             error: status.error || null,
+            lastUpdatedAt: new Date().toISOString(),
           })
 
           if (!status.running) {
@@ -483,6 +494,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
               currentDomain: domain,
               log: lines.slice(-200),
               message: `[${domain}] Sin respuesta del estado de sincronizacion`,
+              lastUpdatedAt: prev?.lastUpdatedAt || null,
             }
           })
           if (consecutiveErrors >= 5) {
@@ -495,6 +507,74 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
     },
     []
   )
+
+  const resumeRunningSync = useCallback(async () => {
+    const domains = SYNC_DOMAINS.map((d) => d.value)
+    for (const domain of domains) {
+      const status = await getSyncStatus({ domain })
+      if (!status.running || !status.job_id) continue
+
+      setSyncLoading(true)
+      setSyncResult(null)
+      setSyncLive({
+        running: true,
+        currentDomain: domain,
+        log: status.log || [],
+        progressPct: Math.max(0, Math.min(100, Number(status.progress_pct || 0))),
+        stage: String(status.stage || ''),
+        message: `[${domain}] ${String(status.status_message || 'Sincronizando...')}`,
+        rowsInserted: Number(status.rows_inserted || 0),
+        rowsUpdated: Number(status.rows_updated || 0),
+        rowsSkipped: Number(status.rows_skipped || 0),
+        rowsRead: Number(status.rows_read || 0),
+        rowsUpserted: Number(status.rows_upserted || 0),
+        rowsUnchanged: Number(status.rows_unchanged || 0),
+        throughputRowsPerSec: Number(status.throughput_rows_per_sec || 0),
+        etaSeconds: typeof status.eta_seconds === 'number' ? status.eta_seconds : null,
+        currentQueryFile: status.current_query_file || null,
+        jobStep: status.job_step || null,
+        queuePosition: typeof status.queue_position === 'number' ? status.queue_position : null,
+        chunkKey: status.chunk_key || null,
+        chunkStatus: status.chunk_status || null,
+        skippedUnchangedChunks: Number(status.skipped_unchanged_chunks || 0),
+        watermark: status.watermark
+          ? {
+              partitionKey: status.watermark.partition_key || null,
+              lastUpdatedAt: status.watermark.last_updated_at || null,
+              lastSourceId: status.watermark.last_source_id || null,
+              updatedAt: status.watermark.updated_at || null,
+            }
+          : null,
+        targetTable: status.target_table || null,
+        duplicatesDetected: Number(status.duplicates_detected || 0),
+        error: status.error || null,
+        lastUpdatedAt: new Date().toISOString(),
+      })
+
+      try {
+        const finalStatus = await pollDomainStatus(domain, status.job_id, 0, 1)
+        if (finalStatus.error) {
+          setSyncResult({ error: `[${domain}] ${finalStatus.error}` })
+        } else {
+          setSyncResult({
+            rows: Number(finalStatus.rows_inserted || 0),
+            log: [`[${domain}] job=${status.job_id} insertadas=${Number(finalStatus.rows_inserted || 0)}`],
+          })
+        }
+      } catch (e: unknown) {
+        setSyncResult({ error: getApiErrorMessage(e) })
+      } finally {
+        setSyncLoading(false)
+      }
+      return
+    }
+  }, [pollDomainStatus])
+
+  useEffect(() => {
+    if (resumeAttemptedRef.current) return
+    resumeAttemptedRef.current = true
+    void resumeRunningSync()
+  }, [resumeRunningSync])
 
   const handleSync = useCallback(async () => {
     if (selectedDomains.length === 0) {
@@ -524,6 +604,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
       progressPct: 1,
       stage: 'starting',
       message: 'Iniciando sincronizacion...',
+      lastUpdatedAt: new Date().toISOString(),
     })
 
     const cleanYear = yearFrom.trim()
@@ -1023,6 +1104,10 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                 <div className="sync-progress-details">
                   <div className="sync-progress-title">{syncLive.message || 'Sincronizando...'}</div>
                   <div className="sync-progress-tags">
+                    <span className={toneClass(liveTone)}>
+                      Estado: <strong>{isLiveFresh ? 'En vivo' : 'Desfasado'}</strong>
+                    </span>
+                    <span className={toneClass('info')}>Ult. actualizacion: <strong>{lastUpdatedLabel}</strong></span>
                     <span className={toneClass('info')}>Dominio: <strong>{syncDomainLabel}</strong></span>
                     <span className={toneClass('info')}>Query: <code>{syncQueryFile}</code></span>
                     <span className={toneClass('info')}>Etapa: <strong>{syncLive.jobStep || syncLive.stage || '-'}</strong></span>
