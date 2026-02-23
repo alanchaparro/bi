@@ -453,7 +453,7 @@ export async function previewSync(payload: {
   close_month_from?: string;
   close_month_to?: string;
 }): Promise<SyncPreviewResponse> {
-  const response = await api.post<SyncPreviewResponse>("/sync/preview", payload, { timeout: 120000 });
+  const response = await api.post<SyncPreviewResponse>("/sync/preview", payload, { timeout: 300000 });
   return response.data;
 }
 

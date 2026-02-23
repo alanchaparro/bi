@@ -641,19 +641,30 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
           message: `[${domain}] Estimando volumen...`,
         }))
 
-        const preview = await previewSync(payload)
-        if (preview.would_exceed_limit) {
-          throw new Error(
-            `[${domain}] La consulta excede el maximo permitido (${preview.max_rows_allowed ?? 0} filas). `
-            + `Estimado: ${preview.estimated_rows}. Acota la query o ejecuta por anio/mes.`
-          )
+        let previewRowsText = 'sin estimacion'
+        try {
+          const preview = await previewSync(payload)
+          previewRowsText = `${preview.estimated_rows}`
+          if (preview.would_exceed_limit) {
+            throw new Error(
+              `[${domain}] La consulta excede el maximo permitido (${preview.max_rows_allowed ?? 0} filas). `
+              + `Estimado: ${preview.estimated_rows}. Acota la query o ejecuta por anio/mes.`
+            )
+          }
+        } catch (previewError: unknown) {
+          const previewErrorMsg = getApiErrorMessage(previewError)
+          if (/timeout/i.test(previewErrorMsg) || /exceeded/i.test(previewErrorMsg)) {
+            globalLog.push(`[${domain}] preview timeout; se continua sin estimacion`)
+          } else {
+            throw previewError
+          }
         }
 
         setSyncLive((prev) => ({
           ...(prev || {}),
           running: true,
           currentDomain: domain,
-          message: `[${domain}] Encolando ejecucion (${preview.estimated_rows} filas estimadas)...`,
+          message: `[${domain}] Encolando ejecucion (${previewRowsText} filas estimadas)...`,
         }))
 
         const run = await runSync(payload)

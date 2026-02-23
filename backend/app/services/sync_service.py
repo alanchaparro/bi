@@ -351,6 +351,9 @@ def _normalize_record(domain: str, row: dict, seq: int) -> dict:
     payment_year = 0
     payment_amount = 0.0
     payment_via_class = ''
+    analytics_contracts_total = 1
+    analytics_debt_total = 0.0
+    analytics_paid_total = 0.0
     if domain == 'cobranzas':
         parsed_payment_date = _parse_payment_date(row)
         payment_date = parsed_payment_date.strftime('%Y-%m-%d') if parsed_payment_date else ''
@@ -362,6 +365,33 @@ def _normalize_record(domain: str, row: dict, seq: int) -> dict:
         signature = (
             f'{contract_id}|{gestion_month}|{payment_date}|{payment_amount}|'
             f'{payment_via_class}|{supervisor}|{un}|{via}|{tramo}'
+        )
+        source_hash = hashlib.sha256(signature.encode('utf-8')).hexdigest()
+    elif domain == 'analytics':
+        analytics_contracts_total = max(
+            1,
+            _to_int(
+                row.get('contracts_total')
+                or row.get('contracts')
+                or row.get('cantidad_contratos')
+                or 1,
+                1,
+            ),
+        )
+        analytics_debt_total = _to_float(
+            row.get('debt_total')
+            or row.get('debt')
+            or row.get('total_saldo')
+            or row.get('deberia')
+        )
+        analytics_paid_total = _to_float(
+            row.get('paid_total')
+            or row.get('paid')
+            or row.get('cobrado')
+        )
+        signature = (
+            f'{contract_id}|{gestion_month}|{supervisor}|{un}|{via}|{tramo}|'
+            f'{analytics_contracts_total}|{analytics_debt_total}|{analytics_paid_total}'
         )
         source_hash = hashlib.sha256(signature.encode('utf-8')).hexdigest()
     else:
@@ -382,6 +412,9 @@ def _normalize_record(domain: str, row: dict, seq: int) -> dict:
         'payment_year': payment_year,
         'payment_amount': payment_amount,
         'payment_via_class': payment_via_class,
+        'contracts_total': analytics_contracts_total,
+        'debt_total': analytics_debt_total,
+        'paid_total': analytics_paid_total,
         'payload_json': payload_json,
         'source_hash': source_hash,
     }
@@ -432,13 +465,22 @@ def _fact_row_from_normalized(domain: str, normalized: dict) -> dict:
             'capital_vencido': _to_float(payload.get('capital_vencido') or payload.get('expired_capital_amount')),
         }
     if domain == 'analytics':
+        contracts_total = max(1, _to_int(normalized.get('contracts_total'), 1))
+        debt_total = _to_float(normalized.get('debt_total'))
+        paid_total = _to_float(normalized.get('paid_total'))
+        if contracts_total <= 0:
+            contracts_total = max(1, _to_int(payload.get('contracts_total') or 1, 1))
+        if debt_total <= 0:
+            debt_total = _to_float(payload.get('debt_total') or payload.get('debt') or payload.get('total_saldo'))
+        if paid_total <= 0:
+            paid_total = _to_float(payload.get('paid_total') or payload.get('paid'))
         return {
             **base,
             'via': normalized['via'],
             'tramo': tramo,
-            'contracts_total': max(1, _to_int(payload.get('contracts_total') or 1, 1)),
-            'debt_total': _to_float(payload.get('debt_total') or payload.get('debt') or payload.get('total_saldo')),
-            'paid_total': _to_float(payload.get('paid_total') or payload.get('paid')),
+            'contracts_total': contracts_total,
+            'debt_total': debt_total,
+            'paid_total': paid_total,
         }
     if domain == 'cobranzas':
         payment_date = _parse_iso_date(normalized.get('payment_date'))
@@ -718,7 +760,7 @@ def _iter_from_mysql(
                     cursor.execute(query_text)
                 else:
                     raise
-            batch_size = max(100, int(settings.sync_fetch_batch_size or 5000))
+            batch_size = _fetch_batch_size_for_domain(domain)
             while True:
                 batch = cursor.fetchmany(batch_size)
                 if not batch:
@@ -755,14 +797,49 @@ def _delete_target_window(db: Session, domain: str, mode: str, year_from: int | 
 
 def _adaptive_chunk_size(domain: str, configured: int) -> int:
     base = max(500, int(configured or 5000))
-    domain_hint = {
+    default_chunk = max(500, int(getattr(settings, 'sync_chunk_size', 10000) or 10000))
+    domain_key = str(domain or '').strip().lower()
+    per_domain = {
+        'analytics': int(getattr(settings, 'sync_chunk_size_analytics', 0) or 0),
+        'cartera': int(getattr(settings, 'sync_chunk_size_cartera', 0) or 0),
+        'cobranzas': int(getattr(settings, 'sync_chunk_size_cobranzas', 0) or 0),
+        'contratos': int(getattr(settings, 'sync_chunk_size_contratos', 0) or 0),
+        'gestores': int(getattr(settings, 'sync_chunk_size_gestores', 0) or 0),
+    }
+    tuned_defaults = {
         'cobranzas': 16000,
-        'cartera': 2500,
-        'analytics': 5000,
-        'contratos': 6000,
-        'gestores': 6000,
-    }.get(domain, base)
-    return max(500, min(12000, int((base + domain_hint) / 2)))
+        'cartera': 7000,
+        'analytics': 12000,
+        'contratos': 12000,
+        'gestores': 12000,
+    }
+    target = per_domain.get(domain_key, 0)
+    if target <= 0:
+        target = tuned_defaults.get(domain_key, default_chunk)
+    return max(500, min(30000, int((base + target) / 2)))
+
+
+def _fetch_batch_size_for_domain(domain: str) -> int:
+    base = max(500, int(getattr(settings, 'sync_fetch_batch_size', 5000) or 5000))
+    domain_key = str(domain or '').strip().lower()
+    per_domain = {
+        'analytics': int(getattr(settings, 'sync_fetch_batch_size_analytics', 0) or 0),
+        'cartera': int(getattr(settings, 'sync_fetch_batch_size_cartera', 0) or 0),
+        'cobranzas': int(getattr(settings, 'sync_fetch_batch_size_cobranzas', 0) or 0),
+        'contratos': int(getattr(settings, 'sync_fetch_batch_size_contratos', 0) or 0),
+        'gestores': int(getattr(settings, 'sync_fetch_batch_size_gestores', 0) or 0),
+    }
+    override = per_domain.get(domain_key, 0)
+    if override > 0:
+        return max(100, min(50000, override))
+    tuned_defaults = {
+        'analytics': 20000,
+        'cartera': 10000,
+        'cobranzas': 12000,
+        'contratos': 20000,
+        'gestores': 20000,
+    }
+    return max(100, min(50000, int(tuned_defaults.get(domain_key, base))))
 
 
 def _should_persist_sync_records(domain: str) -> bool:
@@ -1514,10 +1591,14 @@ def _refresh_analytics_snapshot(
     now = datetime.utcnow()
     snapshot_rows: list[dict] = []
     for row in normalized_rows:
-        payload = json.loads(row['payload_json'])
-        contracts = max(1, _to_int(payload.get('contracts_total'), 1))
-        debt_total = _to_float(payload.get('debt_total'))
-        paid_total = _to_float(payload.get('paid_total'))
+        contracts = max(1, _to_int(row.get('contracts_total'), 1))
+        debt_total = _to_float(row.get('debt_total'))
+        paid_total = _to_float(row.get('paid_total'))
+        if contracts <= 0 or (debt_total == 0 and paid_total == 0):
+            payload = json.loads(row.get('payload_json') or '{}')
+            contracts = max(1, _to_int(payload.get('contracts_total'), 1))
+            debt_total = _to_float(payload.get('debt_total'))
+            paid_total = _to_float(payload.get('paid_total'))
         debt_per = debt_total / contracts
         paid_per = paid_total / contracts
         base_id = str(row['contract_id'])
