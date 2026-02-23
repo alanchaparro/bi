@@ -289,6 +289,7 @@ export type CobranzasCohorteSummaryResponse = {
     pagaron: number;
     deberia: number;
     cobrado: number;
+    transacciones?: number;
     pct_pago_contratos: number;
     pct_cobertura_monto: number;
   };

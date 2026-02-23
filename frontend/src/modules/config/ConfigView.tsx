@@ -55,6 +55,14 @@ const SYNC_DOMAINS: Array<{ value: SyncDomain; label: string }> = [
   { value: 'gestores', label: 'Gestores' },
 ]
 
+const SYNC_QUERY_FILES: Record<SyncDomain, string> = {
+  analytics: 'query_analytics.sql',
+  cartera: 'query.sql',
+  cobranzas: 'query_cobranzas.sql',
+  contratos: 'query_contratos.sql',
+  gestores: 'query_gestores.sql',
+}
+
 const STATUS_POLL_MS = 2000
 const TRAMO_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7]
 
@@ -146,6 +154,12 @@ export function ConfigView({ onReloadBrokers }: Props) {
   const busy = syncLoading || reloadLoading
   const configBusy = tramoConfigLoading || tramoConfigSaving
   const usersBusy = usersLoading || usersSaving
+  const syncPercent = Math.max(0, Math.min(100, Math.round(syncLive?.progressPct || 0)))
+  const syncDomainLabel = useMemo(() => {
+    if (!syncLive?.currentDomain) return '-'
+    return SYNC_DOMAINS.find((d) => d.value === syncLive.currentDomain)?.label || syncLive.currentDomain
+  }, [syncLive?.currentDomain])
+  const syncQueryFile = syncLive?.currentDomain ? SYNC_QUERY_FILES[syncLive.currentDomain] : '-'
 
   const toggleDomain = useCallback((domain: SyncDomain, checked: boolean) => {
     setSelectedDomains((prev) => {
@@ -899,9 +913,47 @@ export function ConfigView({ onReloadBrokers }: Props) {
           </div>
 
           {syncLive && (
-            <div style={{ marginTop: '0.75rem' }}>
+            <div className="sync-progress-shell">
+              <div className="sync-progress-hero">
+                <div
+                  className="sync-ring"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={syncPercent}
+                  aria-label="Progreso de sincronizacion"
+                >
+                  <svg className={`sync-ring-svg ${syncLive.running ? 'is-running' : ''}`} viewBox="0 0 120 120" aria-hidden>
+                    <circle className="sync-ring-track" cx="60" cy="60" r="48" />
+                    <circle
+                      className="sync-ring-value"
+                      cx="60"
+                      cy="60"
+                      r="48"
+                      style={{
+                        strokeDasharray: `${2 * Math.PI * 48} ${2 * Math.PI * 48}`,
+                        strokeDashoffset: `${2 * Math.PI * 48 * (1 - syncPercent / 100)}`,
+                      }}
+                    />
+                  </svg>
+                  <div className="sync-ring-label">
+                    <strong>{syncPercent}%</strong>
+                    <span>{syncLive.running ? 'En curso' : 'Finalizado'}</span>
+                  </div>
+                </div>
+
+                <div className="sync-progress-details">
+                  <div className="sync-progress-title">{syncLive.message || 'Sincronizando...'}</div>
+                  <div className="sync-progress-tags">
+                    <span className="sync-progress-tag">Dominio: <strong>{syncDomainLabel}</strong></span>
+                    <span className="sync-progress-tag">Query: <code>{syncQueryFile}</code></span>
+                    <span className="sync-progress-tag">Etapa: <strong>{syncLive.stage || '-'}</strong></span>
+                  </div>
+                </div>
+              </div>
+
               <div style={{ fontSize: '0.82rem', marginBottom: '0.4rem', color: 'var(--color-text-muted)' }}>
-                {syncLive.message || 'Sincronizando...'} ({Math.max(0, Math.min(100, Math.round(syncLive.progressPct || 0)))}%)
+                Avance general
               </div>
               <div
                 style={{
@@ -914,7 +966,7 @@ export function ConfigView({ onReloadBrokers }: Props) {
               >
                 <div
                   style={{
-                    width: `${Math.max(0, Math.min(100, Math.round(syncLive.progressPct || 0)))}%`,
+                    width: `${syncPercent}%`,
                     height: '100%',
                     background: 'var(--color-primary)',
                     transition: 'width 300ms ease',

@@ -7,7 +7,7 @@ import {
   type CobranzasCohorteSummaryResponse,
 } from '../../shared/api'
 import { getApiErrorMessage } from '../../shared/apiErrors'
-import { formatCount, formatGsCompact, formatGsFull } from '../../shared/formatters'
+import { formatCount, formatGsFull } from '../../shared/formatters'
 
 type Filters = {
   cutoffMonth: string
@@ -17,6 +17,13 @@ type Filters = {
   supervisors: string[]
 }
 type MultiValueFilterKey = Exclude<keyof Filters, 'cutoffMonth'>
+type KpiId =
+  | 'total_cobrado'
+  | 'deberia_cobrar'
+  | 'pago_contratos'
+  | 'cobertura_monto'
+  | 'ticket_transaccional'
+  | 'ticket_contrato'
 
 type Options = {
   cutoffMonths: string[]
@@ -42,6 +49,31 @@ const EMPTY_FILTERS: Filters = {
   supervisors: [],
 }
 
+const COHORTE_KPI_ORDER_STORAGE = 'analisis_cobranzas_cohorte_kpi_order_v1'
+const DEFAULT_KPI_ORDER: KpiId[] = [
+  'total_cobrado',
+  'deberia_cobrar',
+  'ticket_transaccional',
+  'ticket_contrato',
+  'pago_contratos',
+  'cobertura_monto',
+]
+
+function readStoredOrder(defaults: KpiId[]): KpiId[] {
+  try {
+    const raw = window.localStorage.getItem(COHORTE_KPI_ORDER_STORAGE)
+    if (!raw) return defaults
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return defaults
+    const parsedSet = new Set(parsed)
+    const next = defaults.filter((item) => parsedSet.has(item))
+    const missing = defaults.filter((item) => !next.includes(item))
+    return [...next, ...missing]
+  } catch {
+    return defaults
+  }
+}
+
 const pct = (v: number) => `${(Number(v || 0) * 100).toFixed(1)}%`
 
 export function AnalisisCobranzasCohorteView() {
@@ -53,6 +85,17 @@ export function AnalisisCobranzasCohorteView() {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [appliedFilters, setAppliedFilters] = useState<Filters>(EMPTY_FILTERS)
   const [summary, setSummary] = useState<CobranzasCohorteSummaryResponse | null>(null)
+  const [kpiOrder, setKpiOrder] = useState<KpiId[]>(() => readStoredOrder(DEFAULT_KPI_ORDER))
+  const [draggingKpi, setDraggingKpi] = useState<KpiId | null>(null)
+  const [dragOverKpi, setDragOverKpi] = useState<KpiId | null>(null)
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(COHORTE_KPI_ORDER_STORAGE, JSON.stringify(kpiOrder))
+    } catch {
+      // ignore storage failures
+    }
+  }, [kpiOrder])
 
   const loadSummary = useCallback(async (next: Filters, withLoader = false) => {
     if (withLoader) setLoadingSummary(true)
@@ -157,6 +200,19 @@ export function AnalisisCobranzasCohorteView() {
   }, [appliedFilters, loadSummary])
 
   const totals = summary?.totals
+  const selectedCategoria = (filters.categorias[0] || '').toUpperCase()
+  const selectedVia = (filters.vias[0] || '').toUpperCase()
+  const ticketTransaccional = useMemo(() => {
+    const transacciones = Number(totals?.transacciones || 0)
+    if (transacciones <= 0) return 0
+    return Number(totals?.cobrado || 0) / transacciones
+  }, [totals?.cobrado, totals?.transacciones])
+
+  const ticketContrato = useMemo(() => {
+    const contratosConPago = Number(totals?.pagaron || 0)
+    if (contratosConPago <= 0) return 0
+    return Number(totals?.cobrado || 0) / contratosConPago
+  }, [totals?.cobrado, totals?.pagaron])
 
   const byYearEntries = useMemo(
     () => Object.entries(summary?.by_year || {}).sort((a, b) => Number(b[0] || 0) - Number(a[0] || 0)),
@@ -185,14 +241,64 @@ export function AnalisisCobranzasCohorteView() {
 
   const hasRows = (summary?.by_sale_month || []).length > 0 || byYearEntries.length > 0
 
+  const moveKpi = useCallback((fromId: KpiId, toId: KpiId) => {
+    if (fromId === toId) return
+    setKpiOrder((prev) => {
+      const fromIdx = prev.indexOf(fromId)
+      const toIdx = prev.indexOf(toId)
+      if (fromIdx < 0 || toIdx < 0) return prev
+      const next = [...prev]
+      next.splice(fromIdx, 1)
+      next.splice(toIdx, 0, fromId)
+      return next
+    })
+  }, [])
+
+  const kpiCards: Record<KpiId, { title: string; value: string; note?: string; className: string }> = {
+    total_cobrado: {
+      title: 'Total Cobrado',
+      value: formatGsFull(totals?.cobrado || 0),
+      note: `${formatCount(totals?.pagaron || 0)} contratos pagaron`,
+      className: 'cohorte-kpi-primary',
+    },
+    deberia_cobrar: {
+      title: 'Deberia Cobrar',
+      value: formatGsFull(totals?.deberia || 0),
+      note: `${formatCount(totals?.activos || 0)} contratos activos`,
+      className: 'cohorte-kpi-gold',
+    },
+    pago_contratos: {
+      title: '% Pago Contratos',
+      value: pct(totals?.pct_pago_contratos || 0),
+      className: 'cohorte-kpi-emerald',
+    },
+    cobertura_monto: {
+      title: '% Cobertura Monto',
+      value: pct(totals?.pct_cobertura_monto || 0),
+      className: 'cohorte-kpi-violet',
+    },
+    ticket_transaccional: {
+      title: 'Ticket Transaccional',
+      value: formatGsFull(ticketTransaccional),
+      note: `${formatCount(totals?.transacciones || 0)} transacciones`,
+      className: 'cohorte-kpi-cyan',
+    },
+    ticket_contrato: {
+      title: 'Ticket Contrato',
+      value: formatGsFull(ticketContrato),
+      note: `${formatCount(totals?.pagaron || 0)} contratos con pago`,
+      className: 'cohorte-kpi-amber',
+    },
+  }
+
   return (
     <section className="card analysis-card cohorte-card">
       <div className="cohorte-header">
         <div className="cohorte-header-row">
           <span className="cohorte-kicker">Panel ejecutivo</span>
-          <span className="cohorte-live-pill">Cobranzas cohorte</span>
+          <span className="cohorte-live-pill">Cobranzas corte</span>
         </div>
-        <h2>Analisis de Cobranzas por Cohorte</h2>
+        <h2>Analisis de Cobranzas por Corte</h2>
         <p className="cohorte-subtitle">Cobro del corte seleccionado, segmentado por mes/ano de venta.</p>
         <div className="cohorte-meta-row">
           {summary?.cutoff_month ? (
@@ -214,6 +320,8 @@ export function AnalisisCobranzasCohorteView() {
             <div className="analysis-skeleton-input" />
           </div>
           <div className="cohorte-skeleton-kpis">
+            <div className="analysis-skeleton-kpi" />
+            <div className="analysis-skeleton-kpi" />
             <div className="analysis-skeleton-kpi" />
             <div className="analysis-skeleton-kpi" />
             <div className="analysis-skeleton-kpi" />
@@ -250,23 +358,38 @@ export function AnalisisCobranzasCohorteView() {
               placeholder="Todos"
             />
 
-            <MultiSelectFilter
-              className="cohorte-filter-control"
-              label="Via de Cobro"
-              options={options.vias}
-              selected={filters.vias}
-              onChange={(values) => setFilters((prev) => ({ ...prev, vias: values }))}
-              placeholder="Todas"
-            />
-
-            <MultiSelectFilter
-              className="cohorte-filter-control"
-              label="Categoria"
-              options={options.categorias}
-              selected={filters.categorias}
-              onChange={(values) => setFilters((prev) => ({ ...prev, categorias: values }))}
-              placeholder="Todas"
-            />
+            <div className="cohorte-filter-control cohorte-via-control">
+              <label className="input-label">Via de Cobro</label>
+              <div className="cohorte-via-toggle" role="radiogroup" aria-label="Via de Cobro">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedVia === ''}
+                  className={`cohorte-via-btn ${selectedVia === '' ? 'is-active' : ''}`}
+                  onClick={() => setFilters((prev) => ({ ...prev, vias: [] }))}
+                >
+                  Todos
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedVia === 'DEBITO'}
+                  className={`cohorte-via-btn ${selectedVia === 'DEBITO' ? 'is-active' : ''}`}
+                  onClick={() => setFilters((prev) => ({ ...prev, vias: ['DEBITO'] }))}
+                >
+                  Debito
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedVia === 'COBRADOR'}
+                  className={`cohorte-via-btn ${selectedVia === 'COBRADOR' ? 'is-active' : ''}`}
+                  onClick={() => setFilters((prev) => ({ ...prev, vias: ['COBRADOR'] }))}
+                >
+                  Cobrador
+                </button>
+              </div>
+            </div>
 
             <MultiSelectFilter
               className="cohorte-filter-control"
@@ -276,6 +399,39 @@ export function AnalisisCobranzasCohorteView() {
               onChange={(values) => setFilters((prev) => ({ ...prev, supervisors: values }))}
               placeholder="Todos"
             />
+
+            <div className="cohorte-filter-control cohorte-category-control">
+              <label className="input-label">Categoria</label>
+              <div className="cohorte-category-toggle" role="radiogroup" aria-label="Categoria">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedCategoria === ''}
+                  className={`cohorte-category-btn ${selectedCategoria === '' ? 'is-active' : ''}`}
+                  onClick={() => setFilters((prev) => ({ ...prev, categorias: [] }))}
+                >
+                  Todas
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedCategoria === 'VIGENTE'}
+                  className={`cohorte-category-btn ${selectedCategoria === 'VIGENTE' ? 'is-active' : ''}`}
+                  onClick={() => setFilters((prev) => ({ ...prev, categorias: ['VIGENTE'] }))}
+                >
+                  Vigente
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedCategoria === 'MOROSO'}
+                  className={`cohorte-category-btn ${selectedCategoria === 'MOROSO' ? 'is-active' : ''}`}
+                  onClick={() => setFilters((prev) => ({ ...prev, categorias: ['MOROSO'] }))}
+                >
+                  Moroso
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="analysis-actions-row cohorte-actions">
@@ -309,24 +465,43 @@ export function AnalisisCobranzasCohorteView() {
 
           <div className={`cohorte-results ${applying ? 'cohorte-results-updating' : ''}`}>
             <div className="cohorte-kpis">
-              <article className="card kpi-card cohorte-kpi-card cohorte-kpi-primary">
-                <div className="kpi-card-title-wrap"><h3 className="kpi-card-title">Total Cobrado</h3></div>
-                <div className="kpi-card-value" title={formatGsFull(totals?.cobrado || 0)}>{formatGsCompact(totals?.cobrado || 0)}</div>
-                <small className="cohorte-kpi-note">{formatCount(totals?.pagaron || 0)} contratos pagaron</small>
-              </article>
-              <article className="card kpi-card cohorte-kpi-card cohorte-kpi-gold">
-                <div className="kpi-card-title-wrap"><h3 className="kpi-card-title">Deberia Cobrar</h3></div>
-                <div className="kpi-card-value" title={formatGsFull(totals?.deberia || 0)}>{formatGsCompact(totals?.deberia || 0)}</div>
-                <small className="cohorte-kpi-note">{formatCount(totals?.activos || 0)} contratos activos</small>
-              </article>
-              <article className="card kpi-card cohorte-kpi-card cohorte-kpi-emerald">
-                <div className="kpi-card-title-wrap"><h3 className="kpi-card-title">% Pago Contratos</h3></div>
-                <div className="kpi-card-value">{pct(totals?.pct_pago_contratos || 0)}</div>
-              </article>
-              <article className="card kpi-card cohorte-kpi-card cohorte-kpi-violet">
-                <div className="kpi-card-title-wrap"><h3 className="kpi-card-title">% Cobertura Monto</h3></div>
-                <div className="kpi-card-value">{pct(totals?.pct_cobertura_monto || 0)}</div>
-              </article>
+              {kpiOrder.map((kpiId) => {
+                const card = kpiCards[kpiId]
+                return (
+                  <article
+                    key={kpiId}
+                    className={`card kpi-card cohorte-kpi-card ${card.className} ${dragOverKpi === kpiId ? 'chart-drop-target' : ''} ${draggingKpi === kpiId ? 'dragging-card' : ''}`}
+                    draggable
+                    onDragStart={(e) => {
+                      setDraggingKpi(kpiId)
+                      e.dataTransfer.effectAllowed = 'move'
+                      e.dataTransfer.setData('text/plain', kpiId)
+                    }}
+                    onDragEnd={() => {
+                      setDraggingKpi(null)
+                      setDragOverKpi(null)
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      if (draggingKpi && draggingKpi !== kpiId) setDragOverKpi(kpiId)
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      const fromId = (e.dataTransfer.getData('text/plain') || draggingKpi || '') as KpiId
+                      if (fromId) moveKpi(fromId, kpiId)
+                      setDraggingKpi(null)
+                      setDragOverKpi(null)
+                    }}
+                  >
+                    <div className="chart-card-header">
+                      <div className="kpi-card-title-wrap"><h3 className="kpi-card-title">{card.title}</h3></div>
+                      <span className="chart-drag-handle" title="Arrastrar para reordenar" aria-hidden>::</span>
+                    </div>
+                    <div className="kpi-card-value" title={card.value}>{card.value}</div>
+                    {card.note ? <small className="cohorte-kpi-note">{card.note}</small> : null}
+                  </article>
+                )
+              })}
             </div>
 
             {!hasRows ? (

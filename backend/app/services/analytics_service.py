@@ -858,7 +858,7 @@ class AnalyticsService:
         if not resolved_cutoff:
             return {
                 'cutoff_month': '',
-                'totals': {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0},
+                'totals': {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0, 'transacciones': 0},
                 'by_sale_month': [],
                 'by_year': {},
                 'meta': {'source': 'api-v1', 'generated_at': datetime.utcnow().isoformat()},
@@ -883,7 +883,7 @@ class AnalyticsService:
             return {
                 'cutoff_month': resolved_cutoff,
                 'effective_cartera_month': '',
-                'totals': {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0},
+                'totals': {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0, 'transacciones': 0},
                 'by_sale_month': [],
                 'by_year': {},
                 'meta': {
@@ -951,15 +951,23 @@ class AnalyticsService:
 
         by_sale_month: dict[str, dict[str, float | int]] = {}
         by_year: dict[str, dict[str, float | int]] = {}
-        totals = {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0}
+        totals = {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0, 'transacciones': 0}
 
         paid_rows = (
-            db.query(CobranzasFact.contract_id, func.coalesce(func.sum(CobranzasFact.payment_amount), 0.0))
+            db.query(
+                CobranzasFact.contract_id,
+                func.coalesce(func.sum(CobranzasFact.payment_amount), 0.0),
+                func.coalesce(
+                    func.sum(case((CobranzasFact.payment_amount > 0, literal(1)), else_=literal(0))),
+                    0,
+                ),
+            )
             .filter(CobranzasFact.payment_month == resolved_cutoff)
             .group_by(CobranzasFact.contract_id)
             .all()
         )
-        paid_by_contract = {str(cid): float(amount or 0.0) for cid, amount in paid_rows}
+        paid_by_contract = {str(cid): float(amount or 0.0) for cid, amount, _ in paid_rows}
+        tx_by_contract = {str(cid): int(tx_count or 0) for cid, _, tx_count in paid_rows}
 
         rules_signature = str(hash(json.dumps(tramo_rules_cfg.get('rules') or [], sort_keys=True, ensure_ascii=False)))
         base_cache_key = f'{resolved_cutoff}|{effective_cartera_month}|{rules_signature}'
@@ -985,6 +993,7 @@ class AnalyticsService:
                     continue
                 deberia = float(_to_float(row.monto_cuota) + _to_float(row.monto_vencido))
                 cobrado = float(paid_by_contract.get(contract_id, 0.0))
+                transacciones = int(tx_by_contract.get(contract_id, 0))
                 base_rows.append(
                     {
                         'sale_month': sale_month,
@@ -995,6 +1004,7 @@ class AnalyticsService:
                         'deberia': deberia,
                         'cobrado': cobrado,
                         'pagaron': 1 if cobrado > 0 else 0,
+                        'transacciones': transacciones,
                     }
                 )
             _cohorte_base_cache_set(base_cache_key, base_rows)
@@ -1012,6 +1022,7 @@ class AnalyticsService:
             pagaron = int(row['pagaron'])
             deberia = float(row['deberia'])
             cobrado = float(row['cobrado'])
+            transacciones = int(row.get('transacciones', 0) or 0)
             bucket = by_sale_month.setdefault(sale_month, {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0})
             bucket['activos'] = int(bucket['activos']) + 1
             bucket['pagaron'] = int(bucket['pagaron']) + pagaron
@@ -1027,6 +1038,7 @@ class AnalyticsService:
             totals['pagaron'] += pagaron
             totals['deberia'] += deberia
             totals['cobrado'] += cobrado
+            totals['transacciones'] += transacciones
 
         rows = []
         for sale_month, values in sorted(by_sale_month.items(), key=lambda item: _month_serial(item[0])):
@@ -1069,6 +1081,7 @@ class AnalyticsService:
                 'pagaron': int(totals['pagaron']),
                 'deberia': round(float(totals['deberia']), 2),
                 'cobrado': round(float(totals['cobrado']), 2),
+                'transacciones': int(totals['transacciones']),
                 'pct_pago_contratos': round((totals['pagaron'] / totals['activos']) if totals['activos'] > 0 else 0.0, 6),
                 'pct_cobertura_monto': round((totals['cobrado'] / totals['deberia']) if totals['deberia'] > 0 else 0.0, 6),
             },

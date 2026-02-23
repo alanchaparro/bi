@@ -1006,6 +1006,110 @@ body.sidebar-open .tabs-nav {
   z-index: 30;
 }
 
+.cohorte-category-control {
+  display: flex;
+  flex-direction: column;
+}
+
+.cohorte-via-control {
+  display: flex;
+  flex-direction: column;
+}
+
+.cohorte-category-toggle {
+  min-height: 42px;
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  background: color-mix(in srgb, var(--color-surface-elevated) 80%, transparent);
+  padding: 3px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.3rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cohorte-via-toggle {
+  min-height: 42px;
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  background: color-mix(in srgb, var(--color-surface-elevated) 80%, transparent);
+  padding: 3px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.3rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cohorte-category-toggle:focus-within {
+  border-color: color-mix(in srgb, var(--color-primary) 70%, var(--color-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 24%, transparent);
+}
+
+.cohorte-via-toggle:focus-within {
+  border-color: color-mix(in srgb, var(--color-primary) 70%, var(--color-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 24%, transparent);
+}
+
+.cohorte-category-btn {
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: 0.58rem;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cohorte-via-btn {
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: 0.58rem;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cohorte-category-btn:hover {
+  color: var(--color-text);
+  border-color: color-mix(in srgb, var(--color-primary) 36%, transparent);
+}
+
+.cohorte-via-btn:hover {
+  color: var(--color-text);
+  border-color: color-mix(in srgb, var(--color-primary) 36%, transparent);
+}
+
+.cohorte-category-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 72%, white);
+  outline-offset: 1px;
+}
+
+.cohorte-via-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 72%, white);
+  outline-offset: 1px;
+}
+
+.cohorte-category-btn.is-active {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 26%, transparent) 0%, color-mix(in srgb, var(--color-primary) 14%, transparent) 100%);
+  border-color: color-mix(in srgb, var(--color-primary) 58%, transparent);
+  color: var(--color-primary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.cohorte-via-btn.is-active {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 26%, transparent) 0%, color-mix(in srgb, var(--color-primary) 14%, transparent) 100%);
+  border-color: color-mix(in srgb, var(--color-primary) 58%, transparent);
+  color: var(--color-primary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
 .cohorte-actions {
   align-items: center;
   margin-bottom: 0.6rem;
@@ -1055,13 +1159,13 @@ body.sidebar-open .tabs-nav {
 
 .cohorte-kpis {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.9rem;
   margin-bottom: 0.95rem;
 }
 
 .cohorte-kpi-card {
-  cursor: default;
+  cursor: grab;
   min-height: 132px;
   padding: 1rem;
   display: flex;
@@ -1102,14 +1206,29 @@ body.sidebar-open .tabs-nav {
   border-color: rgba(99, 102, 241, 0.32);
 }
 
+.cohorte-kpi-cyan {
+  box-shadow: 0 10px 24px rgba(6, 182, 212, 0.14);
+  border-color: rgba(34, 211, 238, 0.32);
+}
+
+.cohorte-kpi-amber {
+  box-shadow: 0 10px 24px rgba(245, 158, 11, 0.14);
+  border-color: rgba(251, 191, 36, 0.32);
+}
+
 .cohorte-kpi-card .kpi-card-value {
   font-variant-numeric: tabular-nums;
-  font-size: clamp(1.55rem, 2.2vw, 2.2rem);
-  letter-spacing: -0.01em;
-  line-height: 1.06;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: clamp(1.2rem, 1.6vw, 1.75rem);
+  letter-spacing: 0;
+  line-height: 1.14;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+  max-width: 100%;
+}
+
+.cohorte-kpi-card .chart-card-header {
+  margin-bottom: 0.3rem;
 }
 
 .cohorte-kpi-note {
@@ -1240,8 +1359,7 @@ body.sidebar-open .tabs-nav {
   }
 
   .cohorte-kpi-card .kpi-card-value {
-    white-space: normal;
-    text-overflow: clip;
+    font-size: clamp(1.3rem, 7vw, 1.75rem);
   }
 }
 
@@ -1595,6 +1713,119 @@ label.input-label {
   align-items: end;
 }
 
+.sync-progress-shell {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  background: color-mix(in srgb, var(--color-surface-elevated) 72%, transparent);
+}
+
+.sync-progress-hero {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 0.9rem;
+  margin-bottom: 0.6rem;
+  align-items: center;
+}
+
+.sync-ring {
+  position: relative;
+  width: 120px;
+  height: 120px;
+}
+
+.sync-ring-svg {
+  width: 120px;
+  height: 120px;
+  transform: rotate(-90deg);
+}
+
+.sync-ring-svg.is-running {
+  animation: sync-ring-spin 2.8s linear infinite;
+}
+
+.sync-ring-track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-border) 82%, transparent);
+  stroke-width: 9;
+}
+
+.sync-ring-value {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 9;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 280ms ease;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--color-primary) 36%, transparent));
+}
+
+.sync-ring-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.sync-ring-label strong {
+  font-size: 1.3rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.sync-ring-label span {
+  margin-top: 0.18rem;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.sync-progress-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 0.4rem;
+}
+
+.sync-progress-details {
+  min-width: 0;
+}
+
+.sync-progress-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.sync-progress-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  min-height: 26px;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 84%, transparent);
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+}
+
+.sync-progress-tag code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--color-text);
+}
+
+@keyframes sync-ring-spin {
+  from {
+    transform: rotate(-90deg);
+  }
+  to {
+    transform: rotate(270deg);
+  }
+}
+
 @media (max-width: 900px) {
   .config-grid-3 {
     grid-template-columns: 1fr;
@@ -1602,5 +1833,15 @@ label.input-label {
 
   .config-full-mobile {
     width: 100%;
+  }
+
+  .sync-progress-hero {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .sync-progress-tags {
+    justify-content: center;
   }
 }
