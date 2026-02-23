@@ -5,7 +5,7 @@ import os
 import threading
 import tempfile
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +30,7 @@ from app.models.brokers import (
     GestoresFact,
     SyncChunkManifest,
     SyncExtractLog,
+    SyncStagingRow,
     SyncRecord,
     SyncJobStep,
     SyncJob,
@@ -54,6 +55,15 @@ FACT_TABLE_BY_DOMAIN = {
     'cobranzas': CobranzasFact,
     'contratos': ContratosFact,
     'gestores': GestoresFact,
+}
+
+MYSQL_INCREMENTAL_HINTS = {
+    # Column names are based on the aliases returned by each query_*.sql
+    # and allow server-side watermark pushdown with safe fallback.
+    'cobranzas': {'updated_col': 'Actualizado_al', 'id_col': 'id', 'format': '%Y-%m-%d %H:%i:%s'},
+    'cartera': {'updated_col': 'fecha_cierre', 'id_col': 'id_contrato', 'format': '%Y/%m/%d'},
+    'contratos': {'updated_col': 'date', 'id_col': 'id', 'format': '%Y-%m-%d'},
+    'gestores': {'updated_col': 'from_date', 'id_col': 'contract_id', 'format': '%Y-%m-%d'},
 }
 
 
@@ -511,7 +521,58 @@ def _append_log(domain: str, line: str) -> None:
     logger.info('[sync:%s] %s', domain, line)
 
 
-def _iter_from_mysql(query_path: Path):
+def _strip_sql_trailing_semicolon(sql_text: str) -> str:
+    text = str(sql_text or '').strip()
+    while text.endswith(';'):
+        text = text[:-1].rstrip()
+    return text
+
+
+def _build_mysql_incremental_query(
+    *,
+    domain: str,
+    base_sql: str,
+    watermark_updated_at: datetime | None,
+    watermark_source_id: str | None,
+) -> tuple[str, tuple, bool]:
+    hint = MYSQL_INCREMENTAL_HINTS.get(str(domain or '').strip().lower())
+    if not hint or watermark_updated_at is None:
+        return base_sql, tuple(), False
+    updated_col = str(hint.get('updated_col') or '').strip()
+    id_col = str(hint.get('id_col') or '').strip()
+    date_format = str(hint.get('format') or '%Y-%m-%d %H:%i:%s')
+    if not updated_col:
+        return base_sql, tuple(), False
+    dt_value = watermark_updated_at.strftime('%Y-%m-%d %H:%M:%S')
+    wrapped_sql = _strip_sql_trailing_semicolon(base_sql)
+    if not wrapped_sql:
+        return base_sql, tuple(), False
+    if id_col and str(watermark_source_id or '').strip():
+        sql = (
+            f"SELECT * FROM ({wrapped_sql}) _src "
+            f"WHERE ("
+            f"STR_TO_DATE(CAST(_src.`{updated_col}` AS CHAR), '{date_format}') > %s "
+            f"OR (STR_TO_DATE(CAST(_src.`{updated_col}` AS CHAR), '{date_format}') = %s "
+            f"AND CAST(_src.`{id_col}` AS CHAR) > %s)"
+            f")"
+        )
+        params = (dt_value, dt_value, str(watermark_source_id))
+        return sql, params, True
+    sql = (
+        f"SELECT * FROM ({wrapped_sql}) _src "
+        f"WHERE STR_TO_DATE(CAST(_src.`{updated_col}` AS CHAR), '{date_format}') > %s"
+    )
+    params = (dt_value,)
+    return sql, params, True
+
+
+def _iter_from_mysql(
+    query_path: Path,
+    *,
+    domain: str | None = None,
+    watermark_updated_at: datetime | None = None,
+    watermark_source_id: str | None = None,
+):
     cfg = {
         'host': settings.mysql_host,
         'port': settings.mysql_port,
@@ -525,7 +586,33 @@ def _iter_from_mysql(query_path: Path):
     try:
         cursor = conn.cursor(dictionary=True)
         try:
-            cursor.execute(query_path.read_text(encoding='utf-8'))
+            query_text = query_path.read_text(encoding='utf-8')
+            effective_sql = query_text
+            effective_params: tuple = tuple()
+            used_pushdown = False
+            if bool(settings.sync_mysql_incremental_pushdown) and domain:
+                try:
+                    effective_sql, effective_params, used_pushdown = _build_mysql_incremental_query(
+                        domain=domain,
+                        base_sql=query_text,
+                        watermark_updated_at=watermark_updated_at,
+                        watermark_source_id=watermark_source_id,
+                    )
+                except Exception:
+                    effective_sql = query_text
+                    effective_params = tuple()
+                    used_pushdown = False
+            try:
+                cursor.execute(effective_sql, effective_params)
+            except Exception:
+                if used_pushdown:
+                    logger.warning(
+                        '[sync:%s] fallback to base query (incremental pushdown not applicable at source)',
+                        str(domain or 'unknown'),
+                    )
+                    cursor.execute(query_text)
+                else:
+                    raise
             batch_size = max(100, int(settings.sync_fetch_batch_size or 5000))
             while True:
                 batch = cursor.fetchmany(batch_size)
@@ -604,6 +691,50 @@ def _analyze_after_sync(db: Session, domain: str) -> None:
     for table_name in targets:
         db.execute(sa_text(f'ANALYZE {table_name}'))
     db.commit()
+
+
+def _derive_chunk_key(rows: list[dict], fallback: str = '*') -> str:
+    months = sorted({str(r.get('gestion_month') or '').strip() for r in rows if str(r.get('gestion_month') or '').strip()}, key=_month_serial)
+    if not months:
+        return fallback
+    if len(months) == 1:
+        return months[0]
+    return f'{months[0]}..{months[-1]}'
+
+
+def _persist_staging_rows(db: Session, job_id: str, domain: str, chunk_key: str, rows: list[dict]) -> int:
+    if not rows:
+        return 0
+    now = datetime.utcnow()
+    mappings = []
+    for row in rows:
+        mappings.append(
+            {
+                'job_id': str(job_id),
+                'domain': str(domain),
+                'chunk_key': str(chunk_key or '*'),
+                'contract_id': str(row.get('contract_id') or '')[:64],
+                'gestion_month': str(row.get('gestion_month') or '')[:7],
+                'source_hash': str(row.get('source_hash') or '')[:64],
+                'payload_json': str(row.get('payload_json') or '{}'),
+                'created_at': now,
+            }
+        )
+    db.bulk_insert_mappings(SyncStagingRow, mappings)
+    db.commit()
+    return len(mappings)
+
+
+def _cleanup_staging_rows(db: Session) -> int:
+    retention_days = max(1, int(settings.sync_staging_retention_days or 14))
+    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    deleted = (
+        db.query(SyncStagingRow)
+        .filter(SyncStagingRow.created_at < cutoff)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return int(deleted or 0)
 
 
 def _upsert_sync_records(db: Session, rows: list[dict]) -> int:
@@ -1766,7 +1897,12 @@ def _execute_job(
             temp_rows_file = open(temp_rows_path, 'w', encoding='utf-8')
         seq = 0
         try:
-            for batch in _iter_from_mysql(query_path):
+            for batch in _iter_from_mysql(
+                query_path,
+                domain=domain,
+                watermark_updated_at=wm_filter_updated_at,
+                watermark_source_id=wm_filter_source_id or None,
+            ):
                 source_rows += len(batch)
                 # Keep hard cap only for full_all; scoped modes are streamed safely.
                 hard_limit = max_rows if mode == 'full_all' else None
@@ -1928,6 +2064,7 @@ def _execute_job(
                                 continue
                             chunk.append(item)
                             if len(chunk) >= chunk_size:
+                                _persist_staging_rows(db, job_id, domain, month_key, chunk)
                                 rows_inserted += _upsert_sync_records(db, chunk)
                                 changed, unchanged = _upsert_fact_rows(db, domain, chunk)
                                 rows_upserted += changed
@@ -1951,6 +2088,7 @@ def _execute_job(
                                     },
                                 )
                     if chunk:
+                        _persist_staging_rows(db, job_id, domain, month_key, chunk)
                         rows_inserted += _upsert_sync_records(db, chunk)
                         changed, unchanged = _upsert_fact_rows(db, domain, chunk)
                         rows_upserted += changed
@@ -1991,6 +2129,7 @@ def _execute_job(
                             continue
                         chunk.append(item)
                         if len(chunk) >= chunk_size:
+                            _persist_staging_rows(db, job_id, domain, _derive_chunk_key(chunk), chunk)
                             rows_inserted += _upsert_sync_records(db, chunk)
                             changed, unchanged = _upsert_fact_rows(db, domain, chunk)
                             rows_upserted += changed
@@ -2018,6 +2157,7 @@ def _execute_job(
                                     f'UPSERT... procesadas={processed}/{normalized_count}, upsert_destino={rows_upserted}, sin_cambios={rows_unchanged}',
                                 )
                 if chunk:
+                    _persist_staging_rows(db, job_id, domain, _derive_chunk_key(chunk), chunk)
                     rows_inserted += _upsert_sync_records(db, chunk)
                     changed, unchanged = _upsert_fact_rows(db, domain, chunk)
                     rows_upserted += changed
@@ -2053,6 +2193,7 @@ def _execute_job(
                 rows_for_upsert = []
             rows_inserted = _upsert_sync_records(db, rows_for_upsert)
             rows_upserted, rows_unchanged = _upsert_fact_rows(db, domain, rows_for_upsert)
+            _persist_staging_rows(db, job_id, domain, _derive_chunk_key(rows_for_upsert), rows_for_upsert)
             _set_state(
                 domain,
                 {
@@ -2192,6 +2333,9 @@ def _execute_job(
             last_success_job_id=job_id,
             last_row_count=rows_upserted + rows_unchanged,
         )
+        cleaned_stg = _cleanup_staging_rows(db)
+        if cleaned_stg > 0:
+            _append_log(domain, f'Limpieza staging: {cleaned_stg} filas antiguas removidas')
         if domain == 'cartera':
             invalidated_options = invalidate_prefix('portfolio/options')
             invalidated_summary = invalidate_prefix('portfolio/summary')
@@ -2473,11 +2617,32 @@ class SyncService:
         query_path = _query_path_for(domain)
         if not query_path.exists():
             raise RuntimeError(f'No existe query para dominio {domain}: {query_path.name}')
+        partition_key = _watermark_partition_key(mode, year_from, close_month, close_month_from, close_month_to)
+        wm_updated_at = None
+        wm_source_id = None
+        db = SessionLocal()
+        try:
+            wm = _get_watermark(
+                db,
+                domain=domain,
+                query_file=_query_file_for(domain),
+                partition_key=partition_key,
+            )
+            if wm is not None:
+                wm_updated_at = wm.last_updated_at
+                wm_source_id = str(wm.last_source_id or '').strip() or None
+        finally:
+            db.close()
         max_rows = _max_rows_for_domain(domain)
         estimated = 0
         sampled = False
         seq = 0
-        for batch in _iter_from_mysql(query_path):
+        for batch in _iter_from_mysql(
+            query_path,
+            domain=domain,
+            watermark_updated_at=wm_updated_at,
+            watermark_source_id=wm_source_id,
+        ):
             for row in batch:
                 n = _normalize_record(domain, row, seq)
                 seq += 1

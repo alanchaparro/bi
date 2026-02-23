@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     sync_preview_enabled: bool = Field(default=True, alias='SYNC_PREVIEW_ENABLED')
     sync_worker_idle_sleep_seconds: float = Field(default=1.5, alias='SYNC_WORKER_IDLE_SLEEP_SECONDS')
     sync_fetch_batch_size: int = Field(default=5000, alias='SYNC_FETCH_BATCH_SIZE')
+    sync_mysql_incremental_pushdown: bool = Field(default=True, alias='SYNC_MYSQL_INCREMENTAL_PUSHDOWN')
+    sync_staging_retention_days: int = Field(default=14, alias='SYNC_STAGING_RETENTION_DAYS')
     analytics_sync_mode: str = Field(default='incremental', alias='ANALYTICS_SYNC_MODE')
     analytics_sync_window_months: int = Field(default=3, alias='ANALYTICS_SYNC_WINDOW_MONTHS')
     read_from_fact_tables: bool = Field(default=True, alias='READ_FROM_FACT_TABLES')

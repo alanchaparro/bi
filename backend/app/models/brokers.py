@@ -124,6 +124,9 @@ class SyncRun(Base):
     eta_seconds = Column(Integer, nullable=True)
     current_query_file = Column(String(128), nullable=True)
     job_step = Column(String(64), nullable=True)
+    chunk_key = Column(String(256), nullable=True)
+    chunk_status = Column(String(16), nullable=True)
+    skipped_unchanged_chunks = Column(Integer, nullable=False, default=0)
     duplicates_detected = Column(Integer, nullable=False, default=0)
     error = Column(Text, nullable=True)
     log_json = Column(Text, nullable=False, default='[]')
@@ -214,6 +217,20 @@ class SyncExtractLog(Base):
     duration_sec = Column(Float, nullable=False, default=0.0)
     throughput_rows_per_sec = Column(Float, nullable=False, default=0.0)
     details_json = Column(Text, nullable=False, default='{}')
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+
+class SyncStagingRow(Base):
+    __tablename__ = 'sync_staging_rows'
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(String(64), nullable=False, index=True)
+    domain = Column(String(32), nullable=False, index=True)
+    chunk_key = Column(String(128), nullable=False, default='*', index=True)
+    contract_id = Column(String(64), nullable=False, default='', index=True)
+    gestion_month = Column(String(7), nullable=False, default='', index=True)
+    source_hash = Column(String(64), nullable=False)
+    payload_json = Column(Text, nullable=False, default='{}')
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
 
 
@@ -391,6 +408,8 @@ Index('ux_sync_watermarks_key', SyncWatermark.domain, SyncWatermark.query_file, 
 Index('ux_sync_chunk_manifest_key', SyncChunkManifest.domain, SyncChunkManifest.chunk_key, unique=True)
 Index('ix_sync_chunk_manifest_domain_last_seen', SyncChunkManifest.domain, SyncChunkManifest.last_seen_at)
 Index('ix_sync_extract_log_job_created', SyncExtractLog.job_id, SyncExtractLog.created_at)
+Index('ix_sync_staging_rows_job_chunk', SyncStagingRow.job_id, SyncStagingRow.chunk_key)
+Index('ix_sync_staging_rows_domain_month', SyncStagingRow.domain, SyncStagingRow.gestion_month)
 Index('ix_sync_job_steps_job_domain_step', SyncJobStep.job_id, SyncJobStep.domain, SyncJobStep.step_name)
 Index('ux_user_preferences_username_key', UserPreference.username, UserPreference.pref_key, unique=True)
 Index(
