@@ -61,6 +61,9 @@ Switch to the incremental sync pipeline with watermark/chunk controls and stagin
 4. UI responsiveness:
    - header sync indicator
    - no blocking during long sync.
+5. Automated no-change rerun validation:
+   - `python scripts/validate_incremental_sync.py`
+   - expected: `skipped_unchanged_chunks > 0` or `chunk_status=unchanged` on second run.
 
 ## Rollback (immediate)
 1. Disable submissions.
