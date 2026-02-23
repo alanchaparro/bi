@@ -373,6 +373,19 @@ export type SyncPerfSummaryResponse = {
   top_slowest_jobs: Array<Record<string, string | number | null>>;
 };
 
+export type SyncPreviewResponse = {
+  domain: SyncDomain;
+  mode: "full_all" | "full_year" | "full_month" | "range_months";
+  year_from?: number | null;
+  close_month?: string | null;
+  close_month_from?: string | null;
+  close_month_to?: string | null;
+  estimated_rows: number;
+  max_rows_allowed?: number | null;
+  would_exceed_limit: boolean;
+  sampled: boolean;
+};
+
 export async function runSync(payload: {
   domain: SyncDomain;
   year_from?: number;
@@ -381,6 +394,17 @@ export async function runSync(payload: {
   close_month_to?: string;
 }): Promise<SyncRunResponse> {
   const response = await api.post<SyncRunResponse>("/sync/run", payload, { timeout: 60000 });
+  return response.data;
+}
+
+export async function previewSync(payload: {
+  domain: SyncDomain;
+  year_from?: number;
+  close_month?: string;
+  close_month_from?: string;
+  close_month_to?: string;
+}): Promise<SyncPreviewResponse> {
+  const response = await api.post<SyncPreviewResponse>("/sync/preview", payload, { timeout: 120000 });
   return response.data;
 }
 

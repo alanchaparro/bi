@@ -4,6 +4,7 @@ import {
   api,
   createUser,
   getSyncStatus,
+  previewSync,
   listUsers,
   runSync,
   updateUser,
@@ -69,6 +70,7 @@ const SYNC_QUERY_FILES: Record<SyncDomain, string> = {
 }
 
 const STATUS_POLL_MS = 2000
+const STATUS_POLL_MAX_MS = 10000
 const TRAMO_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7]
 
 function sleep(ms: number) {
@@ -388,11 +390,13 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
       totalDomains: number
     ): Promise<SyncStatusResponse> => {
       let consecutiveErrors = 0
+      let currentDelay = STATUS_POLL_MS
 
       while (true) {
         try {
           const status = await getSyncStatus({ domain, job_id: jobId })
           consecutiveErrors = 0
+          currentDelay = STATUS_POLL_MS
 
           const domainProgress = Math.max(0, Math.min(100, Number(status.progress_pct || 0)))
           const overallProgress = Math.round(((domainIndex + domainProgress / 100) / totalDomains) * 100)
@@ -424,6 +428,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
           }
         } catch {
           consecutiveErrors += 1
+          currentDelay = Math.min(STATUS_POLL_MAX_MS, currentDelay * 2)
           setSyncLive((prev) => {
             const lines = [...(prev?.log || [])]
             lines.push(`[${domain}] Estado: no se pudo consultar progreso (intento ${consecutiveErrors}).`)
@@ -440,7 +445,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
           }
         }
 
-        await sleep(STATUS_POLL_MS)
+        await sleep(currentDelay)
       }
     },
     []
@@ -507,7 +512,22 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
           running: true,
           currentDomain: domain,
           progressPct: Math.round((i / selectedDomains.length) * 100),
-          message: `[${domain}] Encolando ejecucion...`,
+          message: `[${domain}] Estimando volumen...`,
+        }))
+
+        const preview = await previewSync(payload)
+        if (preview.would_exceed_limit) {
+          throw new Error(
+            `[${domain}] La consulta excede el maximo permitido (${preview.max_rows_allowed ?? 0} filas). `
+            + `Estimado: ${preview.estimated_rows}. Acota la query o ejecuta por anio/mes.`
+          )
+        }
+
+        setSyncLive((prev) => ({
+          ...(prev || {}),
+          running: true,
+          currentDomain: domain,
+          message: `[${domain}] Encolando ejecucion (${preview.estimated_rows} filas estimadas)...`,
         }))
 
         const run = await runSync(payload)
