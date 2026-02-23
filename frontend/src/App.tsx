@@ -27,6 +27,10 @@ type GlobalSyncLive = {
   currentQueryFile?: string | null
   etaSeconds?: number | null
   jobStep?: string | null
+  queuePosition?: number | null
+  chunkKey?: string | null
+  chunkStatus?: string | null
+  skippedUnchangedChunks?: number
 }
 
 export default function App() {
@@ -156,7 +160,16 @@ export default function App() {
               type="button"
               className="header-sync-pill"
               onClick={() => setActiveSectionId('config')}
-              title={`${globalSyncLive?.message || 'Sincronizando...'} | ${globalSyncPct}% | ${globalSyncLive?.jobStep || '-'} | ETA ${globalSyncLive?.etaSeconds ?? '-'}s | ${globalSyncQuery}`}
+              title={
+                `${globalSyncLive?.message || 'Sincronizando...'}`
+                + ` | ${globalSyncPct}%`
+                + ` | ${globalSyncLive?.jobStep || '-'}`
+                + ` | ETA ${globalSyncLive?.etaSeconds ?? '-'}s`
+                + ` | Cola ${typeof globalSyncLive?.queuePosition === 'number' ? globalSyncLive.queuePosition : '-'}`
+                + ` | Chunk ${globalSyncLive?.chunkStatus || '-'}`
+                + ` | Skipped ${globalSyncLive?.skippedUnchangedChunks ?? 0}`
+                + ` | ${globalSyncQuery}`
+              }
               aria-label={`Sincronizacion en curso ${globalSyncPct} por ciento`}
             >
               <span className="header-sync-icon" aria-hidden />

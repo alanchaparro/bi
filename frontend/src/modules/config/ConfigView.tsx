@@ -37,6 +37,16 @@ type SyncLive = {
   etaSeconds?: number | null
   currentQueryFile?: string | null
   jobStep?: string | null
+  queuePosition?: number | null
+  chunkKey?: string | null
+  chunkStatus?: string | null
+  skippedUnchangedChunks?: number
+  watermark?: {
+    partitionKey?: string | null
+    lastUpdatedAt?: string | null
+    lastSourceId?: string | null
+    updatedAt?: string | null
+  } | null
   targetTable?: string | null
   error?: string | null
 }
@@ -88,6 +98,13 @@ function monthSerial(mmYyyy: string): number {
   const year = Number(parts[1])
   if (!Number.isInteger(month) || !Number.isInteger(year) || month < 1 || month > 12) return 0
   return year * 12 + month
+}
+
+function formatSyncTimestamp(value?: string | null): string {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return date.toLocaleString()
 }
 
 export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
@@ -418,6 +435,16 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
             etaSeconds: typeof status.eta_seconds === 'number' ? status.eta_seconds : null,
             currentQueryFile: status.current_query_file || null,
             jobStep: status.job_step || null,
+            queuePosition: typeof status.queue_position === 'number' ? status.queue_position : null,
+            chunkKey: status.chunk_key || null,
+            chunkStatus: status.chunk_status || null,
+            skippedUnchangedChunks: Number(status.skipped_unchanged_chunks || 0),
+            watermark: status.watermark ? {
+              partitionKey: status.watermark.partition_key || null,
+              lastUpdatedAt: status.watermark.last_updated_at || null,
+              lastSourceId: status.watermark.last_source_id || null,
+              updatedAt: status.watermark.updated_at || null,
+            } : null,
             targetTable: status.target_table || null,
             duplicatesDetected: Number(status.duplicates_detected || 0),
             error: status.error || null,
@@ -983,6 +1010,10 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                     <span className="sync-progress-tag">Etapa: <strong>{syncLive.jobStep || syncLive.stage || '-'}</strong></span>
                     <span className="sync-progress-tag">ETA: <strong>{syncLive.etaSeconds && syncLive.etaSeconds > 0 ? `${syncLive.etaSeconds}s` : '-'}</strong></span>
                     <span className="sync-progress-tag">Throughput: <strong>{syncLive.throughputRowsPerSec ? `${syncLive.throughputRowsPerSec.toFixed(1)} filas/s` : '-'}</strong></span>
+                    <span className="sync-progress-tag">Cola: <strong>{typeof syncLive.queuePosition === 'number' ? syncLive.queuePosition : '-'}</strong></span>
+                    <span className="sync-progress-tag">Chunk: <strong>{syncLive.chunkStatus || '-'}</strong></span>
+                    <span className="sync-progress-tag">Chunk key: <code>{syncLive.chunkKey || '-'}</code></span>
+                    <span className="sync-progress-tag">Watermark: <code>{syncLive.watermark?.partitionKey || '-'}</code></span>
                   </div>
                 </div>
               </div>
@@ -1017,7 +1048,11 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                 <span>Omitidas: {syncLive.rowsSkipped ?? 0}</span>
                 <span>Upsert destino: {syncLive.rowsUpserted ?? 0}</span>
                 <span>Sin cambios: {syncLive.rowsUnchanged ?? 0}</span>
+                <span>Chunks omitidos: {syncLive.skippedUnchangedChunks ?? 0}</span>
                 <span>Duplicados detectados: {syncLive.duplicatesDetected ?? 0}</span>
+                <span>WM updated_at: {formatSyncTimestamp(syncLive.watermark?.lastUpdatedAt)}</span>
+                <span>WM source_id: {syncLive.watermark?.lastSourceId || '-'}</span>
+                <span>WM registrado: {formatSyncTimestamp(syncLive.watermark?.updatedAt)}</span>
               </div>
 
               {syncLive.log && syncLive.log.length > 0 && (
