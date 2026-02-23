@@ -350,6 +350,10 @@ export type SyncStatusResponse = {
   rows_read?: number;
   rows_upserted?: number;
   rows_unchanged?: number;
+  throughput_rows_per_sec?: number;
+  eta_seconds?: number | null;
+  current_query_file?: string | null;
+  job_step?: string | null;
   affected_months?: string[];
   target_table?: string | null;
   agg_refresh_started?: boolean;
@@ -360,6 +364,13 @@ export type SyncStatusResponse = {
   duration_sec?: number | null;
   log?: string[];
   error?: string | null;
+};
+
+export type SyncPerfSummaryResponse = {
+  generated_at: string;
+  totals: Record<string, number>;
+  by_domain: Record<string, Record<string, number>>;
+  top_slowest_jobs: Array<Record<string, string | number | null>>;
 };
 
 export async function runSync(payload: {
@@ -378,6 +389,11 @@ export async function getSyncStatus(params: {
   job_id?: string;
 }): Promise<SyncStatusResponse> {
   const response = await api.get<SyncStatusResponse>("/sync/status", { params });
+  return response.data;
+}
+
+export async function getSyncPerfSummary(params?: { limit?: number }): Promise<SyncPerfSummaryResponse> {
+  const response = await api.get<SyncPerfSummaryResponse>("/sync/perf/summary", { params });
   return response.data;
 }
 

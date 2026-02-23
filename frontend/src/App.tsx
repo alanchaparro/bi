@@ -24,14 +24,9 @@ type GlobalSyncLive = {
   currentDomain?: string | null
   progressPct?: number
   message?: string
-}
-
-const QUERY_BY_DOMAIN: Record<string, string> = {
-  analytics: 'query_analytics.sql',
-  cartera: 'query.sql',
-  cobranzas: 'query_cobranzas.sql',
-  contratos: 'query_contratos.sql',
-  gestores: 'query_gestores.sql',
+  currentQueryFile?: string | null
+  etaSeconds?: number | null
+  jobStep?: string | null
 }
 
 export default function App() {
@@ -53,7 +48,7 @@ export default function App() {
 
   const role = auth?.role ?? ''
   const globalSyncPct = Math.max(0, Math.min(100, Math.round(globalSyncLive?.progressPct || 0)))
-  const globalSyncQuery = globalSyncLive?.currentDomain ? QUERY_BY_DOMAIN[globalSyncLive.currentDomain] || '-' : '-'
+  const globalSyncQuery = globalSyncLive?.currentQueryFile || '-'
   const showGlobalSync = Boolean(globalSyncLive?.running)
 
   const handleLogin = useCallback(async (payload: LoginRequest) => {
@@ -161,7 +156,7 @@ export default function App() {
               type="button"
               className="header-sync-pill"
               onClick={() => setActiveSectionId('config')}
-              title={`${globalSyncLive?.message || 'Sincronizando...'} | ${globalSyncPct}% | ${globalSyncQuery}`}
+              title={`${globalSyncLive?.message || 'Sincronizando...'} | ${globalSyncPct}% | ${globalSyncLive?.jobStep || '-'} | ETA ${globalSyncLive?.etaSeconds ?? '-'}s | ${globalSyncQuery}`}
               aria-label={`Sincronizacion en curso ${globalSyncPct} por ciento`}
             >
               <span className="header-sync-icon" aria-hidden />

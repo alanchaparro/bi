@@ -32,6 +32,10 @@ type SyncLive = {
   rowsRead?: number
   rowsUpserted?: number
   rowsUnchanged?: number
+  throughputRowsPerSec?: number
+  etaSeconds?: number | null
+  currentQueryFile?: string | null
+  jobStep?: string | null
   targetTable?: string | null
   error?: string | null
 }
@@ -160,7 +164,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
     if (!syncLive?.currentDomain) return '-'
     return SYNC_DOMAINS.find((d) => d.value === syncLive.currentDomain)?.label || syncLive.currentDomain
   }, [syncLive?.currentDomain])
-  const syncQueryFile = syncLive?.currentDomain ? SYNC_QUERY_FILES[syncLive.currentDomain] : '-'
+  const syncQueryFile = syncLive?.currentQueryFile || (syncLive?.currentDomain ? SYNC_QUERY_FILES[syncLive.currentDomain] : '-')
 
   useEffect(() => {
     onSyncLiveChange?.(syncLive)
@@ -406,6 +410,10 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
             rowsRead: Number(status.rows_read || 0),
             rowsUpserted: Number(status.rows_upserted || 0),
             rowsUnchanged: Number(status.rows_unchanged || 0),
+            throughputRowsPerSec: Number(status.throughput_rows_per_sec || 0),
+            etaSeconds: typeof status.eta_seconds === 'number' ? status.eta_seconds : null,
+            currentQueryFile: status.current_query_file || null,
+            jobStep: status.job_step || null,
             targetTable: status.target_table || null,
             duplicatesDetected: Number(status.duplicates_detected || 0),
             error: status.error || null,
@@ -952,7 +960,9 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   <div className="sync-progress-tags">
                     <span className="sync-progress-tag">Dominio: <strong>{syncDomainLabel}</strong></span>
                     <span className="sync-progress-tag">Query: <code>{syncQueryFile}</code></span>
-                    <span className="sync-progress-tag">Etapa: <strong>{syncLive.stage || '-'}</strong></span>
+                    <span className="sync-progress-tag">Etapa: <strong>{syncLive.jobStep || syncLive.stage || '-'}</strong></span>
+                    <span className="sync-progress-tag">ETA: <strong>{syncLive.etaSeconds && syncLive.etaSeconds > 0 ? `${syncLive.etaSeconds}s` : '-'}</strong></span>
+                    <span className="sync-progress-tag">Throughput: <strong>{syncLive.throughputRowsPerSec ? `${syncLive.throughputRowsPerSec.toFixed(1)} filas/s` : '-'}</strong></span>
                   </div>
                 </div>
               </div>
