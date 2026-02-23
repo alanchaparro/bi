@@ -354,6 +354,20 @@ export type SyncStatusResponse = {
   eta_seconds?: number | null;
   current_query_file?: string | null;
   job_step?: string | null;
+  queue_position?: number | null;
+  watermark?: {
+    domain: string;
+    query_file: string;
+    partition_key: string;
+    last_updated_at?: string | null;
+    last_source_id?: string | null;
+    last_success_job_id?: string | null;
+    last_row_count?: number;
+    updated_at?: string | null;
+  } | null;
+  chunk_key?: string | null;
+  chunk_status?: string | null;
+  skipped_unchanged_chunks?: number;
   affected_months?: string[];
   target_table?: string | null;
   agg_refresh_started?: boolean;
@@ -371,6 +385,41 @@ export type SyncPerfSummaryResponse = {
   totals: Record<string, number>;
   by_domain: Record<string, Record<string, number>>;
   top_slowest_jobs: Array<Record<string, string | number | null>>;
+};
+
+export type SyncWatermarkResponse = {
+  domain: SyncDomain;
+  query_file: string;
+  partition_key: string;
+  last_updated_at?: string | null;
+  last_source_id?: string | null;
+  last_success_job_id?: string | null;
+  last_row_count?: number;
+  updated_at?: string | null;
+};
+
+export type SyncWatermarkResetResponse = {
+  domain: SyncDomain;
+  query_file?: string | null;
+  partition_key?: string | null;
+  deleted: number;
+};
+
+export type SyncChunkLogResponse = {
+  chunk_key: string;
+  stage: string;
+  status: string;
+  rows: number;
+  duration_sec: number;
+  throughput_rows_per_sec: number;
+  details?: Record<string, unknown>;
+  created_at?: string | null;
+};
+
+export type SyncChunkLogsResponse = {
+  job_id: string;
+  domain?: SyncDomain | null;
+  chunks: SyncChunkLogResponse[];
 };
 
 export type SyncPreviewResponse = {
@@ -418,6 +467,27 @@ export async function getSyncStatus(params: {
 
 export async function getSyncPerfSummary(params?: { limit?: number }): Promise<SyncPerfSummaryResponse> {
   const response = await api.get<SyncPerfSummaryResponse>("/sync/perf/summary", { params });
+  return response.data;
+}
+
+export async function getSyncWatermarks(params?: {
+  domain?: SyncDomain;
+}): Promise<SyncWatermarkResponse[]> {
+  const response = await api.get<SyncWatermarkResponse[]>("/sync/watermarks", { params });
+  return response.data;
+}
+
+export async function resetSyncWatermarks(payload: {
+  domain: SyncDomain;
+  query_file?: string;
+  partition_key?: string;
+}): Promise<SyncWatermarkResetResponse> {
+  const response = await api.post<SyncWatermarkResetResponse>("/sync/watermarks/reset", payload, { timeout: 60000 });
+  return response.data;
+}
+
+export async function getSyncChunks(jobId: string): Promise<SyncChunkLogsResponse> {
+  const response = await api.get<SyncChunkLogsResponse>(`/sync/chunks/${encodeURIComponent(jobId)}`);
   return response.data;
 }
 

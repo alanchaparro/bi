@@ -171,6 +171,52 @@ class SyncJob(Base):
     finished_at = Column(DateTime, nullable=True)
 
 
+class SyncWatermark(Base):
+    __tablename__ = 'sync_watermarks'
+
+    id = Column(Integer, primary_key=True, index=True)
+    domain = Column(String(32), nullable=False, index=True)
+    query_file = Column(String(128), nullable=False, index=True)
+    partition_key = Column(String(64), nullable=False, default='*', index=True)
+    last_updated_at = Column(DateTime, nullable=True)
+    last_source_id = Column(String(64), nullable=True)
+    last_success_job_id = Column(String(64), nullable=True)
+    last_row_count = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SyncChunkManifest(Base):
+    __tablename__ = 'sync_chunk_manifest'
+
+    id = Column(Integer, primary_key=True, index=True)
+    domain = Column(String(32), nullable=False, index=True)
+    chunk_key = Column(String(128), nullable=False, index=True)
+    chunk_hash = Column(String(64), nullable=False, index=True)
+    row_count = Column(Integer, nullable=False, default=0)
+    first_seen_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    last_seen_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    status = Column(String(16), nullable=False, default='changed', index=True)
+    last_job_id = Column(String(64), nullable=True, index=True)
+    skipped_count = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SyncExtractLog(Base):
+    __tablename__ = 'sync_extract_log'
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(String(64), nullable=False, index=True)
+    domain = Column(String(32), nullable=False, index=True)
+    chunk_key = Column(String(128), nullable=False, default='*', index=True)
+    stage = Column(String(32), nullable=False, default='extract', index=True)
+    status = Column(String(16), nullable=False, default='completed', index=True)
+    rows = Column(Integer, nullable=False, default=0)
+    duration_sec = Column(Float, nullable=False, default=0.0)
+    throughput_rows_per_sec = Column(Float, nullable=False, default=0.0)
+    details_json = Column(Text, nullable=False, default='{}')
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+
 class SyncRecord(Base):
     __tablename__ = 'sync_records'
 
@@ -341,6 +387,10 @@ Index('ix_acs_un', AnalyticsContractSnapshot.un)
 Index('ix_acs_via', AnalyticsContractSnapshot.via)
 Index('ix_sync_jobs_status_priority_created', SyncJob.status, SyncJob.priority, SyncJob.created_at)
 Index('ix_sync_jobs_domain_status_created', SyncJob.domain, SyncJob.status, SyncJob.created_at)
+Index('ux_sync_watermarks_key', SyncWatermark.domain, SyncWatermark.query_file, SyncWatermark.partition_key, unique=True)
+Index('ux_sync_chunk_manifest_key', SyncChunkManifest.domain, SyncChunkManifest.chunk_key, unique=True)
+Index('ix_sync_chunk_manifest_domain_last_seen', SyncChunkManifest.domain, SyncChunkManifest.last_seen_at)
+Index('ix_sync_extract_log_job_created', SyncExtractLog.job_id, SyncExtractLog.created_at)
 Index('ix_sync_job_steps_job_domain_step', SyncJobStep.job_id, SyncJobStep.domain, SyncJobStep.step_name)
 Index('ux_user_preferences_username_key', UserPreference.username, UserPreference.pref_key, unique=True)
 Index(

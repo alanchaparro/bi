@@ -117,6 +117,11 @@ class SyncStatusOut(BaseModel):
     eta_seconds: int | None = None
     current_query_file: str | None = None
     job_step: str | None = None
+    queue_position: int | None = None
+    watermark: dict | None = None
+    chunk_key: str | None = None
+    chunk_status: str | None = None
+    skipped_unchanged_chunks: int = 0
     affected_months: list[str] = Field(default_factory=list)
     target_table: str | None = None
     agg_refresh_started: bool = False
@@ -149,3 +154,52 @@ class SyncPreviewOut(BaseModel):
     max_rows_allowed: int | None = None
     would_exceed_limit: bool = False
     sampled: bool = False
+
+
+class SyncWatermarkOut(BaseModel):
+    domain: str
+    query_file: str
+    partition_key: str
+    last_updated_at: str | None = None
+    last_source_id: str | None = None
+    last_success_job_id: str | None = None
+    last_row_count: int = 0
+    updated_at: str | None = None
+
+
+class SyncWatermarkResetIn(BaseModel):
+    domain: str = Field(min_length=3, max_length=32)
+    query_file: str | None = None
+    partition_key: str | None = None
+
+    @field_validator('domain')
+    @classmethod
+    def validate_domain_reset(cls, value: str) -> str:
+        normalized = str(value or '').strip().lower()
+        if normalized not in SYNC_DOMAINS:
+            raise ValueError(f'dominio invalido: {value}')
+        return normalized
+
+
+class SyncWatermarkResetOut(BaseModel):
+    domain: str
+    query_file: str | None = None
+    partition_key: str | None = None
+    deleted: int = 0
+
+
+class SyncChunkLogOut(BaseModel):
+    chunk_key: str
+    stage: str
+    status: str
+    rows: int
+    duration_sec: float
+    throughput_rows_per_sec: float
+    details: dict = Field(default_factory=dict)
+    created_at: str | None = None
+
+
+class SyncChunkLogsOut(BaseModel):
+    job_id: str
+    domain: str | None = None
+    chunks: list[SyncChunkLogOut] = Field(default_factory=list)

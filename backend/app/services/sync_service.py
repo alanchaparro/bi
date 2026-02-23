@@ -28,10 +28,13 @@ from app.models.brokers import (
     CobranzasFact,
     ContratosFact,
     GestoresFact,
+    SyncChunkManifest,
+    SyncExtractLog,
     SyncRecord,
     SyncJobStep,
     SyncJob,
     SyncRun,
+    SyncWatermark,
 )
 from app.services.brokers_config_service import BrokersConfigService
 
@@ -210,6 +213,84 @@ def _normalize_key(row: dict, *candidates: str) -> str:
         if k and str(row.get(k) or '').strip():
             return str(row.get(k)).strip()
     return ''
+
+
+def _parse_source_updated_at(value: object) -> datetime | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    formats = [
+        '%Y-%m-%d %H:%M:%S',
+        '%Y-%m-%d',
+        '%Y/%m/%d %H:%M:%S',
+        '%Y/%m/%d',
+        '%d/%m/%Y %H:%M:%S',
+        '%d/%m/%Y',
+    ]
+    for fmt in formats:
+        try:
+            return datetime.strptime(text, fmt)
+        except Exception:
+            continue
+    return None
+
+
+def _extract_source_markers(row: dict) -> tuple[datetime | None, str | None]:
+    updated_at = None
+    source_id = None
+    updated_candidates = [
+        'updated_at',
+        'updatedAt',
+        'Actualizado_al',
+        'actualizado_al',
+        'fecha_actualizacion',
+        'modificado_en',
+    ]
+    id_candidates = [
+        'id',
+        'ID',
+        'payment_id',
+        'contract_id',
+        'id_contrato',
+    ]
+    for key in updated_candidates:
+        if key in row:
+            updated_at = _parse_source_updated_at(row.get(key))
+            if updated_at is not None:
+                break
+    for key in id_candidates:
+        if key in row and str(row.get(key) or '').strip():
+            source_id = str(row.get(key)).strip()
+            break
+    return updated_at, source_id
+
+
+def _chunk_signal_update(current: dict | None, source_hash: str) -> dict:
+    state = current or {'count': 0, 'sum_a': 0, 'sum_b': 0, 'xor_c': 0}
+    h = str(source_hash or '')
+    if len(h) < 48:
+        h = (h + ('0' * 48))[:48]
+    a = int(h[0:16], 16)
+    b = int(h[16:32], 16)
+    c = int(h[32:48], 16)
+    mod = 2 ** 64
+    state['count'] = int(state['count']) + 1
+    state['sum_a'] = (int(state['sum_a']) + a) % mod
+    state['sum_b'] = (int(state['sum_b']) + b) % mod
+    state['xor_c'] = int(state['xor_c']) ^ c
+    return state
+
+
+def _chunk_hash_finalize(signal_state: dict) -> str:
+    payload = (
+        f"{int(signal_state.get('count') or 0)}|"
+        f"{int(signal_state.get('sum_a') or 0)}|"
+        f"{int(signal_state.get('sum_b') or 0)}|"
+        f"{int(signal_state.get('xor_c') or 0)}"
+    )
+    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
 
 
 def _normalize_record(domain: str, row: dict, seq: int) -> dict:
@@ -1238,6 +1319,158 @@ def _persist_job_step(db: Session, job_id: str, domain: str, step_name: str, sta
     db.commit()
 
 
+def _watermark_partition_key(mode: str, year_from: int | None, close_month: str | None, close_month_from: str | None, close_month_to: str | None) -> str:
+    if mode == 'full_month':
+        return f'month:{close_month or "*"}'
+    if mode == 'range_months':
+        return f'range:{close_month_from or "*"}->{close_month_to or "*"}'
+    if mode == 'full_year':
+        return f'year:{year_from if year_from is not None else "*"}'
+    return '*'
+
+
+def _get_watermark(db: Session, domain: str, query_file: str, partition_key: str = '*') -> SyncWatermark | None:
+    return (
+        db.query(SyncWatermark)
+        .filter(
+            SyncWatermark.domain == domain,
+            SyncWatermark.query_file == query_file,
+            SyncWatermark.partition_key == partition_key,
+        )
+        .first()
+    )
+
+
+def _upsert_watermark(
+    db: Session,
+    *,
+    domain: str,
+    query_file: str,
+    partition_key: str,
+    last_updated_at: datetime | None,
+    last_source_id: str | None,
+    last_success_job_id: str,
+    last_row_count: int,
+) -> None:
+    row = _get_watermark(db, domain=domain, query_file=query_file, partition_key=partition_key)
+    if row is None:
+        row = SyncWatermark(
+            domain=domain,
+            query_file=query_file,
+            partition_key=partition_key,
+        )
+        db.add(row)
+    row.last_updated_at = last_updated_at
+    row.last_source_id = last_source_id
+    row.last_success_job_id = last_success_job_id
+    row.last_row_count = int(last_row_count or 0)
+    row.updated_at = datetime.utcnow()
+    db.commit()
+
+
+def _reconcile_chunk_manifest(
+    db: Session,
+    *,
+    domain: str,
+    job_id: str,
+    chunk_signals: dict[str, dict],
+) -> tuple[set[str], int]:
+    changed: set[str] = set()
+    skipped = 0
+    now = datetime.utcnow()
+    for chunk_key, signal in chunk_signals.items():
+        row_count = int(signal.get('count') or 0)
+        chunk_hash = _chunk_hash_finalize(signal)
+        row = (
+            db.query(SyncChunkManifest)
+            .filter(SyncChunkManifest.domain == domain, SyncChunkManifest.chunk_key == chunk_key)
+            .first()
+        )
+        if row is None:
+            row = SyncChunkManifest(
+                domain=domain,
+                chunk_key=chunk_key,
+                chunk_hash=chunk_hash,
+                row_count=row_count,
+                first_seen_at=now,
+                last_seen_at=now,
+                status='changed',
+                last_job_id=job_id,
+                skipped_count=0,
+                updated_at=now,
+            )
+            db.add(row)
+            changed.add(chunk_key)
+            continue
+        if str(row.chunk_hash or '') == chunk_hash and int(row.row_count or 0) == row_count:
+            row.status = 'unchanged'
+            row.last_seen_at = now
+            row.last_job_id = job_id
+            row.skipped_count = int(row.skipped_count or 0) + 1
+            row.updated_at = now
+            skipped += 1
+            continue
+        row.chunk_hash = chunk_hash
+        row.row_count = row_count
+        row.status = 'changed'
+        row.last_seen_at = now
+        row.last_job_id = job_id
+        row.updated_at = now
+        changed.add(chunk_key)
+    db.commit()
+    return changed, skipped
+
+
+def _log_extract_chunk(
+    db: Session,
+    *,
+    job_id: str,
+    domain: str,
+    chunk_key: str,
+    stage: str,
+    status: str,
+    rows: int,
+    duration_sec: float,
+    details: dict | None = None,
+) -> None:
+    dsec = max(0.0, float(duration_sec or 0.0))
+    row_count = max(0, int(rows or 0))
+    throughput = round((row_count / dsec), 2) if dsec > 0 else 0.0
+    row = SyncExtractLog(
+        job_id=job_id,
+        domain=domain,
+        chunk_key=str(chunk_key or '*'),
+        stage=str(stage or 'extract'),
+        status=str(status or 'completed'),
+        rows=row_count,
+        duration_sec=dsec,
+        throughput_rows_per_sec=throughput,
+        details_json=json.dumps(details or {}, ensure_ascii=False),
+        created_at=datetime.utcnow(),
+    )
+    db.add(row)
+    db.commit()
+
+
+def _queue_position(db: Session, job_id: str) -> int | None:
+    target = db.query(SyncJob).filter(SyncJob.job_id == job_id).first()
+    if target is None:
+        return None
+    if target.status == 'running':
+        return 0
+    if target.status != 'pending':
+        return None
+    ahead = (
+        db.query(SyncJob.id)
+        .filter(
+            SyncJob.status == 'pending',
+            SyncJob.created_at < target.created_at,
+        )
+        .count()
+    )
+    return int(ahead) + 1
+
+
 def _cleanup_stale_running_jobs() -> None:
     """
     After process/container restarts, jobs can remain running=true in DB
@@ -1493,6 +1726,22 @@ def _execute_job(
         _persist_job_step(db, job_id, domain, 'extract', 'running', {'query_file': _query_file_for(domain)})
         _set_state(domain, {'stage': 'connecting_mysql', 'progress_pct': 8, 'status_message': 'Conectando a MySQL'})
         _append_log(domain, 'Conectando a MySQL...')
+        partition_key = _watermark_partition_key(mode, year_from, close_month, close_month_from, close_month_to)
+        watermark_row = _get_watermark(
+            db,
+            domain=domain,
+            query_file=_query_file_for(domain),
+            partition_key=partition_key,
+        )
+        wm_filter_updated_at = watermark_row.last_updated_at if watermark_row is not None else None
+        wm_filter_source_id = str(watermark_row.last_source_id or '').strip() if watermark_row is not None else ''
+        watermark_filtered_rows = 0
+        if wm_filter_updated_at is not None:
+            _append_log(
+                domain,
+                f'Watermark activo: updated_at>{wm_filter_updated_at.isoformat()}'
+                + (f' (id>{wm_filter_source_id})' if wm_filter_source_id else ''),
+            )
         max_rows = _max_rows_for_domain(domain)
         source_rows = 0
         _persist_job_step(db, job_id, domain, 'extract', 'completed', {'rows_read': 0})
@@ -1504,6 +1753,10 @@ def _execute_job(
         source_keys: set[tuple] = set()
         duplicates_detected = 0
         normalized_count = 0
+        skipped_unchanged_chunks = 0
+        chunk_signals: dict[str, dict] = {}
+        wm_last_updated_at: datetime | None = None
+        wm_last_source_id: str | None = None
         temp_rows_path: str | None = None
         temp_rows_file = None
         # Stream large domains to disk to keep memory stable and show incremental progress.
@@ -1534,8 +1787,24 @@ def _execute_job(
                     },
                 )
                 for row in batch:
+                    raw_updated_at, raw_source_id = _extract_source_markers(row)
                     n = _normalize_record(domain, row, seq)
                     seq += 1
+                    if wm_filter_updated_at is not None and raw_updated_at is not None:
+                        should_skip_by_watermark = raw_updated_at < wm_filter_updated_at
+                        if (
+                            not should_skip_by_watermark
+                            and raw_updated_at == wm_filter_updated_at
+                            and wm_filter_source_id
+                            and raw_source_id
+                        ):
+                            try:
+                                should_skip_by_watermark = int(raw_source_id) <= int(wm_filter_source_id)
+                            except Exception:
+                                should_skip_by_watermark = str(raw_source_id) <= str(wm_filter_source_id)
+                        if should_skip_by_watermark:
+                            watermark_filtered_rows += 1
+                            continue
                     if not _matches_mode(n['gestion_month'], mode, year_from, close_month, range_months_set):
                         continue
                     source_months.add(n['gestion_month'])
@@ -1544,6 +1813,19 @@ def _execute_job(
                         duplicates_detected += 1
                         continue
                     source_keys.add(key)
+                    if raw_updated_at is not None and (wm_last_updated_at is None or raw_updated_at > wm_last_updated_at):
+                        wm_last_updated_at = raw_updated_at
+                    if raw_source_id:
+                        if wm_last_source_id is None:
+                            wm_last_source_id = raw_source_id
+                        else:
+                            try:
+                                if int(raw_source_id) > int(wm_last_source_id):
+                                    wm_last_source_id = raw_source_id
+                            except Exception:
+                                if raw_source_id > wm_last_source_id:
+                                    wm_last_source_id = raw_source_id
+                    chunk_signals[n['gestion_month']] = _chunk_signal_update(chunk_signals.get(n['gestion_month']), n['source_hash'])
                     normalized_count += 1
                     if temp_rows_file is not None:
                         temp_rows_file.write(json.dumps(n, ensure_ascii=False) + '\n')
@@ -1560,13 +1842,48 @@ def _execute_job(
 
         _append_log(domain, f'Filas fuente: {source_rows}')
         _persist_job_step(db, job_id, domain, 'normalize', 'completed', {'rows_read': source_rows, 'normalized': normalized_count})
-        target_months = set(source_months)
+        changed_months, skipped_unchanged_chunks = _reconcile_chunk_manifest(
+            db,
+            domain=domain,
+            job_id=job_id,
+            chunk_signals=chunk_signals,
+        )
+        _log_extract_chunk(
+            db,
+            job_id=job_id,
+            domain=domain,
+            chunk_key='*',
+            stage='extract',
+            status='completed',
+            rows=normalized_count,
+            duration_sec=round((datetime.now(timezone.utc) - started_at).total_seconds(), 2),
+            details={
+                'source_rows': source_rows,
+                'months': sorted(source_months, key=_month_serial),
+                'changed_months': sorted(changed_months, key=_month_serial),
+                'skipped_unchanged_chunks': skipped_unchanged_chunks,
+                'watermark_partition_key': partition_key,
+                'watermark_filtered_rows': int(watermark_filtered_rows),
+            },
+        )
+        target_months = set(changed_months)
+        _set_state(
+            domain,
+            {
+                'skipped_unchanged_chunks': int(skipped_unchanged_chunks),
+                'chunk_status': 'changed' if target_months else 'unchanged',
+                'chunk_key': ','.join(sorted(target_months, key=_month_serial)) if target_months else '*',
+            },
+        )
+        if skipped_unchanged_chunks > 0:
+            _append_log(domain, f'Chunks sin cambios detectados: {skipped_unchanged_chunks}')
         _ensure_cartera_partitions(db, target_months if domain == 'cartera' else set())
 
         _persist_job_step(db, job_id, domain, 'replace_window', 'running', {'months': sorted(target_months, key=_month_serial)})
         _set_state(domain, {'stage': 'replacing_window', 'progress_pct': 55, 'status_message': 'Reemplazando ventana'})
-        _delete_target_window(db, domain, mode, year_from, target_months)
-        _delete_target_window_fact(db, domain, mode, year_from, close_month, target_months)
+        if target_months:
+            _delete_target_window(db, domain, mode, year_from, target_months)
+            _delete_target_window_fact(db, domain, mode, year_from, close_month, target_months)
         _persist_job_step(db, job_id, domain, 'replace_window', 'completed', {'months': sorted(target_months, key=_month_serial)})
         ordered_target_months = sorted(target_months, key=_month_serial)
         _set_state(domain, {'affected_months': ordered_target_months})
@@ -1589,6 +1906,8 @@ def _execute_job(
                         item = json.loads(line)
                         month_key = str(item.get('gestion_month') or '')
                         if not month_key:
+                            continue
+                        if target_months and month_key not in target_months:
                             continue
                         month_counts[month_key] = month_counts.get(month_key, 0) + 1
                         processed_by_month.setdefault(month_key, 0)
@@ -1664,7 +1983,13 @@ def _execute_job(
                         line = line.strip()
                         if not line:
                             continue
-                        chunk.append(json.loads(line))
+                        if not target_months:
+                            continue
+                        item = json.loads(line)
+                        item_month = str(item.get('gestion_month') or '')
+                        if target_months and item_month not in target_months:
+                            continue
+                        chunk.append(item)
                         if len(chunk) >= chunk_size:
                             rows_inserted += _upsert_sync_records(db, chunk)
                             changed, unchanged = _upsert_fact_rows(db, domain, chunk)
@@ -1721,8 +2046,13 @@ def _execute_job(
             except Exception:
                 pass
         else:
-            rows_inserted = _upsert_sync_records(db, normalized_rows)
-            rows_upserted, rows_unchanged = _upsert_fact_rows(db, domain, normalized_rows)
+            rows_for_upsert = normalized_rows
+            if target_months:
+                rows_for_upsert = [r for r in normalized_rows if str(r.get('gestion_month') or '') in target_months]
+            else:
+                rows_for_upsert = []
+            rows_inserted = _upsert_sync_records(db, rows_for_upsert)
+            rows_upserted, rows_unchanged = _upsert_fact_rows(db, domain, rows_for_upsert)
             _set_state(
                 domain,
                 {
@@ -1824,7 +2154,7 @@ def _execute_job(
             'status_message': 'Sincronizacion finalizada',
             'rows_inserted': rows_inserted,
             'rows_updated': 0,
-            'rows_skipped': 0,
+            'rows_skipped': int(skipped_unchanged_chunks),
             'rows_read': source_rows,
             'rows_upserted': rows_upserted,
             'rows_unchanged': rows_unchanged,
@@ -1832,6 +2162,9 @@ def _execute_job(
             'eta_seconds': 0,
             'current_query_file': _query_file_for(domain),
             'job_step': 'finalize',
+            'chunk_status': 'changed' if ordered_target_months else 'unchanged',
+            'chunk_key': ','.join(ordered_target_months) if ordered_target_months else '*',
+            'skipped_unchanged_chunks': int(skipped_unchanged_chunks),
             'affected_months': ordered_target_months,
             'target_table': _target_table_name(domain),
             'agg_refresh_started': domain in {'cartera', 'cobranzas'},
@@ -1848,6 +2181,17 @@ def _execute_job(
         _set_state(domain, final_state)
         _persist_job_step(db, job_id, domain, 'bootstrap', 'completed')
         _persist_job_step(db, job_id, domain, 'finalize', 'completed', {'duration_sec': duration_sec})
+        partition_key = _watermark_partition_key(mode, year_from, close_month, close_month_from, close_month_to)
+        _upsert_watermark(
+            db,
+            domain=domain,
+            query_file=_query_file_for(domain),
+            partition_key=partition_key,
+            last_updated_at=wm_last_updated_at,
+            last_source_id=wm_last_source_id,
+            last_success_job_id=job_id,
+            last_row_count=rows_upserted + rows_unchanged,
+        )
         if domain == 'cartera':
             invalidated_options = invalidate_prefix('portfolio/options')
             invalidated_summary = invalidate_prefix('portfolio/summary')
@@ -1931,7 +2275,7 @@ def _execute_job(
                 'status_message': 'Sincronizacion finalizada',
                 'rows_inserted': rows_inserted,
                 'rows_updated': 0,
-                'rows_skipped': 0,
+                'rows_skipped': int(skipped_unchanged_chunks),
                 'rows_read': source_rows,
                 'rows_upserted': rows_upserted,
                 'rows_unchanged': rows_unchanged,
@@ -1939,6 +2283,9 @@ def _execute_job(
                 'eta_seconds': 0,
                 'current_query_file': _query_file_for(domain),
                 'job_step': 'finalize',
+                'chunk_status': 'changed' if ordered_target_months else 'unchanged',
+                'chunk_key': ','.join(ordered_target_months) if ordered_target_months else '*',
+                'skipped_unchanged_chunks': int(skipped_unchanged_chunks),
                 'affected_months': ordered_target_months,
                 'target_table': _target_table_name(domain),
                 'agg_refresh_started': domain in {'cartera', 'cobranzas'},
@@ -1965,6 +2312,10 @@ def _execute_job(
             'stage': 'failed',
             'progress_pct': 100,
             'status_message': 'Sincronizacion con error',
+            'rows_skipped': int(state_snapshot.get('rows_skipped') or 0),
+            'skipped_unchanged_chunks': int(state_snapshot.get('skipped_unchanged_chunks') or 0),
+            'chunk_key': state_snapshot.get('chunk_key'),
+            'chunk_status': 'failed',
             'error': error,
             'finished_at': finished_at.isoformat(),
             'duration_sec': duration_sec,
@@ -1987,6 +2338,9 @@ def _execute_job(
                 'stage': 'failed',
                 'progress_pct': 100,
                 'status_message': 'Sincronizacion con error',
+                'rows_inserted': int(state_snapshot.get('rows_inserted') or 0),
+                'rows_updated': 0,
+                'rows_skipped': int(state_snapshot.get('rows_skipped') or 0),
                 'rows_read': int(state_snapshot.get('rows_read') or 0),
                 'rows_upserted': int(state_snapshot.get('rows_upserted') or 0),
                 'rows_unchanged': int(state_snapshot.get('rows_unchanged') or 0),
@@ -1994,6 +2348,9 @@ def _execute_job(
                 'eta_seconds': 0,
                 'current_query_file': _query_file_for(domain),
                 'job_step': 'failed',
+                'chunk_status': 'failed',
+                'chunk_key': state_snapshot.get('chunk_key'),
+                'skipped_unchanged_chunks': int(state_snapshot.get('skipped_unchanged_chunks') or 0),
                 'error': error,
                 'finished_at': finished_at.replace(tzinfo=None),
                 'duration_sec': duration_sec,
@@ -2195,6 +2552,11 @@ class SyncService:
             state = dict(_state_by_domain.get(domain) or {})
         if state and (job_id is None or state.get('job_id') == job_id):
             state.setdefault('domain', domain)
+            state.setdefault('queue_position', None)
+            state.setdefault('watermark', None)
+            state.setdefault('chunk_key', None)
+            state.setdefault('chunk_status', None)
+            state.setdefault('skipped_unchanged_chunks', 0)
             return state
 
         db = SessionLocal()
@@ -2207,6 +2569,33 @@ class SyncService:
             row = q.first()
             if row is None:
                 return {'domain': domain, 'running': False, 'progress_pct': 0, 'log': []}
+            partition_key = _watermark_partition_key(
+                str(row.mode or ''),
+                int(row.year_from) if row.year_from is not None else None,
+                getattr(row, 'close_month', None),
+                getattr(row, 'close_month_from', None),
+                getattr(row, 'close_month_to', None),
+            )
+            wm = _get_watermark(
+                db,
+                domain=domain,
+                query_file=_query_file_for(domain),
+                partition_key=partition_key,
+            )
+            queue_pos = _queue_position(db, row.job_id)
+            chunk_row = (
+                db.query(SyncExtractLog)
+                .filter(SyncExtractLog.job_id == row.job_id)
+                .order_by(SyncExtractLog.created_at.desc())
+                .first()
+            )
+            skipped_unchanged = 0
+            if chunk_row is not None:
+                try:
+                    details = json.loads(chunk_row.details_json or '{}')
+                except Exception:
+                    details = {}
+                skipped_unchanged = int(details.get('skipped_unchanged_chunks') or 0)
             return {
                 'job_id': row.job_id,
                 'domain': row.domain,
@@ -2229,6 +2618,24 @@ class SyncService:
                 'eta_seconds': int(getattr(row, 'eta_seconds', 0) or 0),
                 'current_query_file': getattr(row, 'current_query_file', None) or _query_file_for(domain),
                 'job_step': getattr(row, 'job_step', None) or _job_step_from_stage(row.stage),
+                'queue_position': queue_pos,
+                'watermark': (
+                    {
+                        'domain': wm.domain,
+                        'query_file': wm.query_file,
+                        'partition_key': wm.partition_key,
+                        'last_updated_at': wm.last_updated_at.isoformat() if wm.last_updated_at else None,
+                        'last_source_id': wm.last_source_id,
+                        'last_success_job_id': wm.last_success_job_id,
+                        'last_row_count': int(wm.last_row_count or 0),
+                        'updated_at': wm.updated_at.isoformat() if wm.updated_at else None,
+                    }
+                    if wm is not None
+                    else None
+                ),
+                'chunk_key': getattr(row, 'chunk_key', None) if hasattr(row, 'chunk_key') else None,
+                'chunk_status': getattr(row, 'chunk_status', None) if hasattr(row, 'chunk_status') else None,
+                'skipped_unchanged_chunks': int(getattr(row, 'skipped_unchanged_chunks', 0) or skipped_unchanged),
                 'affected_months': [],
                 'target_table': getattr(row, 'target_table', None),
                 'agg_refresh_started': False,
@@ -2242,6 +2649,83 @@ class SyncService:
                 'finished_at': row.finished_at.isoformat() if row.finished_at else None,
                 'duration_sec': row.duration_sec,
             }
+        finally:
+            db.close()
+
+    @staticmethod
+    def list_watermarks(domain: str | None = None) -> list[dict]:
+        db = SessionLocal()
+        try:
+            q = db.query(SyncWatermark)
+            if domain:
+                q = q.filter(SyncWatermark.domain == domain)
+            rows = q.order_by(SyncWatermark.domain, SyncWatermark.query_file, SyncWatermark.partition_key).all()
+            return [
+                {
+                    'domain': row.domain,
+                    'query_file': row.query_file,
+                    'partition_key': row.partition_key,
+                    'last_updated_at': row.last_updated_at.isoformat() if row.last_updated_at else None,
+                    'last_source_id': row.last_source_id,
+                    'last_success_job_id': row.last_success_job_id,
+                    'last_row_count': int(row.last_row_count or 0),
+                    'updated_at': row.updated_at.isoformat() if row.updated_at else None,
+                }
+                for row in rows
+            ]
+        finally:
+            db.close()
+
+    @staticmethod
+    def reset_watermarks(domain: str, query_file: str | None = None, partition_key: str | None = None) -> dict:
+        db = SessionLocal()
+        try:
+            q = db.query(SyncWatermark).filter(SyncWatermark.domain == domain)
+            if query_file:
+                q = q.filter(SyncWatermark.query_file == str(query_file).strip())
+            if partition_key:
+                q = q.filter(SyncWatermark.partition_key == str(partition_key).strip())
+            deleted = q.delete(synchronize_session=False)
+            db.commit()
+            return {
+                'domain': domain,
+                'query_file': query_file,
+                'partition_key': partition_key,
+                'deleted': int(deleted or 0),
+            }
+        finally:
+            db.close()
+
+    @staticmethod
+    def job_chunks(job_id: str) -> dict:
+        db = SessionLocal()
+        try:
+            rows = (
+                db.query(SyncExtractLog)
+                .filter(SyncExtractLog.job_id == job_id)
+                .order_by(SyncExtractLog.created_at.asc())
+                .all()
+            )
+            domain = rows[0].domain if rows else None
+            chunks = []
+            for row in rows:
+                try:
+                    details = json.loads(row.details_json or '{}')
+                except Exception:
+                    details = {}
+                chunks.append(
+                    {
+                        'chunk_key': row.chunk_key,
+                        'stage': row.stage,
+                        'status': row.status,
+                        'rows': int(row.rows or 0),
+                        'duration_sec': float(row.duration_sec or 0.0),
+                        'throughput_rows_per_sec': float(row.throughput_rows_per_sec or 0.0),
+                        'details': details,
+                        'created_at': row.created_at.isoformat() if row.created_at else None,
+                    }
+                )
+            return {'job_id': job_id, 'domain': domain, 'chunks': chunks}
         finally:
             db.close()
 
