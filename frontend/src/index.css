@@ -151,6 +151,58 @@ body.sidebar-open {
   flex-wrap: wrap;
 }
 
+.header-sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 34px;
+  padding: 0 0.62rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.2s ease;
+}
+
+.header-sync-pill:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+
+.header-sync-pill:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+.header-sync-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+  border-top-color: var(--color-primary);
+  animation: header-sync-spin 0.9s linear infinite;
+}
+
+.header-sync-text {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.header-sync-domain {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+@keyframes header-sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 :root[data-theme='light'] .app-header .user-info {
   color: #334155;
   gap: 0.75rem;
@@ -449,6 +501,10 @@ body.sidebar-open .tabs-nav {
   .app-header .user-info {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .header-sync-pill {
+    order: -1;
   }
 }
 

@@ -15,6 +15,7 @@ import { getApiErrorMessage } from '../../shared/apiErrors'
 
 type Props = {
   onReloadBrokers?: () => Promise<void>
+  onSyncLiveChange?: (state: SyncLive | null) => void
 }
 
 type SyncLive = {
@@ -83,7 +84,7 @@ function monthSerial(mmYyyy: string): number {
   return year * 12 + month
 }
 
-export function ConfigView({ onReloadBrokers }: Props) {
+export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
   const [configSection, setConfigSection] = useState<ConfigSection>('usuarios')
   const [health, setHealth] = useState<{ ok?: boolean; db_ok?: boolean; service?: string; error?: string } | null>(null)
   const [healthLoading, setHealthLoading] = useState(false)
@@ -160,6 +161,10 @@ export function ConfigView({ onReloadBrokers }: Props) {
     return SYNC_DOMAINS.find((d) => d.value === syncLive.currentDomain)?.label || syncLive.currentDomain
   }, [syncLive?.currentDomain])
   const syncQueryFile = syncLive?.currentDomain ? SYNC_QUERY_FILES[syncLive.currentDomain] : '-'
+
+  useEffect(() => {
+    onSyncLiveChange?.(syncLive)
+  }, [onSyncLiveChange, syncLive])
 
   const toggleDomain = useCallback((domain: SyncDomain, checked: boolean) => {
     setSelectedDomains((prev) => {

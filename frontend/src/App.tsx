@@ -19,6 +19,21 @@ import { ConfigView } from './modules/config/ConfigView'
 import { AnalisisCarteraView } from './modules/analisisCartera/AnalisisCarteraView'
 import { AnalisisCobranzasCohorteView } from './modules/analisisCobranzasCohorte/AnalisisCobranzasCohorteView'
 
+type GlobalSyncLive = {
+  running?: boolean
+  currentDomain?: string | null
+  progressPct?: number
+  message?: string
+}
+
+const QUERY_BY_DOMAIN: Record<string, string> = {
+  analytics: 'query_analytics.sql',
+  cartera: 'query.sql',
+  cobranzas: 'query_cobranzas.sql',
+  contratos: 'query_contratos.sql',
+  gestores: 'query_gestores.sql',
+}
+
 export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     try {
@@ -34,8 +49,12 @@ export default function App() {
   const [error, setError] = useState('')
   const [activeSectionId, setActiveSectionId] = useState<string>('analisisCartera')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [globalSyncLive, setGlobalSyncLive] = useState<GlobalSyncLive | null>(null)
 
   const role = auth?.role ?? ''
+  const globalSyncPct = Math.max(0, Math.min(100, Math.round(globalSyncLive?.progressPct || 0)))
+  const globalSyncQuery = globalSyncLive?.currentDomain ? QUERY_BY_DOMAIN[globalSyncLive.currentDomain] || '-' : '-'
+  const showGlobalSync = Boolean(globalSyncLive?.running)
 
   const handleLogin = useCallback(async (payload: LoginRequest) => {
     setLoginError(null)
@@ -137,6 +156,19 @@ export default function App() {
           <h1>EPEM - Cartera de Cobranzas</h1>
         </div>
         <div className="user-info">
+          {showGlobalSync ? (
+            <button
+              type="button"
+              className="header-sync-pill"
+              onClick={() => setActiveSectionId('config')}
+              title={`${globalSyncLive?.message || 'Sincronizando...'} | ${globalSyncPct}% | ${globalSyncQuery}`}
+              aria-label={`Sincronizacion en curso ${globalSyncPct} por ciento`}
+            >
+              <span className="header-sync-icon" aria-hidden />
+              <span className="header-sync-text">{globalSyncPct}%</span>
+              <span className="header-sync-domain">{String(globalSyncLive?.currentDomain || '-')}</span>
+            </button>
+          ) : null}
           <span>Rol: <strong>{role || '-'}</strong></span>
           <button
             type="button"
@@ -165,7 +197,7 @@ export default function App() {
         </section>
 
         <section id="config" className={`app-section ${activeSectionId === 'config' ? '' : 'hidden'}`}>
-          <ConfigView />
+          <ConfigView onSyncLiveChange={setGlobalSyncLive} />
         </section>
       </main>
     </>
