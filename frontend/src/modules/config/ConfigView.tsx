@@ -3,11 +3,14 @@ import axios from 'axios'
 import {
   api,
   createUser,
+  getMysqlConnectionConfig,
   getSyncStatus,
   previewSync,
   listUsers,
   runSync,
+  saveMysqlConnectionConfig,
   updateUser,
+  type MysqlConnectionConfig,
   type SyncDomain,
   type SyncStatusResponse,
   type UserItem,
@@ -149,6 +152,17 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
   const [newRole, setNewRole] = useState<RoleType>('viewer')
   const [newIsActive, setNewIsActive] = useState(true)
   const [rowPasswordDraft, setRowPasswordDraft] = useState<Record<string, string>>({})
+  const [mysqlLoading, setMysqlLoading] = useState(false)
+  const [mysqlSaving, setMysqlSaving] = useState(false)
+  const [mysqlMessage, setMysqlMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  const [mysqlConfig, setMysqlConfig] = useState<MysqlConnectionConfig>({
+    host: '',
+    port: 3306,
+    user: '',
+    password: '',
+    database: '',
+    ssl_disabled: true,
+  })
 
   const hasCarteraSelected = selectedDomains.includes('cartera')
   const closeMonthFromValue = useMemo(() => {
@@ -276,6 +290,55 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
   useEffect(() => {
     void loadUsers()
   }, [loadUsers])
+
+  const loadMysqlConfig = useCallback(async () => {
+    setMysqlLoading(true)
+    setMysqlMessage(null)
+    try {
+      const data = await getMysqlConnectionConfig()
+      setMysqlConfig({
+        host: data.host || '',
+        port: Number(data.port || 3306),
+        user: data.user || '',
+        password: data.password || '',
+        database: data.database || '',
+        ssl_disabled: Boolean(data.ssl_disabled),
+      })
+    } catch (e: unknown) {
+      setMysqlMessage({ ok: false, text: getApiErrorMessage(e) })
+    } finally {
+      setMysqlLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadMysqlConfig()
+  }, [loadMysqlConfig])
+
+  const handleSaveMysqlConfig = useCallback(async () => {
+    if (!mysqlConfig.host.trim() || !mysqlConfig.user.trim() || !mysqlConfig.database.trim()) {
+      setMysqlMessage({ ok: false, text: 'Host, usuario y base son obligatorios.' })
+      return
+    }
+    setMysqlSaving(true)
+    setMysqlMessage(null)
+    try {
+      const saved = await saveMysqlConnectionConfig({
+        host: mysqlConfig.host.trim(),
+        port: Number(mysqlConfig.port || 3306),
+        user: mysqlConfig.user.trim(),
+        password: mysqlConfig.password || '',
+        database: mysqlConfig.database.trim(),
+        ssl_disabled: Boolean(mysqlConfig.ssl_disabled),
+      })
+      setMysqlConfig(saved)
+      setMysqlMessage({ ok: true, text: 'Configuracion MySQL guardada.' })
+    } catch (e: unknown) {
+      setMysqlMessage({ ok: false, text: getApiErrorMessage(e) })
+    } finally {
+      setMysqlSaving(false)
+    }
+  }, [mysqlConfig])
 
   const checkHealth = useCallback(async () => {
     setHealthLoading(true)
@@ -765,6 +828,89 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                     </div>
                   )}
                 </div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Conexion MySQL (extraccion)</h3>
+            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', marginTop: 0 }}>
+              Esta configuracion se usa para extraer datos en sincronizacion.
+            </p>
+            <div className="config-grid-3" style={{ marginTop: '0.5rem' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Host</span>
+                <input
+                  className="input"
+                  value={mysqlConfig.host}
+                  onChange={(e) => setMysqlConfig((prev) => ({ ...prev, host: e.target.value }))}
+                  placeholder="192.168.0.10"
+                  disabled={mysqlLoading || mysqlSaving}
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Puerto</span>
+                <input
+                  className="input"
+                  type="number"
+                  value={mysqlConfig.port}
+                  onChange={(e) => setMysqlConfig((prev) => ({ ...prev, port: Number(e.target.value || 3306) }))}
+                  placeholder="3306"
+                  disabled={mysqlLoading || mysqlSaving}
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Base</span>
+                <input
+                  className="input"
+                  value={mysqlConfig.database}
+                  onChange={(e) => setMysqlConfig((prev) => ({ ...prev, database: e.target.value }))}
+                  placeholder="epem"
+                  disabled={mysqlLoading || mysqlSaving}
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Usuario</span>
+                <input
+                  className="input"
+                  value={mysqlConfig.user}
+                  onChange={(e) => setMysqlConfig((prev) => ({ ...prev, user: e.target.value }))}
+                  placeholder="bi"
+                  disabled={mysqlLoading || mysqlSaving}
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Contrasena</span>
+                <input
+                  className="input"
+                  type="password"
+                  value={mysqlConfig.password}
+                  onChange={(e) => setMysqlConfig((prev) => ({ ...prev, password: e.target.value }))}
+                  placeholder="********"
+                  disabled={mysqlLoading || mysqlSaving}
+                />
+              </label>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', marginTop: '1.8rem' }}>
+                <input
+                  type="checkbox"
+                  checked={mysqlConfig.ssl_disabled}
+                  onChange={(e) => setMysqlConfig((prev) => ({ ...prev, ssl_disabled: e.target.checked }))}
+                  disabled={mysqlLoading || mysqlSaving}
+                />
+                <span>MYSQL_SSL_DISABLED</span>
+              </label>
+            </div>
+            <div style={{ marginTop: '0.55rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-primary" onClick={() => void handleSaveMysqlConfig()} disabled={mysqlLoading || mysqlSaving}>
+                {mysqlSaving ? 'Guardando...' : 'Guardar MySQL'}
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => void loadMysqlConfig()} disabled={mysqlLoading || mysqlSaving}>
+                {mysqlLoading ? 'Cargando...' : 'Recargar MySQL'}
+              </button>
+              {mysqlMessage && (
+                <span style={{ color: mysqlMessage.ok ? 'var(--color-primary)' : 'var(--color-error)', fontWeight: 500 }}>
+                  {mysqlMessage.text}
+                </span>
               )}
             </div>
           </div>

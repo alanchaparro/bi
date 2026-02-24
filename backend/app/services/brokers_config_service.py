@@ -4,6 +4,14 @@ from app.repositories import brokers_config
 
 class BrokersConfigService:
     @staticmethod
+    def get_mysql_connection(db):
+        return brokers_config.get_mysql_connection(db)
+
+    @staticmethod
+    def save_mysql_connection(db, value: dict, actor: str):
+        return brokers_config.save_mysql_connection(db, value, actor)
+
+    @staticmethod
     def get_supervisors_scope(db):
         return brokers_config.get_supervisor_scope(db)
 

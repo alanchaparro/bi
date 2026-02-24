@@ -713,22 +713,53 @@ def _build_mysql_incremental_query(
     return sql, params, True
 
 
+def _resolve_mysql_connection_config(db: Session | None = None) -> dict[str, Any]:
+    cfg = {
+        'host': settings.mysql_host,
+        'port': int(settings.mysql_port or 3306),
+        'user': settings.mysql_user,
+        'password': settings.mysql_password,
+        'database': settings.mysql_database,
+        'ssl_disabled': bool(getattr(settings, 'mysql_ssl_disabled', True)),
+        'connection_timeout': 20,
+        'consume_results': True,
+    }
+    if db is None:
+        return cfg
+    try:
+        stored = BrokersConfigService.get_mysql_connection(db) or {}
+        host = str(stored.get('host') or '').strip()
+        user = str(stored.get('user') or '').strip()
+        database = str(stored.get('database') or '').strip()
+        if host:
+            cfg['host'] = host
+        if user:
+            cfg['user'] = user
+        if database:
+            cfg['database'] = database
+        if 'password' in stored:
+            cfg['password'] = str(stored.get('password') or '')
+        if stored.get('port') is not None:
+            try:
+                cfg['port'] = int(stored.get('port'))
+            except Exception:
+                pass
+        if 'ssl_disabled' in stored:
+            cfg['ssl_disabled'] = bool(stored.get('ssl_disabled'))
+    except Exception:
+        logger.exception('Failed to load mysql connection overrides from config store')
+    return cfg
+
+
 def _iter_from_mysql(
     query_path: Path,
     *,
     domain: str | None = None,
     watermark_updated_at: datetime | None = None,
     watermark_source_id: str | None = None,
+    mysql_config: dict[str, Any] | None = None,
 ):
-    cfg = {
-        'host': settings.mysql_host,
-        'port': settings.mysql_port,
-        'user': settings.mysql_user,
-        'password': settings.mysql_password,
-        'database': settings.mysql_database,
-        'connection_timeout': 20,
-        'consume_results': True,
-    }
+    cfg = dict(mysql_config or _resolve_mysql_connection_config(None))
     conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor(dictionary=True)
@@ -2086,6 +2117,7 @@ def _execute_job(
         query_path = _query_path_for(domain)
         if not query_path.exists():
             raise RuntimeError(f'No existe query para dominio {domain}: {query_path.name}')
+        mysql_cfg = _resolve_mysql_connection_config(db)
         _persist_job_step(db, job_id, domain, 'extract', 'running', {'query_file': _query_file_for(domain)})
         _set_state(domain, {'stage': 'connecting_mysql', 'progress_pct': 8, 'status_message': 'Conectando a MySQL'})
         _append_log(domain, 'Conectando a MySQL...')
@@ -2134,6 +2166,7 @@ def _execute_job(
                 domain=domain,
                 watermark_updated_at=wm_filter_updated_at,
                 watermark_source_id=wm_filter_source_id or None,
+                mysql_config=mysql_cfg,
             ):
                 source_rows += len(batch)
                 # Keep hard cap only for full_all; scoped modes are streamed safely.
@@ -2907,6 +2940,7 @@ class SyncService:
         partition_key = _watermark_partition_key(mode, year_from, close_month, close_month_from, close_month_to)
         wm_updated_at = None
         wm_source_id = None
+        mysql_cfg = _resolve_mysql_connection_config(None)
         db = SessionLocal()
         try:
             wm = _get_watermark(
@@ -2918,6 +2952,7 @@ class SyncService:
             if wm is not None:
                 wm_updated_at = wm.last_updated_at
                 wm_source_id = str(wm.last_source_id or '').strip() or None
+            mysql_cfg = _resolve_mysql_connection_config(db)
         finally:
             db.close()
         max_rows = _max_rows_for_domain(domain)
@@ -2929,6 +2964,7 @@ class SyncService:
             domain=domain,
             watermark_updated_at=wm_updated_at,
             watermark_source_id=wm_source_id,
+            mysql_config=mysql_cfg,
         ):
             for row in batch:
                 n = _normalize_record(domain, row, seq)

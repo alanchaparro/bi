@@ -95,3 +95,21 @@ class AuthUserUpdateIn(BaseModel):
     role: str | None = Field(default=None, min_length=3, max_length=32)
     is_active: bool | None = None
     password: str | None = Field(default=None, min_length=6, max_length=256)
+
+
+class MysqlConnectionIn(BaseModel):
+    host: str = Field(min_length=1, max_length=255)
+    port: int = Field(default=3306, ge=1, le=65535)
+    user: str = Field(min_length=1, max_length=128)
+    password: str = Field(default='', max_length=256)
+    database: str = Field(min_length=1, max_length=255)
+    ssl_disabled: bool = True
+
+
+class MysqlConnectionOut(BaseModel):
+    host: str
+    port: int
+    user: str
+    password: str
+    database: str
+    ssl_disabled: bool = True

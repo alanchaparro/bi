@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.deps import require_permission, write_rate_limiter
 from app.db.session import get_db
 from app.schemas.brokers import (
@@ -13,6 +14,8 @@ from app.schemas.brokers import (
     CarteraTramoRulesIn,
     CarteraTramoRulesOut,
     CarteraUnsOut,
+    MysqlConnectionIn,
+    MysqlConnectionOut,
     RulesIn,
     RulesOut,
     SupervisorsScopeIn,
@@ -37,6 +40,40 @@ def _user_to_out(row) -> AuthUserItemOut:
 @router.get('/sync-analytics/status')
 def sync_analytics_status(user=Depends(require_permission('brokers:read'))):
     return SyncService.status(domain='analytics')
+
+
+@router.get('/mysql-connection', response_model=MysqlConnectionOut)
+def get_mysql_connection(
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('brokers:read')),
+):
+    data = BrokersConfigService.get_mysql_connection(db) or {}
+    return MysqlConnectionOut(
+        host=str(data.get('host') or settings.mysql_host or ''),
+        port=int(data.get('port') or settings.mysql_port or 3306),
+        user=str(data.get('user') or settings.mysql_user or ''),
+        password=str(data.get('password') or settings.mysql_password or ''),
+        database=str(data.get('database') or settings.mysql_database or ''),
+        ssl_disabled=bool(data.get('ssl_disabled', settings.mysql_ssl_disabled)),
+    )
+
+
+@router.post('/mysql-connection', response_model=MysqlConnectionOut)
+def save_mysql_connection(
+    payload: MysqlConnectionIn,
+    _rl=Depends(write_rate_limiter),
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('brokers:write_config')),
+):
+    data = BrokersConfigService.save_mysql_connection(db, payload.model_dump(), str(user.get('sub', 'system'))) or {}
+    return MysqlConnectionOut(
+        host=str(data.get('host') or ''),
+        port=int(data.get('port') or 3306),
+        user=str(data.get('user') or ''),
+        password=str(data.get('password') or ''),
+        database=str(data.get('database') or ''),
+        ssl_disabled=bool(data.get('ssl_disabled', True)),
+    )
 
 
 @router.get('/users', response_model=AuthUsersOut)

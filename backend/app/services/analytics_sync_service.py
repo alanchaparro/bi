@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.brokers import AnalyticsContractSnapshot
+from app.services.brokers_config_service import BrokersConfigService
 
 
 def get_query_path() -> Path:
@@ -59,18 +60,21 @@ def sync_from_mysql(db: Session, progress_cb=None) -> dict:
     if not query_path.exists():
         return {'rows_inserted': 0, 'error': 'query_analytics.sql no encontrado.'}
 
-    if not settings.mysql_database:
-        return {'rows_inserted': 0, 'error': 'MYSQL_DATABASE no configurado en .env'}
+    stored_mysql = BrokersConfigService.get_mysql_connection(db) or {}
+    mysql_database = str(stored_mysql.get('database') or settings.mysql_database or '').strip()
+    if not mysql_database:
+        return {'rows_inserted': 0, 'error': 'MYSQL_DATABASE no configurado en .env/configuracion'}
 
     if callable(progress_cb):
         progress_cb(stage='connecting_mysql', progress_pct=5, message='Conectando a MySQL...')
 
     mysql_config = {
-        'host': settings.mysql_host,
-        'port': settings.mysql_port,
-        'user': settings.mysql_user,
-        'password': settings.mysql_password,
-        'database': settings.mysql_database,
+        'host': str(stored_mysql.get('host') or settings.mysql_host),
+        'port': int(stored_mysql.get('port') or settings.mysql_port),
+        'user': str(stored_mysql.get('user') or settings.mysql_user),
+        'password': str(stored_mysql.get('password') or settings.mysql_password),
+        'database': mysql_database,
+        'ssl_disabled': bool(stored_mysql.get('ssl_disabled', settings.mysql_ssl_disabled)),
         'connection_timeout': 10,
     }
     try:

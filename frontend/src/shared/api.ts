@@ -170,6 +170,27 @@ export async function saveCarteraPreferences(
   return response.data;
 }
 
+export type MysqlConnectionConfig = {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  database: string;
+  ssl_disabled: boolean;
+};
+
+export async function getMysqlConnectionConfig(): Promise<MysqlConnectionConfig> {
+  const response = await api.get<MysqlConnectionConfig>("/brokers/mysql-connection");
+  return response.data;
+}
+
+export async function saveMysqlConnectionConfig(
+  payload: MysqlConnectionConfig
+): Promise<MysqlConnectionConfig> {
+  const response = await api.post<MysqlConnectionConfig>("/brokers/mysql-connection", payload);
+  return response.data;
+}
+
 export type UserItem = {
   username: string;
   role: "admin" | "analyst" | "viewer" | string;

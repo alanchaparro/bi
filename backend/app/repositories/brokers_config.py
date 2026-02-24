@@ -227,3 +227,35 @@ def update_auth_user(
     db.refresh(row)
     add_audit(db, 'auth_users', 'update', actor, {'username': row.username, 'role': row.role, 'is_active': row.is_active})
     return row
+
+
+def get_mysql_connection(db: Session) -> dict:
+    stored = get_user_preferences(db, '__system__', 'mysql_connection_v1')
+    return stored if isinstance(stored, dict) else {}
+
+
+def save_mysql_connection(db: Session, value: dict, actor: str) -> dict:
+    payload = {
+        'host': str(value.get('host') or '').strip(),
+        'port': int(value.get('port') or 3306),
+        'user': str(value.get('user') or '').strip(),
+        'password': str(value.get('password') or ''),
+        'database': str(value.get('database') or '').strip(),
+        'ssl_disabled': bool(value.get('ssl_disabled', True)),
+    }
+    stored = save_user_preferences(db, '__system__', 'mysql_connection_v1', payload)
+    add_audit(
+        db,
+        'mysql_connection_v1',
+        'upsert',
+        actor,
+        {
+            'host': payload['host'],
+            'port': payload['port'],
+            'user': payload['user'],
+            'database': payload['database'],
+            'ssl_disabled': payload['ssl_disabled'],
+            'password_changed': bool(payload['password']),
+        },
+    )
+    return stored if isinstance(stored, dict) else {}

@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     mysql_user: str = Field(default='root', alias='MYSQL_USER')
     mysql_password: str = Field(default='', alias='MYSQL_PASSWORD')
     mysql_database: str = Field(default='', alias='MYSQL_DATABASE')
+    mysql_ssl_disabled: bool = Field(default=True, alias='MYSQL_SSL_DISABLED')
     sync_window_months: int = Field(default=3, alias='SYNC_WINDOW_MONTHS')
     sync_max_rows: int = Field(default=250000, alias='SYNC_MAX_ROWS')
     sync_max_rows_analytics: int = Field(default=0, alias='SYNC_MAX_ROWS_ANALYTICS')

@@ -14,6 +14,7 @@ Fecha base: 2026-02-17
 
 ## Bootstrap
 - [ ] `.env` productivo validado
+- [ ] `docker compose --profile prod up -d --build` ejecutado en host limpio
 - [ ] `scripts/prod_bootstrap_from_zero.ps1` ejecutado con exito
 - [ ] `alembic upgrade head` aplicado
 - [ ] bootstrap auth ejecutado
@@ -30,6 +31,7 @@ Fecha base: 2026-02-17
 - [ ] barra de progreso y log en vivo funcionando
 - [ ] CarteraView activo y sin placeholder
 - [ ] filtros cartera persisten por usuario (`cartera_filters_v1`)
+- [ ] Configuracion de negocio permite editar y guardar conexion MySQL (host, puerto, usuario, password, DB)
 
 ## Evidencias
 - [ ] `docs/evidence/` contiene solo evidencia del ciclo nuevo
