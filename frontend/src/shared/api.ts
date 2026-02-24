@@ -179,6 +179,12 @@ export type MysqlConnectionConfig = {
   ssl_disabled: boolean;
 };
 
+export type MysqlConnectionTestResponse = {
+  ok: boolean;
+  message: string;
+  latency_ms?: number | null;
+};
+
 export async function getMysqlConnectionConfig(): Promise<MysqlConnectionConfig> {
   const response = await api.get<MysqlConnectionConfig>("/brokers/mysql-connection");
   return response.data;
@@ -188,6 +194,13 @@ export async function saveMysqlConnectionConfig(
   payload: MysqlConnectionConfig
 ): Promise<MysqlConnectionConfig> {
   const response = await api.post<MysqlConnectionConfig>("/brokers/mysql-connection", payload);
+  return response.data;
+}
+
+export async function testMysqlConnectionConfig(
+  payload: MysqlConnectionConfig
+): Promise<MysqlConnectionTestResponse> {
+  const response = await api.post<MysqlConnectionTestResponse>("/brokers/mysql-connection/test", payload);
   return response.data;
 }
 

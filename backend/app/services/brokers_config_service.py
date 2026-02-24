@@ -1,5 +1,8 @@
 from app.core.security import ROLE_PERMISSIONS, hash_password
+from app.core.config import settings
 from app.repositories import brokers_config
+import mysql.connector
+import time
 
 
 class BrokersConfigService:
@@ -10,6 +13,37 @@ class BrokersConfigService:
     @staticmethod
     def save_mysql_connection(db, value: dict, actor: str):
         return brokers_config.save_mysql_connection(db, value, actor)
+
+    @staticmethod
+    def test_mysql_connection(value: dict | None = None) -> dict:
+        payload = value or {}
+        cfg = {
+            'host': str(payload.get('host') or settings.mysql_host or '').strip(),
+            'port': int(payload.get('port') or settings.mysql_port or 3306),
+            'user': str(payload.get('user') or settings.mysql_user or '').strip(),
+            'password': str(payload.get('password') or settings.mysql_password or ''),
+            'database': str(payload.get('database') or settings.mysql_database or '').strip(),
+            'ssl_disabled': bool(payload.get('ssl_disabled', getattr(settings, 'mysql_ssl_disabled', True))),
+            'connection_timeout': 8,
+            'consume_results': True,
+        }
+        started = time.perf_counter()
+        conn = mysql.connector.connect(**cfg)
+        try:
+            cursor = conn.cursor()
+            try:
+                cursor.execute('SELECT 1')
+                cursor.fetchone()
+            finally:
+                cursor.close()
+        finally:
+            conn.close()
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        return {
+            'ok': True,
+            'message': 'Conexion MySQL OK',
+            'latency_ms': latency_ms,
+        }
 
     @staticmethod
     def get_supervisors_scope(db):

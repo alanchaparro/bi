@@ -113,3 +113,9 @@ class MysqlConnectionOut(BaseModel):
     password: str
     database: str
     ssl_disabled: bool = True
+
+
+class MysqlConnectionTestOut(BaseModel):
+    ok: bool
+    message: str
+    latency_ms: int | None = None

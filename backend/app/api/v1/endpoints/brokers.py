@@ -16,6 +16,7 @@ from app.schemas.brokers import (
     CarteraUnsOut,
     MysqlConnectionIn,
     MysqlConnectionOut,
+    MysqlConnectionTestOut,
     RulesIn,
     RulesOut,
     SupervisorsScopeIn,
@@ -74,6 +75,23 @@ def save_mysql_connection(
         database=str(data.get('database') or ''),
         ssl_disabled=bool(data.get('ssl_disabled', True)),
     )
+
+
+@router.post('/mysql-connection/test', response_model=MysqlConnectionTestOut)
+def test_mysql_connection(
+    payload: MysqlConnectionIn,
+    _rl=Depends(write_rate_limiter),
+    user=Depends(require_permission('brokers:write_config')),
+):
+    try:
+        result = BrokersConfigService.test_mysql_connection(payload.model_dump())
+        return MysqlConnectionTestOut(
+            ok=bool(result.get('ok')),
+            message=str(result.get('message') or 'Conexion MySQL OK'),
+            latency_ms=int(result.get('latency_ms') or 0),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail={'message': f'No se pudo conectar a MySQL: {exc}'})
 
 
 @router.get('/users', response_model=AuthUsersOut)

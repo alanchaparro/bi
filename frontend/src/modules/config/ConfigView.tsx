@@ -9,6 +9,7 @@ import {
   listUsers,
   runSync,
   saveMysqlConnectionConfig,
+  testMysqlConnectionConfig,
   updateUser,
   type MysqlConnectionConfig,
   type SyncDomain,
@@ -154,6 +155,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
   const [rowPasswordDraft, setRowPasswordDraft] = useState<Record<string, string>>({})
   const [mysqlLoading, setMysqlLoading] = useState(false)
   const [mysqlSaving, setMysqlSaving] = useState(false)
+  const [mysqlTesting, setMysqlTesting] = useState(false)
   const [mysqlMessage, setMysqlMessage] = useState<{ ok: boolean; text: string } | null>(null)
   const [mysqlConfig, setMysqlConfig] = useState<MysqlConnectionConfig>({
     host: '',
@@ -337,6 +339,33 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
       setMysqlMessage({ ok: false, text: getApiErrorMessage(e) })
     } finally {
       setMysqlSaving(false)
+    }
+  }, [mysqlConfig])
+
+  const handleTestMysqlConfig = useCallback(async () => {
+    if (!mysqlConfig.host.trim() || !mysqlConfig.user.trim() || !mysqlConfig.database.trim()) {
+      setMysqlMessage({ ok: false, text: 'Host, usuario y base son obligatorios.' })
+      return
+    }
+    setMysqlTesting(true)
+    setMysqlMessage(null)
+    try {
+      const result = await testMysqlConnectionConfig({
+        host: mysqlConfig.host.trim(),
+        port: Number(mysqlConfig.port || 3306),
+        user: mysqlConfig.user.trim(),
+        password: mysqlConfig.password || '',
+        database: mysqlConfig.database.trim(),
+        ssl_disabled: Boolean(mysqlConfig.ssl_disabled),
+      })
+      const latency = typeof result.latency_ms === 'number' && result.latency_ms >= 0
+        ? ` (${result.latency_ms} ms)`
+        : ''
+      setMysqlMessage({ ok: true, text: `${result.message}${latency}` })
+    } catch (e: unknown) {
+      setMysqlMessage({ ok: false, text: getApiErrorMessage(e) })
+    } finally {
+      setMysqlTesting(false)
     }
   }, [mysqlConfig])
 
@@ -845,7 +874,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   value={mysqlConfig.host}
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, host: e.target.value }))}
                   placeholder="192.168.0.10"
-                  disabled={mysqlLoading || mysqlSaving}
+                  disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -856,7 +885,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   value={mysqlConfig.port}
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, port: Number(e.target.value || 3306) }))}
                   placeholder="3306"
-                  disabled={mysqlLoading || mysqlSaving}
+                  disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -866,7 +895,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   value={mysqlConfig.database}
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, database: e.target.value }))}
                   placeholder="epem"
-                  disabled={mysqlLoading || mysqlSaving}
+                  disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -876,7 +905,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   value={mysqlConfig.user}
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, user: e.target.value }))}
                   placeholder="bi"
-                  disabled={mysqlLoading || mysqlSaving}
+                  disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -887,7 +916,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   value={mysqlConfig.password}
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, password: e.target.value }))}
                   placeholder="********"
-                  disabled={mysqlLoading || mysqlSaving}
+                  disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
               </label>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', marginTop: '1.8rem' }}>
@@ -895,16 +924,19 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   type="checkbox"
                   checked={mysqlConfig.ssl_disabled}
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, ssl_disabled: e.target.checked }))}
-                  disabled={mysqlLoading || mysqlSaving}
+                  disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
                 <span>MYSQL_SSL_DISABLED</span>
               </label>
             </div>
             <div style={{ marginTop: '0.55rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-              <button type="button" className="btn btn-primary" onClick={() => void handleSaveMysqlConfig()} disabled={mysqlLoading || mysqlSaving}>
+              <button type="button" className="btn btn-primary" onClick={() => void handleSaveMysqlConfig()} disabled={mysqlLoading || mysqlSaving || mysqlTesting}>
                 {mysqlSaving ? 'Guardando...' : 'Guardar MySQL'}
               </button>
-              <button type="button" className="btn btn-secondary" onClick={() => void loadMysqlConfig()} disabled={mysqlLoading || mysqlSaving}>
+              <button type="button" className="btn btn-secondary" onClick={() => void handleTestMysqlConfig()} disabled={mysqlLoading || mysqlSaving || mysqlTesting}>
+                {mysqlTesting ? 'Probando...' : 'Probar MySQL'}
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => void loadMysqlConfig()} disabled={mysqlLoading || mysqlSaving || mysqlTesting}>
                 {mysqlLoading ? 'Cargando...' : 'Recargar MySQL'}
               </button>
               {mysqlMessage && (
