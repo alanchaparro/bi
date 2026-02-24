@@ -24,6 +24,8 @@ PORTFOLIO_CORTE_OPTIONS_CACHE_TTL = 600
 PORTFOLIO_CORTE_SUMMARY_CACHE_TTL = 180
 COHORTE_OPTIONS_CACHE_TTL = 1800
 COHORTE_SUMMARY_CACHE_TTL = 120
+RENDIMIENTO_SUMMARY_CACHE_TTL = 120
+MORA_SUMMARY_CACHE_TTL = 120
 
 
 def _call(endpoint: str, filters: AnalyticsFilters):
@@ -129,15 +131,25 @@ def portfolio_corte_summary(
 
 @router.post('/rendimiento/summary')
 def rendimiento_summary(filters: AnalyticsFilters, user=Depends(require_permission('analytics:read'))):
-    return _call('/analytics/performance/by-management-month', filters)
+    cached = cache_get('rendimiento/summary', filters)
+    if cached is not None:
+        return cached
+    result = _call('/analytics/performance/by-management-month', filters)
+    cache_set('rendimiento/summary', filters, result, ttl_seconds=RENDIMIENTO_SUMMARY_CACHE_TTL)
+    return result
 
 
 @router.post('/mora/summary')
 def mora_summary(filters: AnalyticsFilters, user=Depends(require_permission('analytics:read'))):
+    cached = cache_get('mora/summary', filters)
+    if cached is not None:
+        return cached
     try:
-        return _call('/analytics/movement/moroso-trend', filters)
+        result = _call('/analytics/movement/moroso-trend', filters)
     except HTTPException:
-        return AnalyticsService.empty_mora_summary_v1(filters, reason='legacy_mora_unavailable')
+        result = AnalyticsService.empty_mora_summary_v1(filters, reason='legacy_mora_unavailable')
+    cache_set('mora/summary', filters, result, ttl_seconds=MORA_SUMMARY_CACHE_TTL)
+    return result
 
 
 @router.post('/brokers/summary')
