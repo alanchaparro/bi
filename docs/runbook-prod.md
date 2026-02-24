@@ -31,6 +31,24 @@ Este script realiza:
 6. Ejecuta `verify_legacy_config_migration.py`.
 7. Smoke `health` + `login`.
 
+### 3.1) Primer acceso admin (one-shot, Windows/Linux)
+Despues del primer deploy, ejecutar una sola vez:
+
+```bash
+docker compose --profile prod run --rm dashboard python scripts/first_run_enable_admin_once.py
+```
+
+Que hace este comando:
+1. Crea o rehabilita usuario admin.
+2. Imprime en salida los datos de conexion de PostgreSQL (`host`, `port`, `database`, `user`, `password`, `database_url`) para guardar en vault.
+3. Se autodestruye en modo logico: queda bloqueado para reuso (one-shot). Si se necesita repetir, usar `--force`.
+
+Ejemplo re-ejecucion controlada:
+
+```bash
+docker compose --profile prod run --rm dashboard python scripts/first_run_enable_admin_once.py --force
+```
+
 ## 4) Sync dual (nuevo flujo)
 Regla unica:
 - Si `year_from` viene informado => `full_year` (solo ese anio exacto).
