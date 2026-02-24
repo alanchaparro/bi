@@ -9,6 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.router import router as v1_router
 from app.core.config import settings
+from app.core.prod_check import validate_production_config
 from app.db.bootstrap import bootstrap_database_with_demo_probe
 from app.db.base import Base
 from app.db.session import engine
@@ -115,5 +116,6 @@ app.include_router(v1_router)
 
 @app.on_event('startup')
 def _bootstrap_db_on_startup() -> None:
+    validate_production_config()
     if settings.db_bootstrap_on_start:
         bootstrap_database_with_demo_probe()

@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -8,7 +9,8 @@ from urllib.error import HTTPError, URLError
 
 API_BASE = os.getenv("SYNC_VALIDATE_API_BASE", "http://localhost:8000/api/v1").rstrip("/")
 USERNAME = os.getenv("SYNC_VALIDATE_USERNAME", "admin")
-PASSWORD = os.getenv("SYNC_VALIDATE_PASSWORD", "admin123")
+# En producción SYNC_VALIDATE_PASSWORD es obligatorio; en dev puede usarse DEMO_ADMIN_PASSWORD.
+PASSWORD = os.getenv("SYNC_VALIDATE_PASSWORD") or os.getenv("DEMO_ADMIN_PASSWORD")
 DOMAIN = os.getenv("SYNC_VALIDATE_DOMAIN", "gestores")
 YEAR_FROM = os.getenv("SYNC_VALIDATE_YEAR_FROM")
 POLL_SECONDS = float(os.getenv("SYNC_VALIDATE_POLL_SECONDS", "2"))
@@ -67,6 +69,14 @@ def _run_and_wait(token: str, payload: dict, run_index: int) -> dict:
 
 
 def main() -> None:
+    if (os.getenv("APP_ENV") or "dev").strip().lower() == "prod":
+        if not (PASSWORD or "").strip():
+            print("Error: en producción APP_ENV=prod debe definirse SYNC_VALIDATE_PASSWORD.", file=sys.stderr)
+            sys.exit(1)
+    elif not (PASSWORD or "").strip():
+        print("Error: defina SYNC_VALIDATE_PASSWORD o DEMO_ADMIN_PASSWORD para autenticación.", file=sys.stderr)
+        sys.exit(1)
+
     token = _login()
     payload = {"domain": DOMAIN}
     if YEAR_FROM and str(YEAR_FROM).strip().isdigit():

@@ -35,7 +35,8 @@ jobs:
           docker compose --profile dev run --rm -v ${{ github.workspace }}:/workspace dashboard sh -c "
             pip install --quiet coverage &&
             cd /app && coverage run -m unittest discover -s tests -p 'test_*.py' &&
-            coverage xml -o /workspace/coverage.xml
+            coverage xml -o /workspace/coverage.xml &&
+            coverage report --fail-under=70
           "
 
       - name: Upload Backend Coverage

@@ -1,7 +1,8 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app.core.deps import require_permission
 from app.core.request_metrics import summary as request_metrics_summary
 from app.db.session import SessionLocal
 
@@ -41,7 +42,8 @@ def health():
 
 
 @router.get('/health/perf')
-def health_perf():
+def health_perf(_user=Depends(require_permission('system:read'))):
+    """Métricas de rendimiento y pg_stat_statements. Requiere permiso system:read (admin/analyst)."""
     db = SessionLocal()
     pg_stat_top: list[dict] = []
     try:
