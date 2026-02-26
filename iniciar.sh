@@ -95,6 +95,13 @@ assert res.get('access_token'), res
 print('login_ok')
 PY"
 
+echo "    Verificando MySQL (sync/import)..."
+if docker compose --profile prod run --rm api-v1 sh -lc "cd /app && python scripts/verify_mysql_connectivity.py" 2>/dev/null; then
+  echo "    MySQL: OK."
+else
+  echo "    ADVERTENCIA: MySQL no disponible. Configure MYSQL_* en .env para sync/import."
+fi
+
 # --- 5) Activar admin one-shot ---
 step "4" "Activando usuario administrador..."
 if ! docker compose --profile prod run --rm dashboard python scripts/first_run_enable_admin_once.py --admin-user "$admin_user" --admin-password "$admin_password"; then

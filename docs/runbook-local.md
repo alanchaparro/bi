@@ -24,6 +24,11 @@ pip install -r requirements/dev.txt
 ## Environment
 1. Copy `.env.example` to `.env`.
 2. Set MySQL values (`MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`).
+3. Verificar conectividad MySQL antes del primer sync/import:
+```powershell
+python scripts/verify_mysql_connectivity.py
+```
+   Exit 0 = OK. Si falla, revise .env y que mysql-connector-python esté instalado (`pip install -r requirements/runtime.txt`).
 
 ## Run Dashboard
 ```powershell

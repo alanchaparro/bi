@@ -34,4 +34,14 @@ Write-Host "[7/7] Smoke de API (health + login)..."
 docker compose --profile prod up -d api-v1
 docker compose --profile prod run --rm api-v1 sh -lc "cd /app && python scripts/smoke_api_v1_health_login.py"
 
+Write-Host "[8/8] Verificando conectividad MySQL (sync/import)..."
+$mysqlVerify = docker compose --profile prod run --rm api-v1 sh -lc "cd /app && python scripts/verify_mysql_connectivity.py" 2>&1
+if ($LASTEXITCODE -eq 0) {
+  Write-Host $mysqlVerify
+  Write-Host "MySQL: OK. Listo para sync/import."
+} else {
+  Write-Host $mysqlVerify
+  Write-Host "ADVERTENCIA: MySQL no disponible. Configure MYSQL_* en .env y ejecute: python scripts/verify_mysql_connectivity.py"
+}
+
 Write-Host "Bootstrap from zero completado."

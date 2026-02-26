@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app.core.config import settings
 from app.core.deps import require_permission
 from app.core.request_metrics import summary as request_metrics_summary
 from app.db.session import SessionLocal
@@ -9,11 +10,46 @@ from app.db.session import SessionLocal
 router = APIRouter()
 
 
+def _check_mysql_ok() -> bool | None:
+    """
+    Verifica conexión a MySQL (fuente de sync/import).
+    Retorna True si OK, False si falla, None si no está configurado.
+    """
+    host = str(settings.mysql_host or '').strip()
+    user = str(settings.mysql_user or '').strip()
+    database = str(settings.mysql_database or '').strip()
+    if not host or not user or not database:
+        return None  # no configurado
+    try:
+        import mysql.connector
+        cfg = {
+            'host': host,
+            'port': int(settings.mysql_port or 3306),
+            'user': user,
+            'password': settings.mysql_password or '',
+            'database': database,
+            'ssl_disabled': bool(getattr(settings, 'mysql_ssl_disabled', True)),
+            'connection_timeout': 5,
+        }
+        conn = mysql.connector.connect(**cfg)
+        try:
+            cur = conn.cursor()
+            cur.execute('SELECT 1')
+            cur.fetchone()
+            cur.close()
+        finally:
+            conn.close()
+        return True
+    except Exception:
+        return False
+
+
 @router.get('/health')
 def health():
     """
     Health check. Returns 200 with db_ok true when DB is reachable.
     Returns 503 when DB is unreachable (dependencies down).
+    Incluye mysql_ok para reportar conectividad a MySQL (sync/import).
     """
     db_ok = False
     db = SessionLocal()
@@ -31,13 +67,16 @@ def health():
                 'ok': False,
                 'service': 'cobranzas-api-v1',
                 'db_ok': False,
+                'mysql_ok': None,
                 'message': 'Database unreachable',
             },
         )
+    mysql_ok = _check_mysql_ok()
     return {
         'ok': True,
         'service': 'cobranzas-api-v1',
         'db_ok': True,
+        'mysql_ok': mysql_ok,  # True=OK, False=fallo, None=no configurado
     }
 
 
