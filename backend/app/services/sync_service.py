@@ -7,6 +7,7 @@ import tempfile
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from time import monotonic, sleep as time_sleep
 from typing import Any
 
 import mysql.connector
@@ -530,6 +531,22 @@ def _source_dedupe_key(normalized: dict) -> tuple:
     return tuple(normalized[k] for k in BUSINESS_KEY_FIELDS)
 
 
+def _dedupe_rows_in_chunk(rows: list[dict]) -> tuple[list[dict], int]:
+    if not rows:
+        return [], 0
+    deduped: list[dict] = []
+    seen: set[tuple] = set()
+    duplicates = 0
+    for item in rows:
+        key = _source_dedupe_key(item)
+        if key in seen:
+            duplicates += 1
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped, duplicates
+
+
 def _set_state(domain: str, updates: dict) -> None:
     snapshot: dict[str, Any] | None = None
     force_persist = False
@@ -758,6 +775,7 @@ def _iter_from_mysql(
     watermark_updated_at: datetime | None = None,
     watermark_source_id: str | None = None,
     mysql_config: dict[str, Any] | None = None,
+    batch_size_override: int | None = None,
 ):
     cfg = dict(mysql_config or _resolve_mysql_connection_config(None))
     conn = mysql.connector.connect(**cfg)
@@ -791,7 +809,8 @@ def _iter_from_mysql(
                     cursor.execute(query_text)
                 else:
                     raise
-            batch_size = _fetch_batch_size_for_domain(domain)
+            batch_size = int(batch_size_override or 0) or _fetch_batch_size_for_domain(domain)
+            batch_size = max(100, min(50000, batch_size))
             while True:
                 batch = cursor.fetchmany(batch_size)
                 if not batch:
@@ -873,6 +892,33 @@ def _fetch_batch_size_for_domain(domain: str) -> int:
     return max(100, min(50000, int(tuned_defaults.get(domain_key, base))))
 
 
+def _is_low_impact_mode(mode: str) -> bool:
+    if not bool(getattr(settings, 'sync_low_impact_mode', True)):
+        return False
+    full_all_only = bool(getattr(settings, 'sync_low_impact_full_all_only', True))
+    if full_all_only and str(mode or '').strip().lower() != 'full_all':
+        return False
+    return True
+
+
+def _low_impact_fetch_batch_size(base_size: int) -> int:
+    tuned = int(getattr(settings, 'sync_low_impact_fetch_batch_size', 1000) or 1000)
+    tuned = max(100, min(5000, tuned))
+    return max(100, min(base_size, tuned))
+
+
+def _low_impact_chunk_size(base_size: int) -> int:
+    tuned = int(getattr(settings, 'sync_low_impact_chunk_size', 500) or 500)
+    tuned = max(100, min(5000, tuned))
+    return max(100, min(base_size, tuned))
+
+
+def _low_impact_chunk_pause_seconds() -> float:
+    pause_ms = int(getattr(settings, 'sync_low_impact_chunk_pause_ms', 40) or 40)
+    pause_ms = max(0, min(2000, pause_ms))
+    return float(pause_ms) / 1000.0
+
+
 def _should_persist_sync_records(domain: str) -> bool:
     # sync_records is only used for cartera config lookups; skipping other domains
     # removes an extra heavyweight upsert path.
@@ -895,6 +941,61 @@ def _max_rows_for_domain(domain: str) -> int | None:
         return per_domain
     global_cap = int(settings.sync_max_rows or 0)
     return global_cap if global_cap > 0 else None
+
+
+def _domain_has_effective_limit(domain: str) -> bool:
+    return _max_rows_for_domain(domain) is not None
+
+
+def _estimated_duration_seconds(domain: str, estimated_rows: int) -> int | None:
+    if estimated_rows <= 0:
+        return 0
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(SyncRun.throughput_rows_per_sec)
+            .filter(
+                SyncRun.domain == domain,
+                SyncRun.running.is_(False),
+                SyncRun.error.is_(None),
+                SyncRun.throughput_rows_per_sec.isnot(None),
+                SyncRun.throughput_rows_per_sec > 0,
+            )
+            .order_by(SyncRun.finished_at.desc())
+            .limit(20)
+            .all()
+        )
+        values = [float(r[0]) for r in rows if r and r[0] is not None and float(r[0]) > 0]
+        if not values:
+            return None
+        # Use a conservative percentile to avoid overly optimistic ETA.
+        values.sort()
+        idx = max(0, int(len(values) * 0.2) - 1)
+        throughput = max(0.1, values[idx])
+        return int(round(float(estimated_rows) / throughput))
+    except Exception:
+        logger.exception('Failed to estimate duration for domain=%s', domain)
+        return None
+    finally:
+        db.close()
+
+
+def _preview_risk_level(
+    *,
+    mode: str,
+    would_exceed_limit: bool,
+    estimate_confidence: str,
+    has_effective_limit: bool,
+) -> str:
+    if would_exceed_limit:
+        return 'high'
+    if mode == 'full_all' and not has_effective_limit:
+        return 'high'
+    if estimate_confidence == 'low':
+        return 'high'
+    if estimate_confidence == 'medium':
+        return 'medium'
+    return 'low'
 
 
 def _matches_mode(gestion_month: str, mode: str, year_from: int | None, close_month: str | None, range_months_set: set[str]) -> bool:
@@ -1607,7 +1708,7 @@ def _refresh_analytics_snapshot(
     mode: str,
     year_from: int | None,
     target_months: set[str],
-    normalized_rows: list[dict],
+    normalized_rows: list[dict] | None,
 ) -> None:
     q = db.query(AnalyticsContractSnapshot)
     if mode == 'full_year' and year_from is not None:
@@ -1619,38 +1720,90 @@ def _refresh_analytics_snapshot(
     q.delete(synchronize_session=False)
     db.commit()
 
+    def _append_snapshot_rows(source_rows: list[dict], now: datetime) -> int:
+        inserted = 0
+        snapshot_rows: list[dict] = []
+        for row in source_rows:
+            contracts = max(1, _to_int(row.get('contracts_total'), 1))
+            debt_total = _to_float(row.get('debt_total'))
+            paid_total = _to_float(row.get('paid_total'))
+            if contracts <= 0 or (debt_total == 0 and paid_total == 0):
+                payload = json.loads(row.get('payload_json') or '{}')
+                contracts = max(1, _to_int(payload.get('contracts_total'), 1))
+                debt_total = _to_float(payload.get('debt_total'))
+                paid_total = _to_float(payload.get('paid_total'))
+            debt_per = debt_total / contracts
+            paid_per = paid_total / contracts
+            base_id = str(row.get('contract_id') or '')
+            if not base_id:
+                continue
+            for i in range(contracts):
+                snapshot_rows.append(
+                    {
+                        'contract_id': f'{base_id}_{i}',
+                        'sale_month': row.get('gestion_month'),
+                        'close_month': row.get('gestion_month'),
+                        'supervisor': row.get('supervisor'),
+                        'un': row.get('un'),
+                        'via': row.get('via'),
+                        'tramo': int(row.get('tramo') or 0),
+                        'debt': debt_per,
+                        'paid': paid_per,
+                        'created_at': now,
+                    }
+                )
+                if len(snapshot_rows) >= 5000:
+                    db.bulk_insert_mappings(AnalyticsContractSnapshot, snapshot_rows)
+                    db.commit()
+                    inserted += len(snapshot_rows)
+                    snapshot_rows = []
+        if snapshot_rows:
+            db.bulk_insert_mappings(AnalyticsContractSnapshot, snapshot_rows)
+            db.commit()
+            inserted += len(snapshot_rows)
+        return inserted
+
     now = datetime.utcnow()
-    snapshot_rows: list[dict] = []
-    for row in normalized_rows:
-        contracts = max(1, _to_int(row.get('contracts_total'), 1))
-        debt_total = _to_float(row.get('debt_total'))
-        paid_total = _to_float(row.get('paid_total'))
-        if contracts <= 0 or (debt_total == 0 and paid_total == 0):
-            payload = json.loads(row.get('payload_json') or '{}')
-            contracts = max(1, _to_int(payload.get('contracts_total'), 1))
-            debt_total = _to_float(payload.get('debt_total'))
-            paid_total = _to_float(payload.get('paid_total'))
-        debt_per = debt_total / contracts
-        paid_per = paid_total / contracts
-        base_id = str(row['contract_id'])
-        for i in range(contracts):
-            snapshot_rows.append(
+    source_rows = list(normalized_rows or [])
+    if source_rows:
+        _append_snapshot_rows(source_rows, now)
+        return
+
+    # Avoid server-side cursor invalidation on PostgreSQL:
+    # this function commits while processing, so we paginate by id.
+    page_size = 1000
+    last_id = 0
+    while True:
+        q_fact = (
+            db.query(AnalyticsFact)
+            .filter(AnalyticsFact.id > last_id)
+            .order_by(AnalyticsFact.id.asc())
+        )
+        if mode == 'full_year' and year_from is not None:
+            q_fact = q_fact.filter(func.substr(AnalyticsFact.gestion_month, 4, 4) == str(year_from))
+        elif mode != 'full_all' and target_months:
+            q_fact = q_fact.filter(AnalyticsFact.gestion_month.in_(target_months))
+        rows = q_fact.limit(page_size).all()
+        if not rows:
+            break
+        batch: list[dict] = []
+        for row in rows:
+            batch.append(
                 {
-                    'contract_id': f'{base_id}_{i}',
-                    'sale_month': row['gestion_month'],
-                    'close_month': row['gestion_month'],
-                    'supervisor': row['supervisor'],
-                    'un': row['un'],
-                    'via': row['via'],
-                    'tramo': int(row['tramo']),
-                    'debt': debt_per,
-                    'paid': paid_per,
-                    'created_at': now,
+                    'contract_id': row.contract_id,
+                    'gestion_month': row.gestion_month,
+                    'supervisor': row.supervisor,
+                    'un': row.un,
+                    'via': row.via,
+                    'tramo': row.tramo,
+                    'contracts_total': row.contracts_total,
+                    'debt_total': row.debt_total,
+                    'paid_total': row.paid_total,
+                    'payload_json': row.payload_json,
                 }
             )
-    if snapshot_rows:
-        db.bulk_insert_mappings(AnalyticsContractSnapshot, snapshot_rows)
-        db.commit()
+        _append_snapshot_rows(batch, now)
+        last_id = int(rows[-1].id or last_id)
 
 
 def _persist_sync_run(db: Session, payload: dict) -> None:
@@ -2138,6 +2291,26 @@ def _execute_job(
                 + (f' (id>{wm_filter_source_id})' if wm_filter_source_id else ''),
             )
         max_rows = _max_rows_for_domain(domain)
+        low_impact_mode = _is_low_impact_mode(mode)
+        default_fetch_batch = _fetch_batch_size_for_domain(domain)
+        effective_fetch_batch = _low_impact_fetch_batch_size(default_fetch_batch) if low_impact_mode else default_fetch_batch
+        if low_impact_mode:
+            _append_log(
+                domain,
+                (
+                    'Modo protegido activo (micro-lotes): '
+                    f'fetch_batch={effective_fetch_batch}, '
+                    f'chunk_pause={int(getattr(settings, "sync_low_impact_chunk_pause_ms", 40) or 40)}ms'
+                ),
+            )
+            _set_state(
+                domain,
+                {
+                    'stage': 'normalizing',
+                    'progress_pct': 35,
+                    'status_message': 'Modo protegido activo: carga por micro-lotes',
+                },
+            )
         source_rows = 0
         _persist_job_step(db, job_id, domain, 'extract', 'completed', {'rows_read': 0})
         _persist_job_step(db, job_id, domain, 'normalize', 'running')
@@ -2145,7 +2318,6 @@ def _execute_job(
 
         normalized_rows: list[dict] = []
         source_months: set[str] = set()
-        source_keys: set[tuple] = set()
         duplicates_detected = 0
         normalized_count = 0
         skipped_unchanged_chunks = 0
@@ -2154,11 +2326,20 @@ def _execute_job(
         wm_last_source_id: str | None = None
         temp_rows_path: str | None = None
         temp_rows_file = None
+        temp_rows_by_month: dict[str, str] = {}
+        temp_file_by_month: dict[str, Any] = {}
+        month_counts: dict[str, int] = {}
         # Stream large domains to disk to keep memory stable and show incremental progress.
-        if domain in {'cartera', 'cobranzas', 'contratos', 'gestores'}:
-            fd, temp_rows_path = tempfile.mkstemp(prefix=f'sync_{domain}_', suffix='.jsonl')
-            os.close(fd)
-            temp_rows_file = open(temp_rows_path, 'w', encoding='utf-8')
+        stream_to_disk_domains = {'cartera', 'cobranzas', 'contratos', 'gestores'}
+        if low_impact_mode:
+            stream_to_disk_domains.add('analytics')
+        if domain in stream_to_disk_domains:
+            if domain == 'cartera':
+                temp_rows_path = None
+            else:
+                fd, temp_rows_path = tempfile.mkstemp(prefix=f'sync_{domain}_', suffix='.jsonl')
+                os.close(fd)
+                temp_rows_file = open(temp_rows_path, 'w', encoding='utf-8')
         seq = 0
         try:
             for batch in _iter_from_mysql(
@@ -2167,10 +2348,11 @@ def _execute_job(
                 watermark_updated_at=wm_filter_updated_at,
                 watermark_source_id=wm_filter_source_id or None,
                 mysql_config=mysql_cfg,
+                batch_size_override=effective_fetch_batch,
             ):
                 source_rows += len(batch)
-                # Keep hard cap only for full_all; scoped modes are streamed safely.
-                hard_limit = max_rows if mode == 'full_all' else None
+                # Runtime resilience: never abort a running sync for size; process incrementally.
+                hard_limit = None
                 if hard_limit is not None and source_rows > hard_limit:
                     raise RuntimeError(
                         f'La consulta excede el maximo permitido ({hard_limit} filas). '
@@ -2209,11 +2391,6 @@ def _execute_job(
                     if not _matches_mode(n['gestion_month'], mode, year_from, close_month, range_months_set):
                         continue
                     source_months.add(n['gestion_month'])
-                    key = _source_dedupe_key(n)
-                    if key in source_keys:
-                        duplicates_detected += 1
-                        continue
-                    source_keys.add(key)
                     if raw_updated_at is not None and (wm_last_updated_at is None or raw_updated_at > wm_last_updated_at):
                         wm_last_updated_at = raw_updated_at
                     if raw_source_id:
@@ -2228,7 +2405,18 @@ def _execute_job(
                                     wm_last_source_id = raw_source_id
                     chunk_signals[n['gestion_month']] = _chunk_signal_update(chunk_signals.get(n['gestion_month']), n['source_hash'])
                     normalized_count += 1
-                    if temp_rows_file is not None:
+                    month_key = str(n.get('gestion_month') or '')
+                    if month_key:
+                        month_counts[month_key] = month_counts.get(month_key, 0) + 1
+                    if domain == 'cartera':
+                        if month_key:
+                            if month_key not in temp_file_by_month:
+                                fd, path = tempfile.mkstemp(prefix=f'sync_{domain}_{month_key.replace("/", "_")}_', suffix='.jsonl')
+                                os.close(fd)
+                                temp_rows_by_month[month_key] = path
+                                temp_file_by_month[month_key] = open(path, 'w', encoding='utf-8')
+                            temp_file_by_month[month_key].write(json.dumps(n, ensure_ascii=False) + '\n')
+                    elif temp_rows_file is not None:
                         temp_rows_file.write(json.dumps(n, ensure_ascii=False) + '\n')
                     else:
                         normalized_rows.append(n)
@@ -2240,6 +2428,11 @@ def _execute_job(
         finally:
             if temp_rows_file is not None:
                 temp_rows_file.close()
+            for f in temp_file_by_month.values():
+                try:
+                    f.close()
+                except Exception:
+                    pass
 
         _append_log(domain, f'Filas fuente: {source_rows}')
         _persist_job_step(db, job_id, domain, 'normalize', 'completed', {'rows_read': source_rows, 'normalized': normalized_count})
@@ -2297,50 +2490,56 @@ def _execute_job(
         rows_inserted = 0
         rows_upserted = 0
         rows_unchanged = 0
-        month_counts: dict[str, int] = {}
         processed_by_month: dict[str, int] = {}
-        if temp_rows_path is not None:
-            if domain == 'cartera':
-                with open(temp_rows_path, 'r', encoding='utf-8') as f_count:
-                    for line in f_count:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        item = json.loads(line)
-                        month_key = str(item.get('gestion_month') or '')
-                        if not month_key:
-                            continue
-                        if target_months and month_key not in target_months:
-                            continue
-                        month_counts[month_key] = month_counts.get(month_key, 0) + 1
-                        processed_by_month.setdefault(month_key, 0)
-            chunk_size = _adaptive_chunk_size(domain, int(settings.sync_fetch_batch_size or 5000))
+        if temp_rows_path is not None or temp_rows_by_month:
+            base_chunk_size = _adaptive_chunk_size(domain, int(settings.sync_fetch_batch_size or 5000))
+            chunk_size = _low_impact_chunk_size(base_chunk_size) if low_impact_mode else base_chunk_size
+            chunk_pause_seconds = _low_impact_chunk_pause_seconds() if low_impact_mode else 0.0
             processed = 0
-            if domain == 'cartera' and month_counts:
-                ordered_months = sorted(month_counts.keys(), key=_month_serial)
+            chunk: list[dict] = []
+
+            def _apply_chunk(chunk_rows: list[dict], chunk_key: str) -> int:
+                nonlocal rows_inserted, rows_upserted, rows_unchanged, duplicates_detected, processed
+                if not chunk_rows:
+                    return 0
+                deduped_rows, chunk_duplicates = _dedupe_rows_in_chunk(chunk_rows)
+                if not deduped_rows:
+                    duplicates_detected += chunk_duplicates
+                    return 0
+                if persist_staging_rows:
+                    _persist_staging_rows(db, job_id, domain, chunk_key, deduped_rows, commit=False)
+                if persist_sync_records:
+                    rows_inserted += _upsert_sync_records(db, deduped_rows, commit=False)
+                changed, unchanged = _upsert_fact_rows(db, domain, deduped_rows, commit=False)
+                db.commit()
+                rows_upserted += changed
+                rows_unchanged += unchanged
+                duplicates_detected += int(chunk_duplicates) + int(unchanged)
+                processed += len(deduped_rows)
+                if chunk_pause_seconds > 0:
+                    time_sleep(chunk_pause_seconds)
+                return len(deduped_rows)
+
+            if domain == 'cartera' and temp_rows_by_month:
+                ordered_months = sorted(
+                    [m for m in month_counts.keys() if (not target_months or m in target_months)],
+                    key=_month_serial,
+                )
                 for month_key in ordered_months:
+                    month_path = temp_rows_by_month.get(month_key)
+                    if not month_path:
+                        continue
                     _append_log(domain, f'Procesando mes {month_key}...')
-                    chunk: list[dict] = []
-                    with open(temp_rows_path, 'r', encoding='utf-8') as f:
+                    processed_by_month[month_key] = 0
+                    with open(month_path, 'r', encoding='utf-8') as f:
                         for line in f:
                             line = line.strip()
                             if not line:
                                 continue
-                            item = json.loads(line)
-                            if str(item.get('gestion_month') or '') != month_key:
-                                continue
-                            chunk.append(item)
+                            chunk.append(json.loads(line))
                             if len(chunk) >= chunk_size:
-                                if persist_staging_rows:
-                                    _persist_staging_rows(db, job_id, domain, month_key, chunk, commit=False)
-                                if persist_sync_records:
-                                    rows_inserted += _upsert_sync_records(db, chunk, commit=False)
-                                changed, unchanged = _upsert_fact_rows(db, domain, chunk, commit=False)
-                                db.commit()
-                                rows_upserted += changed
-                                rows_unchanged += unchanged
-                                processed += len(chunk)
-                                processed_by_month[month_key] = processed_by_month.get(month_key, 0) + len(chunk)
+                                applied = _apply_chunk(chunk, month_key)
+                                processed_by_month[month_key] = processed_by_month.get(month_key, 0) + applied
                                 chunk = []
                                 pct = 75 + int((processed / max(1, normalized_count)) * 20)
                                 _set_state(
@@ -2358,16 +2557,9 @@ def _execute_job(
                                     },
                                 )
                     if chunk:
-                        if persist_staging_rows:
-                            _persist_staging_rows(db, job_id, domain, month_key, chunk, commit=False)
-                        if persist_sync_records:
-                            rows_inserted += _upsert_sync_records(db, chunk, commit=False)
-                        changed, unchanged = _upsert_fact_rows(db, domain, chunk, commit=False)
-                        db.commit()
-                        rows_upserted += changed
-                        rows_unchanged += unchanged
-                        processed += len(chunk)
-                        processed_by_month[month_key] = processed_by_month.get(month_key, 0) + len(chunk)
+                        applied = _apply_chunk(chunk, month_key)
+                        processed_by_month[month_key] = processed_by_month.get(month_key, 0) + applied
+                        chunk = []
                     _append_log(
                         domain,
                         f'[OK] Mes {month_key} finalizado ({processed_by_month.get(month_key, 0)} filas, upsert={rows_upserted}, sin_cambios={rows_unchanged})',
@@ -2388,7 +2580,6 @@ def _execute_job(
                         },
                     )
             else:
-                chunk: list[dict] = []
                 with open(temp_rows_path, 'r', encoding='utf-8') as f:
                     for line in f:
                         line = line.strip()
@@ -2402,15 +2593,7 @@ def _execute_job(
                             continue
                         chunk.append(item)
                         if len(chunk) >= chunk_size:
-                            if persist_staging_rows:
-                                _persist_staging_rows(db, job_id, domain, _derive_chunk_key(chunk), chunk, commit=False)
-                            if persist_sync_records:
-                                rows_inserted += _upsert_sync_records(db, chunk, commit=False)
-                            changed, unchanged = _upsert_fact_rows(db, domain, chunk, commit=False)
-                            db.commit()
-                            rows_upserted += changed
-                            rows_unchanged += unchanged
-                            processed += len(chunk)
+                            _apply_chunk(chunk, _derive_chunk_key(chunk))
                             chunk = []
                             pct = 75 + int((processed / max(1, normalized_count)) * 20)
                             _set_state(
@@ -2433,15 +2616,8 @@ def _execute_job(
                                     f'UPSERT... procesadas={processed}/{normalized_count}, upsert_destino={rows_upserted}, sin_cambios={rows_unchanged}',
                                 )
                 if chunk:
-                    if persist_staging_rows:
-                        _persist_staging_rows(db, job_id, domain, _derive_chunk_key(chunk), chunk, commit=False)
-                    if persist_sync_records:
-                        rows_inserted += _upsert_sync_records(db, chunk, commit=False)
-                    changed, unchanged = _upsert_fact_rows(db, domain, chunk, commit=False)
-                    db.commit()
-                    rows_upserted += changed
-                    rows_unchanged += unchanged
-                    processed += len(chunk)
+                    _apply_chunk(chunk, _derive_chunk_key(chunk))
+                    chunk = []
                     _set_state(
                         domain,
                         {
@@ -2461,18 +2637,27 @@ def _execute_job(
                         f'UPSERT... procesadas={processed}/{normalized_count}, upsert_destino={rows_upserted}, sin_cambios={rows_unchanged}',
                     )
             try:
-                os.remove(temp_rows_path)
+                if temp_rows_path:
+                    os.remove(temp_rows_path)
             except Exception:
                 pass
+            for path in temp_rows_by_month.values():
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
         else:
             rows_for_upsert = normalized_rows
             if target_months:
                 rows_for_upsert = [r for r in normalized_rows if str(r.get('gestion_month') or '') in target_months]
             else:
                 rows_for_upsert = []
+            rows_for_upsert, chunk_duplicates = _dedupe_rows_in_chunk(rows_for_upsert)
+            duplicates_detected += chunk_duplicates
             if persist_sync_records:
                 rows_inserted = _upsert_sync_records(db, rows_for_upsert, commit=False)
             rows_upserted, rows_unchanged = _upsert_fact_rows(db, domain, rows_for_upsert, commit=False)
+            duplicates_detected += int(rows_unchanged)
             if persist_staging_rows:
                 _persist_staging_rows(db, job_id, domain, _derive_chunk_key(rows_for_upsert), rows_for_upsert, commit=False)
             db.commit()
@@ -2484,6 +2669,7 @@ def _execute_job(
                     'rows_upserted': rows_upserted,
                     'rows_unchanged': rows_unchanged,
                     'target_table': _target_table_name(domain),
+                    'duplicates_detected': duplicates_detected,
                 },
             )
         _persist_job_step(
@@ -2855,6 +3041,10 @@ class SyncService:
         actor: str,
     ) -> dict:
         mode = SyncService.resolve_mode(domain, year_from, close_month, close_month_from, close_month_to)
+        if bool(getattr(settings, 'sync_safe_mode', True)) and mode == 'full_all' and not _domain_has_effective_limit(domain):
+            raise RuntimeError(
+                f'Modo seguro activo: no se permite full_all para {domain} sin limite de filas (SYNC_MAX_ROWS o SYNC_MAX_ROWS_{domain.upper()}).'
+            )
         if mode == 'full_month' and close_month_from and close_month_to and close_month_from == close_month_to:
             close_month = close_month_from
         job_id = str(uuid.uuid4())
@@ -2928,7 +3118,13 @@ class SyncService:
         close_month: str | None,
         close_month_from: str | None,
         close_month_to: str | None,
+        *,
+        sampled: bool = False,
+        sample_rows: int | None = None,
+        timeout_seconds: int | None = None,
     ) -> dict:
+        if not settings.sync_preview_enabled:
+            raise RuntimeError('Preview de sincronizacion deshabilitado por configuracion.')
         mode = SyncService.resolve_mode(domain, year_from, close_month, close_month_from, close_month_to)
         if mode == 'full_month' and close_month_from and close_month_to and close_month_from == close_month_to:
             close_month = close_month_from
@@ -2957,7 +3153,13 @@ class SyncService:
             db.close()
         max_rows = _max_rows_for_domain(domain)
         estimated = 0
-        sampled = False
+        scan_mode = 'sampled' if sampled else 'full'
+        effective_sample_rows = int(sample_rows or settings.sync_preview_sample_rows or 20000)
+        effective_sample_rows = max(1000, min(200000, effective_sample_rows))
+        effective_timeout_sec = int(timeout_seconds or settings.sync_preview_sample_timeout_seconds or 8)
+        effective_timeout_sec = max(2, min(60, effective_timeout_sec))
+        scan_start = monotonic()
+        sample_cutoff = effective_sample_rows if sampled else None
         seq = 0
         for batch in _iter_from_mysql(
             query_path,
@@ -2973,7 +3175,8 @@ class SyncService:
                     continue
                 estimated += 1
                 if max_rows is not None and estimated > max_rows:
-                    sampled = True
+                    duration_sec = _estimated_duration_seconds(domain, estimated)
+                    confidence = 'medium' if sampled else 'high'
                     return {
                         'domain': domain,
                         'mode': mode,
@@ -2985,7 +3188,68 @@ class SyncService:
                         'max_rows_allowed': max_rows,
                         'would_exceed_limit': True,
                         'sampled': sampled,
+                        'scan_mode': scan_mode,
+                        'sample_rows': estimated if sampled else 0,
+                        'estimate_confidence': confidence,
+                        'estimated_duration_sec': duration_sec,
+                        'risk_level': _preview_risk_level(
+                            mode=mode,
+                            would_exceed_limit=True,
+                            estimate_confidence=confidence,
+                            has_effective_limit=_domain_has_effective_limit(domain),
+                        ),
                     }
+                if sample_cutoff is not None and estimated >= sample_cutoff:
+                    duration_sec = _estimated_duration_seconds(domain, estimated)
+                    return {
+                        'domain': domain,
+                        'mode': mode,
+                        'year_from': year_from,
+                        'close_month': close_month,
+                        'close_month_from': close_month_from,
+                        'close_month_to': close_month_to,
+                        'estimated_rows': estimated,
+                        'max_rows_allowed': max_rows,
+                        'would_exceed_limit': bool(max_rows is not None and estimated > max_rows),
+                        'sampled': True,
+                        'scan_mode': 'sampled',
+                        'sample_rows': estimated,
+                        'estimate_confidence': 'medium',
+                        'estimated_duration_sec': duration_sec,
+                        'risk_level': _preview_risk_level(
+                            mode=mode,
+                            would_exceed_limit=bool(max_rows is not None and estimated > max_rows),
+                            estimate_confidence='medium',
+                            has_effective_limit=_domain_has_effective_limit(domain),
+                        ),
+                    }
+                if sampled and (monotonic() - scan_start) >= effective_timeout_sec:
+                    duration_sec = _estimated_duration_seconds(domain, estimated)
+                    return {
+                        'domain': domain,
+                        'mode': mode,
+                        'year_from': year_from,
+                        'close_month': close_month,
+                        'close_month_from': close_month_from,
+                        'close_month_to': close_month_to,
+                        'estimated_rows': estimated,
+                        'max_rows_allowed': max_rows,
+                        'would_exceed_limit': bool(max_rows is not None and estimated > max_rows),
+                        'sampled': True,
+                        'scan_mode': 'sampled',
+                        'sample_rows': estimated,
+                        'estimate_confidence': 'low',
+                        'estimated_duration_sec': duration_sec,
+                        'risk_level': _preview_risk_level(
+                            mode=mode,
+                            would_exceed_limit=bool(max_rows is not None and estimated > max_rows),
+                            estimate_confidence='low',
+                            has_effective_limit=_domain_has_effective_limit(domain),
+                        ),
+                    }
+        would_exceed = bool(max_rows is not None and estimated > max_rows)
+        duration_sec = _estimated_duration_seconds(domain, estimated)
+        confidence = 'medium' if sampled else 'high'
         return {
             'domain': domain,
             'mode': mode,
@@ -2995,8 +3259,18 @@ class SyncService:
             'close_month_to': close_month_to,
             'estimated_rows': estimated,
             'max_rows_allowed': max_rows,
-            'would_exceed_limit': bool(max_rows is not None and estimated > max_rows),
+            'would_exceed_limit': would_exceed,
             'sampled': sampled,
+            'scan_mode': scan_mode,
+            'sample_rows': estimated if sampled else 0,
+            'estimate_confidence': confidence,
+            'estimated_duration_sec': duration_sec,
+            'risk_level': _preview_risk_level(
+                mode=mode,
+                would_exceed_limit=would_exceed,
+                estimate_confidence=confidence,
+                has_effective_limit=_domain_has_effective_limit(domain),
+            ),
         }
 
     @staticmethod

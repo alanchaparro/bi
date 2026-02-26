@@ -2,6 +2,27 @@
 
 Fecha de corte: 2026-02-17
 
+## 0) Arranque rapido (un solo clic)
+
+Para levantar el proyecto con la menor intervencion posible (ideal para quien no tiene experiencia tecnica):
+
+- **Requisito previo:** Tener instalado [Docker Desktop](https://www.docker.com/products/docker-desktop/) (incluye Docker y Docker Compose). En Linux, Docker Engine y Docker Compose V2.
+
+- **Windows:** Doble clic en `INICIAR.bat` en la raiz del proyecto. El script comprueba Docker, crea `.env` si no existe, puede preguntar si desea configurar usuario y contraseña del administrador, y luego ejecuta el bootstrap y levanta todos los servicios. Al final abre el navegador en la URL del dashboard.
+
+- **Linux / Mac:** En una terminal, desde la raiz del proyecto:
+  ```bash
+  chmod +x iniciar.sh
+  ./iniciar.sh
+  ```
+  Mismo flujo: comprobacion de Docker, `.env`, pregunta opcional de usuario/contraseña admin, bootstrap y arranque. Se abre el navegador si esta disponible (`xdg-open` o `open`).
+
+- **Unica pregunta opcional:** "¿Desea configurar ahora el usuario y contraseña del administrador? (s/N)". Si responde **s**, se pide usuario (por defecto `admin`) y contraseña; si responde **N** o Enter, se usan los valores por defecto del `.env`. El resto es automatico.
+
+- **URL de acceso:** `http://localhost:8080` (frontend). Credenciales: las que configuro o las por defecto del `.env` (ver `DEMO_ADMIN_USER` y `DEMO_ADMIN_PASSWORD`).
+
+---
+
 ## 1) Pre-requisitos
 - Docker y Docker Compose operativos.
 - Archivo `.env` completo con variables PostgreSQL, MySQL, JWT y CORS.
@@ -77,6 +98,30 @@ Campos clave:
 - `running`, `stage`, `progress_pct`, `status_message`
 - `rows_inserted`, `rows_updated`, `rows_skipped`, `duplicates_detected`
 - `error`, `log`
+
+### 4.3 Modo seguro de importaciones
+Para servidores modestos mantener estos guardrails activos:
+
+- `SYNC_SAFE_MODE=true`
+- `SYNC_PREVIEW_ENABLED=true`
+- `SYNC_MAX_ROWS` y/o `SYNC_MAX_ROWS_<DOMINIO>` con valores mayores que cero
+- Cola estricta: el sistema procesa un job por vez (`pending/running` unico)
+
+Si un usuario intenta `full_all` sin limite efectivo, la API rechaza la ejecucion con `409`.
+
+### 4.4 Tuning recomendado por RAM (perfil estabilidad)
+Usar como base y ajustar con `sync/perf/summary`:
+
+| RAM servidor | SYNC_MAX_ROWS | FETCH_BATCH base | CHUNK_SIZE base | Notas |
+|---|---:|---:|---:|---|
+| 4 GB | 150000 | 3000 | 5000 | Priorizar ventanas por anio/mes |
+| 8 GB | 300000 | 5000 | 10000 | Perfil recomendado por defecto |
+| 16 GB | 600000 | 8000 | 16000 | Mantener cola estricta |
+
+Adicional para preview liviano masivo:
+
+- `SYNC_PREVIEW_SAMPLE_ROWS=20000`
+- `SYNC_PREVIEW_SAMPLE_TIMEOUT_SECONDS=8`
 
 ## 5) Frontend de configuracion
 En modulo Configuracion:

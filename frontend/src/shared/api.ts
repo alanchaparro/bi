@@ -467,6 +467,11 @@ export type SyncPreviewResponse = {
   max_rows_allowed?: number | null;
   would_exceed_limit: boolean;
   sampled: boolean;
+  scan_mode?: "sampled" | "full";
+  sample_rows?: number;
+  estimate_confidence?: "low" | "medium" | "high";
+  estimated_duration_sec?: number | null;
+  risk_level?: "low" | "medium" | "high";
 };
 
 export async function runSync(payload: {
@@ -486,8 +491,15 @@ export async function previewSync(payload: {
   close_month?: string;
   close_month_from?: string;
   close_month_to?: string;
+}, options?: {
+  sampled?: boolean;
+  sample_rows?: number;
+  timeout_seconds?: number;
 }): Promise<SyncPreviewResponse> {
-  const response = await api.post<SyncPreviewResponse>("/sync/preview", payload, { timeout: 300000 });
+  const response = await api.post<SyncPreviewResponse>("/sync/preview", payload, {
+    timeout: 300000,
+    params: options,
+  });
   return response.data;
 }
 

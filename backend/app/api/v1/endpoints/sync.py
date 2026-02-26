@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.core.config import settings
 from app.core.deps import require_permission, write_rate_limiter
 from app.schemas.sync import (
     SyncChunkLogsOut,
@@ -40,14 +41,22 @@ def run_sync(
 @router.post('/preview', response_model=SyncPreviewOut)
 def preview_sync(
     payload: SyncRunIn,
+    sampled: bool = Query(default=False),
+    sample_rows: int | None = Query(default=None, ge=1000, le=200000),
+    timeout_seconds: int | None = Query(default=None, ge=2, le=60),
     user=Depends(require_permission('brokers:read')),
 ):
+    if not settings.sync_preview_enabled:
+        raise HTTPException(status_code=409, detail={'message': 'Preview de sincronizacion deshabilitado por configuracion.'})
     return SyncService.preview(
         payload.domain,
         payload.year_from,
         payload.close_month,
         payload.close_month_from,
         payload.close_month_to,
+        sampled=sampled,
+        sample_rows=sample_rows,
+        timeout_seconds=timeout_seconds,
     )
 
 

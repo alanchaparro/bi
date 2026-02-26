@@ -154,6 +154,11 @@ class SyncPreviewOut(BaseModel):
     max_rows_allowed: int | None = None
     would_exceed_limit: bool = False
     sampled: bool = False
+    scan_mode: str = 'full'
+    sample_rows: int = 0
+    estimate_confidence: str = 'high'
+    estimated_duration_sec: int | None = None
+    risk_level: str = 'low'
 
 
 class SyncWatermarkOut(BaseModel):

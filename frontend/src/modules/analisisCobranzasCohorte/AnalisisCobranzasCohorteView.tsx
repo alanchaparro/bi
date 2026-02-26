@@ -240,6 +240,7 @@ export function AnalisisCobranzasCohorteView() {
   }, [])
 
   const hasRows = (summary?.by_sale_month || []).length > 0 || byYearEntries.length > 0
+  const noCohorteData = options.cutoffMonths.length === 0
 
   const moveKpi = useCallback((fromId: KpiId, toId: KpiId) => {
     if (fromId === toId) return
@@ -450,6 +451,13 @@ export function AnalisisCobranzasCohorteView() {
           <div className="cohorte-active-filters">
             <ActiveFilterChips chips={activeFilterChips} onRemove={removeChip} />
           </div>
+
+          {noCohorteData ? (
+            <div className="analysis-empty">
+              Sin datos de cobranzas por corte. Debe sincronizar dominios <strong>cartera</strong> y <strong>cobranzas</strong>
+              para poblar <code>cobranzas_cohorte_agg</code>.
+            </div>
+          ) : null}
 
           {error ? (
             <div className="alert-error cohorte-error">

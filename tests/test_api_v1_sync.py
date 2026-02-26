@@ -90,10 +90,16 @@ class ApiV1SyncTests(unittest.TestCase):
                 'max_rows_allowed': 1000000,
                 'would_exceed_limit': False,
                 'sampled': False,
+                'scan_mode': 'full',
+                'sample_rows': 0,
+                'estimate_confidence': 'high',
+                'estimated_duration_sec': 12,
+                'risk_level': 'low',
             }
             r = self.client.post('/api/v1/sync/preview', json={'domain': 'analytics'}, headers=self.headers)
             self.assertEqual(r.status_code, 200)
             self.assertEqual(r.json().get('estimated_rows'), 1234)
+            self.assertEqual(r.json().get('scan_mode'), 'full')
 
 
 if __name__ == '__main__':

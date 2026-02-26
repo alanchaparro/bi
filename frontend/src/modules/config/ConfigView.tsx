@@ -57,6 +57,17 @@ type SyncLive = {
 }
 
 type SyncTagTone = 'ok' | 'warn' | 'info' | 'error'
+type SyncRiskLevel = 'low' | 'medium' | 'high'
+
+type MassivePreviewItem = {
+  domain: SyncDomain
+  estimatedRows: number
+  maxRowsAllowed: number | null
+  wouldExceedLimit: boolean
+  estimateConfidence: 'low' | 'medium' | 'high'
+  estimatedDurationSec: number | null
+  riskLevel: SyncRiskLevel
+}
 
 type RuleCategory = 'VIGENTE' | 'MOROSO'
 
@@ -89,6 +100,8 @@ const SYNC_QUERY_FILES: Record<SyncDomain, string> = {
 const STATUS_POLL_MS = 2000
 const STATUS_POLL_MAX_MS = 10000
 const TRAMO_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7]
+const MASSIVE_PREVIEW_SAMPLE_ROWS = 20000
+const MASSIVE_PREVIEW_TIMEOUT_SECONDS = 8
 
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -118,8 +131,30 @@ function toneClass(tone: SyncTagTone): string {
   return `sync-progress-tag sync-progress-tag--${tone}`
 }
 
+function riskPriority(level: SyncRiskLevel): number {
+  if (level === 'high') return 3
+  if (level === 'medium') return 2
+  return 1
+}
+
+function formatDurationSeconds(value: number | null | undefined): string {
+  if (!value || value <= 0) return '-'
+  if (value < 60) return `${value}s`
+  const mins = Math.round(value / 60)
+  if (mins < 60) return `${mins}m`
+  const hours = Math.round(mins / 60)
+  return `${hours}h`
+}
+
+function getAppliedRows(status: Pick<SyncStatusResponse, "rows_upserted" | "rows_inserted">): number {
+  const upserted = Number(status.rows_upserted || 0)
+  if (upserted > 0) return upserted
+  return Number(status.rows_inserted || 0)
+}
+
 export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
   const resumeAttemptedRef = useRef(false)
+  const previewEnabledRef = useRef(true)
   const [configSection, setConfigSection] = useState<ConfigSection>('usuarios')
   const [health, setHealth] = useState<{ ok?: boolean; db_ok?: boolean; service?: string; error?: string } | null>(null)
   const [healthLoading, setHealthLoading] = useState(false)
@@ -134,6 +169,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
   const [syncLoading, setSyncLoading] = useState(false)
   const [syncResult, setSyncResult] = useState<{ rows?: number; error?: string; log?: string[] } | null>(null)
   const [syncLive, setSyncLive] = useState<SyncLive | null>(null)
+  const [massiveConfirmOpen, setMassiveConfirmOpen] = useState(false)
+  const [massivePreviewRows, setMassivePreviewRows] = useState<MassivePreviewItem[]>([])
 
   const [tramoConfigLoading, setTramoConfigLoading] = useState(false)
   const [tramoConfigSaving, setTramoConfigSaving] = useState(false)
@@ -200,6 +237,15 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
   }, [closeMonthFromValue, closeMonthToValue, hasCarteraSelected, yearFrom])
 
   const busy = syncLoading || reloadLoading
+  const allDomainsSelected = selectedDomains.length === SYNC_DOMAINS.length
+  const massivePreviewSummary = useMemo(() => {
+    const totalEstimatedRows = massivePreviewRows.reduce((acc, item) => acc + Number(item.estimatedRows || 0), 0)
+    const totalEstimatedDurationSec = massivePreviewRows.reduce((acc, item) => acc + Number(item.estimatedDurationSec || 0), 0)
+    const highestRisk = massivePreviewRows.reduce<SyncRiskLevel>((acc, item) => {
+      return riskPriority(item.riskLevel) > riskPriority(acc) ? item.riskLevel : acc
+    }, 'low')
+    return { totalEstimatedRows, totalEstimatedDurationSec, highestRisk }
+  }, [massivePreviewRows])
   const configBusy = tramoConfigLoading || tramoConfigSaving
   const usersBusy = usersLoading || usersSaving
   const syncPercent = Math.max(0, Math.min(100, Math.round(syncLive?.progressPct || 0)))
@@ -648,9 +694,10 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
         if (finalStatus.error) {
           setSyncResult({ error: `[${domain}] ${finalStatus.error}` })
         } else {
+          const applied = getAppliedRows(finalStatus)
           setSyncResult({
-            rows: Number(finalStatus.rows_inserted || 0),
-            log: [`[${domain}] job=${status.job_id} insertadas=${Number(finalStatus.rows_inserted || 0)}`],
+            rows: applied,
+            log: [`[${domain}] job=${status.job_id} aplicadas=${applied}`],
           })
         }
       } catch (e: unknown) {
@@ -662,13 +709,53 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
     }
   }, [pollDomainStatus])
 
+  const findRunningSyncJob = useCallback(async (preferredDomain?: SyncDomain) => {
+    const orderedDomains: SyncDomain[] = preferredDomain
+      ? [preferredDomain, ...SYNC_DOMAINS.map((d) => d.value).filter((d) => d !== preferredDomain)]
+      : SYNC_DOMAINS.map((d) => d.value)
+
+    for (const candidate of orderedDomains) {
+      try {
+        const status = await getSyncStatus({ domain: candidate })
+        if (status.running && status.job_id) {
+          return { domain: candidate, jobId: status.job_id }
+        }
+      } catch {
+        // continue scanning other domains
+      }
+    }
+    return null
+  }, [])
+
   useEffect(() => {
     if (resumeAttemptedRef.current) return
     resumeAttemptedRef.current = true
     void resumeRunningSync()
   }, [resumeRunningSync])
 
-  const handleSync = useCallback(async () => {
+  const buildSyncPayload = useCallback((domain: SyncDomain) => {
+    const cleanYear = yearFrom.trim()
+    const year = /^\d{4}$/.test(cleanYear) ? Number(cleanYear) : undefined
+    const payload: {
+      domain: SyncDomain
+      year_from?: number
+      close_month?: string
+      close_month_from?: string
+      close_month_to?: string
+    } = { domain }
+    if (domain === 'cartera') {
+      payload.close_month_from = closeMonthFromValue
+      payload.close_month_to = closeMonthToValue
+      if (closeMonthFromValue && closeMonthToValue && closeMonthFromValue === closeMonthToValue) {
+        payload.close_month = closeMonthFromValue
+      }
+    } else if (year !== undefined) {
+      payload.year_from = year
+    }
+    return payload
+  }, [closeMonthFromValue, closeMonthToValue, yearFrom])
+
+  const executeSyncFlow = useCallback(async (skipMassiveConfirm: boolean) => {
     if (selectedDomains.length === 0) {
       setSyncResult({ error: 'Seleccione al menos un dominio SQL para ejecutar.' })
       return
@@ -687,6 +774,85 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
       return
     }
 
+    if (!skipMassiveConfirm && allDomainsSelected && previewEnabledRef.current) {
+      setSyncLoading(true)
+      setSyncResult(null)
+      const previewRows: MassivePreviewItem[] = []
+      try {
+        for (const domain of selectedDomains) {
+          const payload = buildSyncPayload(domain)
+          setSyncLive((prev) => ({
+            ...(prev || {}),
+            running: true,
+            currentDomain: domain,
+            progressPct: 1,
+            message: `[${domain}] Analizando riesgo de carga...`,
+            lastUpdatedAt: new Date().toISOString(),
+          }))
+          try {
+            const preview = await previewSync(payload, {
+              sampled: true,
+              sample_rows: MASSIVE_PREVIEW_SAMPLE_ROWS,
+              timeout_seconds: MASSIVE_PREVIEW_TIMEOUT_SECONDS,
+            })
+            const confidence = preview.estimate_confidence || (preview.sampled ? 'medium' : 'high')
+            const risk = preview.risk_level || (confidence === 'low' ? 'high' : confidence === 'medium' ? 'medium' : 'low')
+            previewRows.push({
+              domain,
+              estimatedRows: Number(preview.estimated_rows || 0),
+              maxRowsAllowed: preview.max_rows_allowed ?? null,
+              wouldExceedLimit: Boolean(preview.would_exceed_limit),
+              estimateConfidence: confidence,
+              estimatedDurationSec: preview.estimated_duration_sec ?? null,
+              riskLevel: risk,
+            })
+          } catch (previewError: unknown) {
+            const msg = getApiErrorMessage(previewError)
+            if (/deshabilitad/i.test(msg)) {
+              previewEnabledRef.current = false
+              continue
+            }
+            if (/timeout|timed out|exceeded/i.test(msg)) {
+              previewRows.push({
+                domain,
+                estimatedRows: 0,
+                maxRowsAllowed: null,
+                wouldExceedLimit: false,
+                estimateConfidence: 'low',
+                estimatedDurationSec: null,
+                riskLevel: 'high',
+              })
+              continue
+            }
+            throw previewError
+          }
+        }
+        const highestRisk = previewRows.reduce<SyncRiskLevel>((acc, item) => {
+          return riskPriority(item.riskLevel) > riskPriority(acc) ? item.riskLevel : acc
+        }, 'low')
+        setMassivePreviewRows(previewRows)
+        if (highestRisk === 'medium' || highestRisk === 'high') {
+          setMassiveConfirmOpen(true)
+          setSyncLoading(false)
+          setSyncLive((prev) => ({
+            ...(prev || {}),
+            running: false,
+            message: 'Se requiere confirmacion para ejecutar carga masiva.',
+          }))
+          return
+        }
+      } catch (e: unknown) {
+        setSyncLoading(false)
+        setSyncLive((prev) => ({
+          ...(prev || {}),
+          running: false,
+          error: getApiErrorMessage(e),
+        }))
+        setSyncResult({ error: getApiErrorMessage(e) })
+        return
+      }
+    }
+
     setSyncLoading(true)
     setSyncResult(null)
     setSyncLive({
@@ -699,31 +865,21 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
       lastUpdatedAt: new Date().toISOString(),
     })
 
-    const cleanYear = yearFrom.trim()
-    const year = /^\d{4}$/.test(cleanYear) ? Number(cleanYear) : undefined
-
-    let totalInserted = 0
+    let totalApplied = 0
+    let successfulDomains = 0
     const globalLog: string[] = []
+    const skippedDomains: string[] = []
 
     try {
       for (let i = 0; i < selectedDomains.length; i += 1) {
         const domain = selectedDomains[i]
-        const payload: {
-          domain: SyncDomain
-          year_from?: number
-          close_month?: string
-          close_month_from?: string
-          close_month_to?: string
-        } = { domain }
-        if (domain === 'cartera') {
-          payload.close_month_from = closeMonthFromValue
-          payload.close_month_to = closeMonthToValue
-          if (closeMonthFromValue && closeMonthToValue && closeMonthFromValue === closeMonthToValue) {
-            payload.close_month = closeMonthFromValue
-          }
-        } else if (year !== undefined) {
-          payload.year_from = year
-        }
+        const payload = buildSyncPayload(domain)
+        const noFilterPayload = (
+          payload.year_from === undefined
+          && !payload.close_month
+          && !payload.close_month_from
+          && !payload.close_month_to
+        )
 
         setSyncLive((prev) => ({
           ...(prev || {}),
@@ -731,25 +887,72 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
           currentDomain: domain,
           progressPct: Math.round((i / selectedDomains.length) * 100),
           message: `[${domain}] Estimando volumen...`,
+          currentQueryFile: SYNC_QUERY_FILES[domain],
+          targetTable: null,
+          rowsRead: 0,
+          rowsInserted: 0,
+          rowsUpdated: 0,
+          rowsSkipped: 0,
+          rowsUpserted: 0,
+          rowsUnchanged: 0,
+          duplicatesDetected: 0,
+          queuePosition: null,
+          chunkKey: null,
+          chunkStatus: null,
         }))
 
         let previewRowsText = 'sin estimacion'
-        try {
-          const preview = await previewSync(payload)
-          previewRowsText = `${preview.estimated_rows}`
-          if (preview.would_exceed_limit) {
-            throw new Error(
-              `[${domain}] La consulta excede el maximo permitido (${preview.max_rows_allowed ?? 0} filas). `
-              + `Estimado: ${preview.estimated_rows}. Acota la query o ejecuta por anio/mes.`
-            )
+        let shouldSkipDomain = false
+        if (previewEnabledRef.current) {
+          try {
+            const previewOptions = allDomainsSelected
+              ? {
+                  sampled: true,
+                  sample_rows: MASSIVE_PREVIEW_SAMPLE_ROWS,
+                  timeout_seconds: MASSIVE_PREVIEW_TIMEOUT_SECONDS,
+                }
+              : undefined
+            const preview = await previewSync(payload, previewOptions)
+            previewRowsText = `${preview.estimated_rows}`
+            if (preview.would_exceed_limit) {
+              const reason = noFilterPayload
+                ? 'carga masiva sin filtros'
+                : 'estimacion por encima de limite'
+              globalLog.push(
+                `[${domain}] ${reason}: ${preview.estimated_rows} filas estimadas `
+                + `(limite ref ${preview.max_rows_allowed ?? 0}); se continua con micro-lotes protegidos.`
+              )
+              setSyncLive((prev) => ({
+                ...(prev || {}),
+                running: true,
+                currentDomain: domain,
+                message: `[${domain}] Modo protegido activo (micro-lotes)`,
+                error: null,
+              }))
+            }
+          } catch (previewError: unknown) {
+            const previewErrorMsg = getApiErrorMessage(previewError)
+            if (/deshabilitad/i.test(previewErrorMsg)) {
+              previewEnabledRef.current = false
+              globalLog.push(`[${domain}] preview deshabilitado por configuracion; se continua sin estimacion`)
+            } else if (/timeout|timed out|exceeded/i.test(previewErrorMsg)) {
+              globalLog.push(`[${domain}] preview timeout; se continua sin estimacion`)
+            } else {
+              shouldSkipDomain = true
+              skippedDomains.push(domain)
+              globalLog.push(`[${domain}] OMITIDO: ${previewErrorMsg}`)
+              setSyncLive((prev) => ({
+                ...(prev || {}),
+                running: true,
+                currentDomain: domain,
+                message: `[${domain}] Omitido por error de validacion`,
+                error: null,
+              }))
+            }
           }
-        } catch (previewError: unknown) {
-          const previewErrorMsg = getApiErrorMessage(previewError)
-          if (/timeout/i.test(previewErrorMsg) || /exceeded/i.test(previewErrorMsg)) {
-            globalLog.push(`[${domain}] preview timeout; se continua sin estimacion`)
-          } else {
-            throw previewError
-          }
+        }
+        if (shouldSkipDomain) {
+          continue
         }
 
         setSyncLive((prev) => ({
@@ -759,17 +962,47 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
           message: `[${domain}] Encolando ejecucion (${previewRowsText} filas estimadas)...`,
         }))
 
-        const run = await runSync(payload)
-        const status = await pollDomainStatus(domain, run.job_id, i, selectedDomains.length)
+        try {
+          const run = await runSync(payload)
+          const status = await pollDomainStatus(domain, run.job_id, i, selectedDomains.length)
 
-        if (status.error) {
-          throw new Error(`[${domain}] ${status.error}`)
+          if (status.error) {
+            skippedDomains.push(domain)
+            globalLog.push(`[${domain}] ERROR: ${status.error}`)
+            continue
+          }
+
+          successfulDomains += 1
+          const applied = getAppliedRows(status)
+          totalApplied += applied
+
+          globalLog.push(`[${domain}] job=${run.job_id} aplicadas=${applied} duplicados=${Number(status.duplicates_detected || 0)}`)
+        } catch (domainError: unknown) {
+          const msg = getApiErrorMessage(domainError)
+          if (/sincronizacion en curso|ya existe/i.test(msg)) {
+            try {
+              const runningJob = await findRunningSyncJob(domain)
+              if (runningJob) {
+                const resumed = await pollDomainStatus(runningJob.domain, runningJob.jobId, i, selectedDomains.length)
+                if (resumed.error) {
+                  skippedDomains.push(domain)
+                  globalLog.push(`[${domain}] ERROR al reanudar: ${resumed.error}`)
+                  continue
+                }
+                successfulDomains += 1
+                const applied = getAppliedRows(resumed)
+                totalApplied += applied
+                globalLog.push(`[${domain}] job=${runningJob.jobId} reanudado en dominio=${runningJob.domain}, aplicadas=${applied} duplicados=${Number(resumed.duplicates_detected || 0)}`)
+                continue
+              }
+            } catch {
+              // fallback to regular error handling below
+            }
+          }
+          skippedDomains.push(domain)
+          globalLog.push(`[${domain}] ERROR: ${msg}`)
+          continue
         }
-
-        const inserted = Number(status.rows_inserted || 0)
-        totalInserted += inserted
-
-        globalLog.push(`[${domain}] job=${run.job_id} insertadas=${inserted} duplicados=${Number(status.duplicates_detected || 0)}`)
       }
 
       setSyncLive((prev) => ({
@@ -778,7 +1011,19 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
         progressPct: 100,
         message: 'Sincronizacion finalizada',
       }))
-      setSyncResult({ rows: totalInserted, log: globalLog })
+      if (successfulDomains > 0) {
+        if (skippedDomains.length > 0) {
+          globalLog.push(`Dominios omitidos/error: ${Array.from(new Set(skippedDomains)).join(', ')}`)
+        }
+        setSyncResult({ rows: totalApplied, log: globalLog })
+      } else if (skippedDomains.length > 0) {
+        setSyncResult({
+          error: `No se pudo ejecutar ningun dominio. Omitidos/error: ${Array.from(new Set(skippedDomains)).join(', ')}`,
+          log: globalLog,
+        })
+      } else {
+        setSyncResult({ rows: totalApplied, log: globalLog })
+      }
 
       if (selectedDomains.includes('analytics')) {
         await onReloadBrokers?.()
@@ -793,9 +1038,27 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
     } finally {
       setSyncLoading(false)
     }
-  }, [closeMonthFromValue, closeMonthToValue, onReloadBrokers, pollDomainStatus, selectedDomains, yearFrom])
+  }, [
+    allDomainsSelected,
+    buildSyncPayload,
+    closeMonthFromValue,
+    closeMonthToValue,
+    onReloadBrokers,
+    pollDomainStatus,
+    selectedDomains,
+  ])
+
+  const handleSync = useCallback(() => {
+    void executeSyncFlow(false)
+  }, [executeSyncFlow])
+
+  const handleConfirmMassiveSync = useCallback(() => {
+    setMassiveConfirmOpen(false)
+    void executeSyncFlow(true)
+  }, [executeSyncFlow])
 
   const baseUrl = api.defaults.baseURL || 'http://localhost:8000/api/v1'
+  const showSyncResult = Boolean(syncResult) && !syncLoading && !syncLive?.running
 
   return (
     <section className="card config-card">
@@ -1245,6 +1508,11 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
           <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', marginTop: '0.5rem' }}>
             Modo de carga: <strong>{modeLabel}</strong>
           </p>
+          {allDomainsSelected && (
+            <p style={{ color: '#f59e0b', fontSize: '0.82rem', marginTop: '0.35rem', marginBottom: '0.2rem' }}>
+              Modo masivo: se ejecutara en cola estricta (1 dominio por vez) para proteger RAM/CPU.
+            </p>
+          )}
 
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <button type="button" className="btn btn-primary" onClick={handleSync} disabled={busy}>
@@ -1253,12 +1521,50 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
             <button type="button" className="btn btn-secondary" onClick={handleReload} disabled={busy}>
               {reloadLoading ? 'Recargando...' : 'Recargar vista'}
             </button>
-            {syncResult && (
+              {showSyncResult && syncResult && (
               <span style={{ color: syncResult.error ? 'var(--color-error)' : 'var(--color-primary)', fontWeight: 500 }}>
-                {syncResult.error ? `ERROR ${syncResult.error}` : `OK ${syncResult.rows ?? 0} filas cargadas`}
+                {syncResult.error
+                  ? `ERROR ${syncResult.error}`
+                  : Number(syncResult.rows || 0) > 0
+                    ? `OK ${syncResult.rows ?? 0} filas cargadas`
+                    : 'OK sincronizacion completada (sin cambios)'}
               </span>
-            )}
+              )}
           </div>
+
+          {massiveConfirmOpen && (
+            <div className="sync-safe-modal-backdrop" role="presentation">
+              <div className="sync-safe-modal" role="dialog" aria-modal="true" aria-label="Confirmar carga masiva">
+                <h4>Carga masiva detectada</h4>
+                <p>
+                  Se seleccionaron todos los dominios. Para proteger el servidor, la ejecucion sera secuencial y puede tardar varios minutos.
+                </p>
+                <div className="sync-safe-modal-summary">
+                  <span>Total estimado: <strong>{massivePreviewSummary.totalEstimatedRows}</strong> filas</span>
+                  <span>Duracion estimada: <strong>{formatDurationSeconds(massivePreviewSummary.totalEstimatedDurationSec)}</strong></span>
+                  <span>Riesgo: <strong className={`sync-risk sync-risk--${massivePreviewSummary.highestRisk}`}>{massivePreviewSummary.highestRisk.toUpperCase()}</strong></span>
+                </div>
+                <div className="sync-safe-modal-table">
+                  {massivePreviewRows.map((row) => (
+                    <div key={row.domain} className="sync-safe-modal-row">
+                      <span>{row.domain}</span>
+                      <span>{row.estimatedRows} filas</span>
+                      <span>Confianza: {row.estimateConfidence}</span>
+                      <span className={`sync-risk sync-risk--${row.riskLevel}`}>{row.riskLevel.toUpperCase()}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="sync-safe-modal-actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => setMassiveConfirmOpen(false)} disabled={syncLoading}>
+                    Cancelar
+                  </button>
+                  <button type="button" className="btn btn-primary" onClick={handleConfirmMassiveSync} disabled={syncLoading}>
+                    Confirmar y continuar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {syncLive && (
             <div className="sync-progress-shell">
