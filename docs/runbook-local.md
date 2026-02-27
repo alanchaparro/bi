@@ -54,6 +54,24 @@ python start_dashboard.py
 - `FF_API_ANUALES` (default `true`)
 - `FF_API_RENDIMIENTO` (default `true`)
 
+## Pre-sync (verificar antes de ejecutar carga)
+1. Si usa Docker y MySQL está en el host, en `.env` poner: `MYSQL_HOST=host.docker.internal`
+2. Ejecutar verificaciones (Windows o Linux):
+```powershell
+# Windows
+.\scripts\run_pre_sync_checks.ps1
+```
+```bash
+# Linux/Mac
+chmod +x scripts/run_pre_sync_checks.sh && ./scripts/run_pre_sync_checks.sh
+```
+   O diagnóstico manual: `python scripts/diagnose_sync_connectivity.py` (debe mostrar API OK y MySQL OK).
+3. Tras cambiar código del frontend, reconstruir imagen:
+```powershell
+docker compose --profile prod build frontend-prod --no-cache
+```
+   Luego levantar de nuevo: `docker compose --profile prod up -d`
+
 ## Smoke Checklist
 1. Open app with empty cache.
 2. Sync local files from Config.
@@ -66,6 +84,10 @@ python start_dashboard.py
 - If CSV load fails, check validation messages and required columns.
 - If export endpoint fails, inspect server terminal output.
 - **Brokers sin datos**: La vista Brokers depende de `analytics_contract_snapshot`. Ver [analytics-data-dependencies.md](analytics-data-dependencies.md) para poblar la tabla (seed, ETL) y configurar `VITE_API_BASE_URL`.
+- **Sync falla con "no se pudo consultar progreso"**: El log ahora muestra el error real. Pasos:
+  1. En Config > Importaciones, clic en "Comprobar conexion" (API). Si falla: API inaccesible o CORS.
+  2. Si usa Docker y MySQL en el host: `MYSQL_HOST=host.docker.internal` en `.env`.
+  3. Diagnóstico completo: `python scripts/diagnose_sync_connectivity.py`
 
 ## Tests
 ```powershell

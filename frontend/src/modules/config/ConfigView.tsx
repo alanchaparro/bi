@@ -156,7 +156,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
   const resumeAttemptedRef = useRef(false)
   const previewEnabledRef = useRef(true)
   const [configSection, setConfigSection] = useState<ConfigSection>('usuarios')
-  const [health, setHealth] = useState<{ ok?: boolean; db_ok?: boolean; service?: string; error?: string } | null>(null)
+  const [health, setHealth] = useState<{ ok?: boolean; db_ok?: boolean; mysql_ok?: boolean | null; service?: string; error?: string } | null>(null)
   const [healthLoading, setHealthLoading] = useState(false)
   const [reloadLoading, setReloadLoading] = useState(false)
 
@@ -420,7 +420,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
     setHealth(null)
     try {
       const res = await api.get('/health')
-      setHealth(res.data as { ok?: boolean; db_ok?: boolean; service?: string })
+      setHealth(res.data as { ok?: boolean; db_ok?: boolean; mysql_ok?: boolean | null; service?: string })
     } catch (e: unknown) {
       const msg = getApiErrorMessage(e)
       const status = axios.isAxiosError(e) ? e.response?.status : undefined
@@ -620,12 +620,13 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
           if (!status.running) {
             return status
           }
-        } catch {
+        } catch (err) {
           consecutiveErrors += 1
           currentDelay = Math.min(STATUS_POLL_MAX_MS, currentDelay * 2)
+          const errMsg = getApiErrorMessage(err)
           setSyncLive((prev) => {
             const lines = [...(prev?.log || [])]
-            lines.push(`[${domain}] Estado: no se pudo consultar progreso (intento ${consecutiveErrors}).`)
+            lines.push(`[${domain}] Estado: no se pudo consultar progreso (intento ${consecutiveErrors}): ${errMsg}`)
             return {
               ...(prev || {}),
               running: true,
@@ -636,7 +637,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
             }
           })
           if (consecutiveErrors >= 5) {
-            throw new Error(`No se pudo consultar estado para ${domain} (5 intentos).`)
+            throw new Error(`No se pudo consultar estado para ${domain} (5 intentos). Ultimo error: ${errMsg}`)
           }
         }
 
@@ -1113,6 +1114,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   <span style={{ color: health.ok ? 'var(--color-primary)' : 'var(--color-error)', fontWeight: 500 }}>
                     {health.ok ? 'OK Conectado' : 'ERROR Sin conexion'}
                     {health.db_ok !== undefined && ` (DB: ${health.db_ok ? 'OK' : 'Error'})`}
+                    {health.mysql_ok !== undefined && health.mysql_ok !== null && ` (MySQL: ${health.mysql_ok ? 'OK' : 'Error'})`}
+                    {health.mysql_ok === null && ' (MySQL: no configurado)'}
                   </span>
                   {health.error && (
                     <div className="alert-error" style={{ fontSize: '0.85rem', maxWidth: '40rem' }}>
