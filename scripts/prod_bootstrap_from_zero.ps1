@@ -32,11 +32,43 @@ docker compose --profile prod run --rm api-v1 sh -lc "cd /app && python scripts/
 
 Write-Host "[7/7] Smoke de API (health + login)..."
 docker compose --profile prod up -d api-v1
+Write-Host "    Esperando que la API este lista (hasta 60s)..."
+$waitOutFile = Join-Path $env:TEMP "wait_for_api_health.out.log"
+$waitErrFile = Join-Path $env:TEMP "wait_for_api_health.err.log"
+if (Test-Path $waitOutFile) { Remove-Item $waitOutFile -Force }
+if (Test-Path $waitErrFile) { Remove-Item $waitErrFile -Force }
+$waitProc = Start-Process -FilePath "docker" `
+  -ArgumentList @("compose", "--profile", "prod", "run", "--rm", "api-v1", "python", "/app/scripts/wait_for_api_health.py", "60") `
+  -NoNewWindow -PassThru -Wait `
+  -RedirectStandardOutput $waitOutFile `
+  -RedirectStandardError $waitErrFile
+$waitExitCode = $waitProc.ExitCode
+if ($waitExitCode -ne 0) {
+  if (Test-Path $waitOutFile) { Get-Content $waitOutFile | Write-Host }
+  if (Test-Path $waitErrFile) { Get-Content $waitErrFile | Write-Host }
+  throw "La API no respondio en /health despues de 60s. Verifique que api-v1 este corriendo."
+}
+if (Test-Path $waitOutFile) { Remove-Item $waitOutFile -Force }
+if (Test-Path $waitErrFile) { Remove-Item $waitErrFile -Force }
 docker compose --profile prod run --rm api-v1 sh -lc "cd /app && python scripts/smoke_api_v1_health_login.py"
 
 Write-Host "[8/8] Verificando conectividad MySQL (sync/import)..."
-$mysqlVerify = docker compose --profile prod run --rm api-v1 sh -lc "cd /app && python scripts/verify_mysql_connectivity.py" 2>&1
-if ($LASTEXITCODE -eq 0) {
+$mysqlOutFile = Join-Path $env:TEMP "verify_mysql_connectivity.out.log"
+$mysqlErrFile = Join-Path $env:TEMP "verify_mysql_connectivity.err.log"
+if (Test-Path $mysqlOutFile) { Remove-Item $mysqlOutFile -Force }
+if (Test-Path $mysqlErrFile) { Remove-Item $mysqlErrFile -Force }
+$mysqlProc = Start-Process -FilePath "docker" `
+  -ArgumentList @("compose", "--profile", "prod", "run", "--rm", "api-v1", "sh", "-lc", "cd /app && python scripts/verify_mysql_connectivity.py") `
+  -NoNewWindow -PassThru -Wait `
+  -RedirectStandardOutput $mysqlOutFile `
+  -RedirectStandardError $mysqlErrFile
+$mysqlExitCode = $mysqlProc.ExitCode
+$mysqlOut = if (Test-Path $mysqlOutFile) { Get-Content $mysqlOutFile -Raw } else { "" }
+$mysqlErr = if (Test-Path $mysqlErrFile) { Get-Content $mysqlErrFile -Raw } else { "" }
+$mysqlVerify = ($mysqlOut + "`n" + $mysqlErr).Trim()
+if (Test-Path $mysqlOutFile) { Remove-Item $mysqlOutFile -Force }
+if (Test-Path $mysqlErrFile) { Remove-Item $mysqlErrFile -Force }
+if ($mysqlExitCode -eq 0) {
   Write-Host $mysqlVerify
   Write-Host "MySQL: OK. Listo para sync/import."
 } else {
