@@ -98,6 +98,7 @@ const SYNC_QUERY_FILES: Record<SyncDomain, string> = {
 }
 
 const STATUS_POLL_MS = 2000
+const STATUS_POLL_STABLE_MS = 4000
 const STATUS_POLL_MAX_MS = 10000
 const TRAMO_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7]
 const MASSIVE_PREVIEW_SAMPLE_ROWS = 20000
@@ -574,15 +575,25 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
     ): Promise<SyncStatusResponse> => {
       let consecutiveErrors = 0
       let currentDelay = STATUS_POLL_MS
+      let stagnantCycles = 0
+      let lastDomainProgress = -1
 
       while (true) {
         try {
           const status = await getSyncStatus({ domain, job_id: jobId })
           consecutiveErrors = 0
-          currentDelay = STATUS_POLL_MS
 
           const domainProgress = Math.max(0, Math.min(100, Number(status.progress_pct || 0)))
           const overallProgress = Math.round(((domainIndex + domainProgress / 100) / totalDomains) * 100)
+          const queueWaiting = typeof status.queue_position === 'number' && status.queue_position > 0
+          const progressed = domainProgress > lastDomainProgress
+          if (progressed) {
+            stagnantCycles = 0
+          } else {
+            stagnantCycles += 1
+          }
+          lastDomainProgress = domainProgress
+          currentDelay = (queueWaiting || stagnantCycles >= 3) ? STATUS_POLL_STABLE_MS : STATUS_POLL_MS
 
           setSyncLive({
             running: Boolean(status.running),

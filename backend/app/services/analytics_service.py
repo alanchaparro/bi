@@ -32,6 +32,20 @@ from app.services.brokers_config_service import BrokersConfigService
 _COHORTE_BASE_CACHE_TTL_SEC = 900
 _COHORTE_BASE_CACHE: dict[str, tuple[float, list[dict]]] = {}
 _COHORTE_BASE_CACHE_LOCK = Lock()
+_LEGACY_CLIENT_LOCK = Lock()
+_LEGACY_CLIENT: httpx.Client | None = None
+
+
+def _legacy_http_client() -> httpx.Client:
+    global _LEGACY_CLIENT
+    with _LEGACY_CLIENT_LOCK:
+        timeout = float(max(5, int(settings.analytics_legacy_timeout_seconds)))
+        if _LEGACY_CLIENT is None:
+            _LEGACY_CLIENT = httpx.Client(timeout=timeout)
+        elif float(_LEGACY_CLIENT.timeout.connect or 0) != timeout:
+            _LEGACY_CLIENT.close()
+            _LEGACY_CLIENT = httpx.Client(timeout=timeout)
+        return _LEGACY_CLIENT
 
 
 def _cohorte_base_cache_get(cache_key: str) -> list[dict] | None:
@@ -213,11 +227,10 @@ class AnalyticsService:
         url = f'{base}{endpoint}'
         if query:
             url = f'{url}?{query}'
-        timeout = float(max(5, int(settings.analytics_legacy_timeout_seconds)))
-        with httpx.Client(timeout=timeout) as client:
-            res = client.get(url)
-            res.raise_for_status()
-            return res.json()
+        client = _legacy_http_client()
+        res = client.get(url)
+        res.raise_for_status()
+        return res.json()
 
     @staticmethod
     def fetch_brokers_summary_v1(db: Session, filters: AnalyticsFilters) -> dict:
@@ -236,36 +249,48 @@ class AnalyticsService:
         prize_row = db.query(PrizeRules).filter(PrizeRules.id == 1).first()
         prize_rules = _load_json_list(prize_row.rules_json if prize_row else '[]')
 
-        rows = db.query(AnalyticsContractSnapshot).all()
         by_key: dict[str, dict] = {}
         by_supervisor: dict[str, int] = {}
         count_by_month_super: dict[str, int] = {}
         total_contracts = 0
+        grouped_q = db.query(
+            AnalyticsContractSnapshot.sale_month.label('sale_month'),
+            AnalyticsContractSnapshot.supervisor.label('supervisor'),
+            AnalyticsContractSnapshot.un.label('un'),
+            AnalyticsContractSnapshot.via.label('via'),
+            AnalyticsContractSnapshot.close_month.label('close_month'),
+            AnalyticsContractSnapshot.tramo.label('tramo'),
+            func.count().label('contracts_count'),
+            func.coalesce(func.sum(AnalyticsContractSnapshot.debt), 0.0).label('debt_sum'),
+        )
+        if enabled_supervisors:
+            grouped_q = grouped_q.filter(AnalyticsContractSnapshot.supervisor.in_(enabled_supervisors))
+        if supervisor_filter:
+            grouped_q = grouped_q.filter(AnalyticsContractSnapshot.supervisor.in_(supervisor_filter))
+        if un_filter:
+            grouped_q = grouped_q.filter(AnalyticsContractSnapshot.un.in_(un_filter))
+        if via_filter:
+            grouped_q = grouped_q.filter(AnalyticsContractSnapshot.via.in_(via_filter))
+        if month_filter:
+            grouped_q = grouped_q.filter(AnalyticsContractSnapshot.sale_month.in_(month_filter))
+        if year_filter:
+            grouped_q = grouped_q.filter(func.substr(AnalyticsContractSnapshot.sale_month, 4, 4).in_(year_filter))
+        grouped_q = grouped_q.group_by(
+            AnalyticsContractSnapshot.sale_month,
+            AnalyticsContractSnapshot.supervisor,
+            AnalyticsContractSnapshot.un,
+            AnalyticsContractSnapshot.via,
+            AnalyticsContractSnapshot.close_month,
+            AnalyticsContractSnapshot.tramo,
+        )
 
-        for row in rows:
+        for row in grouped_q.yield_per(2000):
+            sale_month = str(row.sale_month or '').strip()
             supervisor = str(row.supervisor or 'S/D').strip().upper() or 'S/D'
             un = str(row.un or 'S/D').strip().upper() or 'S/D'
             via = str(row.via or 'S/D').strip().upper() or 'S/D'
-            sale_month = str(row.sale_month or '').strip()
-            year = _year_of(sale_month) or 'S/D'
-
-            if enabled_supervisors and supervisor not in enabled_supervisors:
-                continue
-            if supervisor_filter and supervisor not in supervisor_filter:
-                continue
-            if un_filter and un not in un_filter:
-                continue
-            if via_filter and via not in via_filter:
-                continue
-            if year_filter and year not in year_filter:
-                continue
-            if month_filter and sale_month not in month_filter:
-                continue
-
-            total_contracts += 1
-            by_supervisor[supervisor] = by_supervisor.get(supervisor, 0) + 1
-            count_by_month_super[f'{sale_month}__{supervisor}'] = count_by_month_super.get(f'{sale_month}__{supervisor}', 0) + 1
-
+            count = int(row.contracts_count or 0)
+            amount_sum = float(row.debt_sum or 0.0)
             key = f'{sale_month}__{supervisor}__{un}__{via}'
             if key not in by_key:
                 by_key[key] = {
@@ -278,12 +303,10 @@ class AnalyticsService:
                     'un': un,
                     'via': via,
                 }
-
-            amount = float(row.debt or 0.0)
-            by_key[key]['count'] += 1
-            by_key[key]['montoCuota'] += amount
+            by_key[key]['count'] += count
+            by_key[key]['montoCuota'] += amount_sum
             by_key[key]['commission'] += _compute_commission_amount(
-                amount,
+                amount_sum,
                 supervisor,
                 un,
                 via,
@@ -291,7 +314,10 @@ class AnalyticsService:
                 commission_rules,
             )
             if _is_mora_3m(sale_month, str(row.close_month or ''), int(row.tramo or 0)):
-                by_key[key]['mora3m'] += 1
+                by_key[key]['mora3m'] += count
+            by_supervisor[supervisor] = by_supervisor.get(supervisor, 0) + count
+            count_by_month_super[f'{sale_month}__{supervisor}'] = count_by_month_super.get(f'{sale_month}__{supervisor}', 0) + count
+            total_contracts += count
 
         out_rows = []
         for item in by_key.values():
@@ -1093,7 +1119,7 @@ class AnalyticsService:
         base_rows = _cohorte_base_cache_get(base_cache_key)
         if base_rows is None:
             base_rows = []
-            for row in cartera_q.all():
+            for row in cartera_q.yield_per(2000):
                 contract_id = str(row.contract_id or '').strip()
                 if not contract_id:
                     continue

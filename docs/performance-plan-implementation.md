@@ -4,7 +4,7 @@ Fecha: 2026-02-23
 
 ## Alcance implementado
 
-1. Cola persistente de sincronizacion en DB (`sync_jobs`) y worker dedicado en el mismo contenedor.
+1. Cola persistente de sincronizacion en DB (`sync_jobs`) y worker dedicado en servicio separado (`sync-worker`).
 2. Trazabilidad por etapas (`sync_job_steps`) y estado de ejecucion en `sync_runs`.
 3. Campos opcionales de performance en `/sync/status`:
    - `eta_seconds`
@@ -50,7 +50,7 @@ Migraciones nuevas:
 1. Levantar stack:
 
 ```bash
-docker compose --profile prod up -d --build postgres api-v1 frontend-prod
+docker compose --profile prod up -d --build postgres api-v1 sync-worker frontend-prod
 ```
 
 2. Migrar:

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app.core.analytics_cache import metrics as analytics_cache_metrics
 from app.core.config import settings
 from app.core.deps import require_permission
 from app.core.request_metrics import summary as request_metrics_summary
@@ -118,5 +119,6 @@ def health_perf(_user=Depends(require_permission('system:read'))):
     return {
         'service': 'cobranzas-api-v1',
         'request_latency': request_metrics_summary(),
+        'cache_metrics': analytics_cache_metrics(),
         'pg_stat_statements_top': pg_stat_top,
     }

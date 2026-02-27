@@ -172,6 +172,7 @@ docker compose --profile prod-lan up -d --build
 Servicios del perfil:
 - `reverse-proxy` (expone solo `LAN_HTTP_PORT`, por defecto 80)
 - `api-v1-lan` (interno)
+- `sync-worker-lan` (interno)
 - `frontend-prod-lan` (interno)
 - `postgres` (interno, salvo que se publique manualmente)
 
