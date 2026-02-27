@@ -24,6 +24,7 @@ type Props = {
 }
 
 type SyncLive = {
+  jobId?: string | null
   running?: boolean
   currentDomain?: SyncDomain | null
   log?: string[]
@@ -596,6 +597,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
           currentDelay = (queueWaiting || stagnantCycles >= 3) ? STATUS_POLL_STABLE_MS : STATUS_POLL_MS
 
           setSyncLive({
+            jobId: status.job_id || null,
             running: Boolean(status.running),
             currentDomain: domain,
             log: status.log || [],
@@ -667,6 +669,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
       setSyncLoading(true)
       setSyncResult(null)
       setSyncLive({
+        jobId: status.job_id || null,
         running: true,
         currentDomain: domain,
         log: status.log || [],
@@ -1071,6 +1074,39 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
 
   const baseUrl = api.defaults.baseURL || 'http://localhost:8000/api/v1'
   const showSyncResult = Boolean(syncResult) && !syncLoading && !syncLive?.running
+
+  const displayLog = syncLive?.log ?? syncResult?.log ?? []
+  const displayError = syncLive?.error ?? syncResult?.error ?? null
+  const displayDomain = syncLive?.currentDomain ?? (syncResult && selectedDomains.length > 0 ? selectedDomains.join(', ') : null)
+  const displayJobId = syncLive?.jobId ?? null
+
+  const handleExportLogTxt = useCallback(() => {
+    const lines: string[] = [
+      '=== Log de importación ===',
+      `Generado: ${new Date().toLocaleString()}`,
+      displayDomain ? `Dominio(s): ${displayDomain}` : '',
+      displayJobId ? `Job ID: ${displayJobId}` : '',
+      '',
+    ].filter(Boolean)
+    if (displayError) {
+      lines.push('--- ERROR ---')
+      lines.push(displayError)
+      lines.push('')
+    }
+    lines.push('--- Registro ---')
+    if (displayLog.length > 0) {
+      lines.push(...displayLog)
+    } else {
+      lines.push('No hay entradas de log.')
+    }
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `log-importacion-${(displayDomain || 'sync').replace(/\s*,\s*/g, '-')}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [displayLog, displayError, displayDomain, displayJobId])
 
   return (
     <section className="card config-card">
@@ -1666,24 +1702,54 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                 <span>WM source_id: {syncLive.watermark?.lastSourceId || '-'}</span>
                 <span>WM registrado: {formatSyncTimestamp(syncLive.watermark?.updatedAt)}</span>
               </div>
-
-              {syncLive.log && syncLive.log.length > 0 && (
-                <pre
-                  style={{
-                    marginTop: '0.75rem',
-                    padding: '0.75rem',
-                    background: 'rgba(0,0,0,0.2)',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    borderRadius: '8px',
-                    fontSize: '0.8rem',
-                    whiteSpace: 'pre-wrap',
-                  }}
-                >
-                  {syncLive.log.join('\n')}
-                </pre>
-              )}
             </div>
           )}
+
+          <div className="sync-logs-section" style={{ marginTop: '1.25rem' }}>
+            <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Logs de importación</h3>
+            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', marginTop: 0, marginBottom: '0.5rem' }}>
+              Registro de la última ejecución. Si hubo errores, aparecen aquí. Puedes exportar todo a un archivo TXT.
+            </p>
+            {displayError && (
+              <div
+                className="alert-error"
+                role="alert"
+                style={{
+                  marginBottom: '0.75rem',
+                  padding: '0.75rem',
+                  borderRadius: '8px',
+                  fontSize: '0.9rem',
+                  whiteSpace: 'pre-wrap',
+                }}
+              >
+                <strong>Error:</strong> {displayError}
+              </div>
+            )}
+            <pre
+              className="sync-logs-pre"
+              style={{
+                marginBottom: '0.75rem',
+                padding: '0.75rem',
+                background: 'rgba(0,0,0,0.2)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: '8px',
+                fontSize: '0.8rem',
+                whiteSpace: 'pre-wrap',
+                maxHeight: '280px',
+                overflow: 'auto',
+              }}
+            >
+              {displayLog.length > 0 ? displayLog.join('\n') : 'No hay entradas de log aún. Ejecuta una carga para ver el registro aquí.'}
+            </pre>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleExportLogTxt}
+              disabled={displayLog.length === 0 && !displayError}
+            >
+              Exportar a TXT
+            </button>
+          </div>
         </div>
         )}
       </div>
