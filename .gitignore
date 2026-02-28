@@ -38,3 +38,5 @@ data/*.db
 data/*.db-*
 data/*_rules.json
 data/brokers_supervisors.json
+*_probe_job.json
+sync_restart_probe_job.json
