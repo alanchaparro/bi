@@ -2,8 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
 import {
+  getCobranzasCohorteDetail,
+  getCobranzasCohorteFirstPaint,
   getCobranzasCohorteOptions,
-  getCobranzasCohorteSummary,
+  markPerfReady,
+  type CobranzasCohorteDetailResponse,
+  type CobranzasCohorteFirstPaintResponse,
   type CobranzasCohorteSummaryResponse,
 } from '../../shared/api'
 import { getApiErrorMessage } from '../../shared/apiErrors'
@@ -79,12 +83,16 @@ const pct = (v: number) => `${(Number(v || 0) * 100).toFixed(1)}%`
 export function AnalisisCobranzasCohorteView() {
   const [loadingOptions, setLoadingOptions] = useState(true)
   const [loadingSummary, setLoadingSummary] = useState(false)
+  const [loadingDetail, setLoadingDetail] = useState(false)
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [options, setOptions] = useState<Options>(EMPTY_OPTIONS)
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [appliedFilters, setAppliedFilters] = useState<Filters>(EMPTY_FILTERS)
-  const [summary, setSummary] = useState<CobranzasCohorteSummaryResponse | null>(null)
+  const [summary, setSummary] = useState<CobranzasCohorteFirstPaintResponse | CobranzasCohorteSummaryResponse | null>(null)
+  const [detailRows, setDetailRows] = useState<CobranzasCohorteDetailResponse['items']>([])
+  const [detailPage, setDetailPage] = useState(1)
+  const [detailHasNext, setDetailHasNext] = useState(false)
   const [kpiOrder, setKpiOrder] = useState<KpiId[]>(() => readStoredOrder(DEFAULT_KPI_ORDER))
   const [draggingKpi, setDraggingKpi] = useState<KpiId | null>(null)
   const [dragOverKpi, setDragOverKpi] = useState<KpiId | null>(null)
@@ -97,19 +105,42 @@ export function AnalisisCobranzasCohorteView() {
     }
   }, [kpiOrder])
 
-  const loadSummary = useCallback(async (next: Filters, withLoader = false) => {
+  const loadFirstPaint = useCallback(async (next: Filters, withLoader = false) => {
     if (withLoader) setLoadingSummary(true)
     try {
-      const data = await getCobranzasCohorteSummary({
+      const data = await getCobranzasCohorteFirstPaint({
         cutoff_month: next.cutoffMonth || undefined,
         un: next.uns,
         via_cobro: next.vias,
         categoria: next.categorias,
         supervisor: next.supervisors,
+        top_n_sale_months: 12,
       })
       setSummary(data)
     } finally {
       if (withLoader) setLoadingSummary(false)
+    }
+  }, [])
+
+  const loadDetail = useCallback(async (next: Filters, page: number, append: boolean) => {
+    setLoadingDetail(true)
+    try {
+      const detail = await getCobranzasCohorteDetail({
+        cutoff_month: next.cutoffMonth || undefined,
+        un: next.uns,
+        via_cobro: next.vias,
+        categoria: next.categorias,
+        supervisor: next.supervisors,
+        page,
+        page_size: 24,
+        sort_by: 'sale_month',
+        sort_dir: 'asc',
+      })
+      setDetailRows((prev) => (append ? [...prev, ...(detail.items || [])] : (detail.items || [])))
+      setDetailPage(detail.page || page)
+      setDetailHasNext(Boolean(detail.has_next))
+    } finally {
+      setLoadingDetail(false)
     }
   }, [])
 
@@ -141,7 +172,9 @@ export function AnalisisCobranzasCohorteView() {
         setFilters(nextFilters)
         setAppliedFilters(nextFilters)
         setApplying(true)
-        await loadSummary(nextFilters, true)
+        await loadFirstPaint(nextFilters, true)
+        await loadDetail(nextFilters, 1, false)
+        await markPerfReady('cohorte')
       } catch (e: unknown) {
         setError(getApiErrorMessage(e))
       } finally {
@@ -151,20 +184,21 @@ export function AnalisisCobranzasCohorteView() {
     }
 
     void boot()
-  }, [loadSummary])
+  }, [loadDetail, loadFirstPaint])
 
   const onApply = useCallback(async () => {
     try {
       setApplying(true)
       setError(null)
       setAppliedFilters(filters)
-      await loadSummary(filters)
+      await loadFirstPaint(filters)
+      await loadDetail(filters, 1, false)
     } catch (e: unknown) {
       setError(getApiErrorMessage(e))
     } finally {
       setApplying(false)
     }
-  }, [filters, loadSummary])
+  }, [filters, loadDetail, loadFirstPaint])
 
   const onReset = useCallback(async () => {
     try {
@@ -179,25 +213,32 @@ export function AnalisisCobranzasCohorteView() {
       }
       setFilters(resetFilters)
       setAppliedFilters(resetFilters)
-      await loadSummary(resetFilters)
+      await loadFirstPaint(resetFilters)
+      await loadDetail(resetFilters, 1, false)
     } catch (e: unknown) {
       setError(getApiErrorMessage(e))
     } finally {
       setApplying(false)
     }
-  }, [loadSummary, options.cutoffMonths])
+  }, [loadDetail, loadFirstPaint, options.cutoffMonths])
 
   const retryLastRequest = useCallback(async () => {
     try {
       setApplying(true)
       setError(null)
-      await loadSummary(appliedFilters)
+      await loadFirstPaint(appliedFilters)
+      await loadDetail(appliedFilters, 1, false)
     } catch (e: unknown) {
       setError(getApiErrorMessage(e))
     } finally {
       setApplying(false)
     }
-  }, [appliedFilters, loadSummary])
+  }, [appliedFilters, loadDetail, loadFirstPaint])
+
+  useEffect(() => {
+    if (!summary || loadingSummary || loadingDetail || applying) return
+    void markPerfReady('cohorte')
+  }, [applying, detailRows.length, loadingDetail, loadingSummary, summary])
 
   const totals = summary?.totals
   const selectedCategoria = (filters.categorias[0] || '').toUpperCase()
@@ -239,7 +280,7 @@ export function AnalisisCobranzasCohorteView() {
     }))
   }, [])
 
-  const hasRows = (summary?.by_sale_month || []).length > 0 || byYearEntries.length > 0
+  const hasRows = detailRows.length > 0 || byYearEntries.length > 0
   const noCohorteData = options.cutoffMonths.length === 0
 
   const moveKpi = useCallback((fromId: KpiId, toId: KpiId) => {
@@ -469,7 +510,8 @@ export function AnalisisCobranzasCohorteView() {
           ) : null}
 
           {applying && summary ? <div className="summary-loading-note">Actualizando resultados...</div> : null}
-          {loadingSummary && !summary ? <div className="summary-loading-note">Cargando resumen...</div> : null}
+          {loadingSummary && !summary ? <div className="summary-loading-note">Cargando resumen inicial...</div> : null}
+          {loadingDetail && summary ? <div className="summary-loading-note">Cargando detalle...</div> : null}
 
           <div className={`cohorte-results ${applying ? 'cohorte-results-updating' : ''}`}>
             <div className="cohorte-kpis">
@@ -564,7 +606,7 @@ export function AnalisisCobranzasCohorteView() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(summary?.by_sale_month || []).map((row) => (
+                    {(detailRows || []).map((row) => (
                       <tr key={row.sale_month}>
                         <td className="cohorte-key-cell">{row.sale_month}</td>
                         <td className="num">{formatCount(row.activos || 0)}</td>
@@ -578,6 +620,18 @@ export function AnalisisCobranzasCohorteView() {
                   </tbody>
                 </table>
               </div>
+              {detailHasNext ? (
+                <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => void loadDetail(appliedFilters, detailPage + 1, true)}
+                    disabled={loadingDetail || applying}
+                  >
+                    {loadingDetail ? 'Cargando...' : 'Cargar más'}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         </>

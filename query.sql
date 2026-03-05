@@ -1,5 +1,8 @@
 SELECT
-    e.name AS UN,
+    CASE
+        WHEN c.request_financing_number IS NOT NULL THEN 'ODONTOLOGIA TTO'
+        ELSE e.name
+    END AS UN,
     b.name AS sucursal,
     ccd.contract_id AS id_contrato,
     c.date AS fecha_contrato,
@@ -106,5 +109,5 @@ LEFT JOIN epem.contract_situations cs
     ON cs.contract_id = c.id 
     AND cs.type = 3 
     AND cs.status = 1
-WHERE ccd.closed_date > '2020-12-31' AND
-    c.enterprise_id IN (1, 2, 5)
+WHERE ccd.closed_date > '2020-12-31' 
+  AND c.enterprise_id IN (1, 2, 5);

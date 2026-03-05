@@ -1,4 +1,4 @@
-﻿import hashlib
+import hashlib
 import json
 import logging
 import os
@@ -11,13 +11,13 @@ from time import monotonic, sleep as time_sleep
 from typing import Any
 
 import mysql.connector
-from sqlalchemy import Integer, Numeric, and_, case, cast, func, literal, text as sa_text
+from sqlalchemy import Integer, Numeric, and_, case, cast, func, literal, select, text as sa_text, tuple_ as sa_tuple
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from app.core.analytics_cache import invalidate_endpoint, invalidate_prefix
+from app.core.analytics_cache import invalidate_endpoint, invalidate_prefix, set as cache_set
 from app.core.config import settings
 from app.db.session import SessionLocal, engine
 from app.models.brokers import (
@@ -28,7 +28,11 @@ from app.models.brokers import (
     CobranzasCohorteAgg,
     CobranzasFact,
     ContratosFact,
+    DimNegocioContrato,
+    DimNegocioUnMap,
     GestoresFact,
+    AnalyticsRendimientoAgg,
+    AnalyticsAnualesAgg,
     SyncChunkManifest,
     SyncExtractLog,
     SyncStagingRow,
@@ -36,10 +40,12 @@ from app.models.brokers import (
     SyncJobStep,
     SyncJob,
     SyncRun,
+    SyncSchedule,
     SyncWatermark,
 )
+from app.schemas.analytics import AnalyticsFilters, CobranzasCohorteFirstPaintIn, CobranzasCohorteIn, PortfolioSummaryIn
+from app.services.analytics_service import AnalyticsService, cohorte_base_cache_clear
 from app.services.brokers_config_service import BrokersConfigService
-
 
 SYNC_DOMAIN_QUERIES = {
     'analytics': 'query_analytics.sql',
@@ -63,8 +69,46 @@ MYSQL_INCREMENTAL_HINTS = {
     # and allow server-side watermark pushdown with safe fallback.
     'cobranzas': {'updated_col': 'Actualizado_al', 'id_col': 'id', 'format': '%Y-%m-%d %H:%i:%s'},
     'cartera': {'updated_col': 'fecha_cierre', 'id_col': 'id_contrato', 'format': '%Y/%m/%d'},
-    'contratos': {'updated_col': 'date', 'id_col': 'id', 'format': '%Y-%m-%d'},
+    'contratos': {'updated_col': 'updated_at', 'id_col': 'id', 'format': '%Y-%m-%d %H:%M:%S'},
     'gestores': {'updated_col': 'from_date', 'id_col': 'contract_id', 'format': '%Y-%m-%d'},
+}
+
+# Lightweight pre-check SQL per domain: returns max_updated, max_id for comparison with watermark.
+# Same logical filters as main query; on error caller should assume new data (run full sync).
+MYSQL_PRECHECK_QUERIES = {
+    'cartera': """
+        SELECT MAX(ccd.closed_date) AS max_updated, MAX(ccd.contract_id) AS max_id
+        FROM epem.contract_closed_dates ccd
+        JOIN epem.contracts c ON ccd.contract_id = c.id
+        WHERE ccd.closed_date > '2020-12-31' AND c.enterprise_id IN (1, 2, 5)
+    """,
+    'cobranzas': """
+        SELECT MAX(p.updated_at) AS max_updated, MAX(p.id) AS max_id
+        FROM account_payment_ways apw
+        JOIN payments p ON apw.payment_id = p.id
+        LEFT JOIN contracts c ON p.contract_id = c.id
+        LEFT JOIN enterprises e ON c.enterprise_id = e.id
+        WHERE IF(p.status = 1 AND p.type < 2 AND YEAR(p.date) > 2020, 1, 0) = 1
+          AND IF(e.id < 3 OR e.id = 5, 1, 0) = 1
+          AND p.contract_id NOT IN (55411, 55414, 59127, 59532, 60402)
+    """,
+    'contratos': """
+        SELECT MAX(c.updated_at) AS max_updated, MAX(c.id) AS max_id
+        FROM contracts c
+        JOIN enterprises e ON e.id = c.enterprise_id
+        WHERE c.status IN (5, 6) AND e.id IN (1, 5, 2)
+    """,
+    'gestores': """
+        SELECT MAX(cp.from_date) AS max_updated, MAX(dcp.contract_id) AS max_id
+        FROM detail_client_portfolios dcp
+        LEFT JOIN contracts ON dcp.contract_id = contracts.id
+        LEFT JOIN client_portfolios cp ON dcp.clientportfolio_id = cp.id
+        LEFT JOIN users ON cp.manager_id = users.id
+        WHERE users.id <> 696
+          AND YEAR(cp.from_date) >= 2024
+          AND contracts.enterprise_id IN (1, 2, 5)
+          AND cp.status = 1
+    """,
 }
 
 
@@ -76,8 +120,39 @@ def _query_file_for(domain: str) -> str:
     return SYNC_DOMAIN_QUERIES.get(domain, '')
 
 
+def _prewarm_analytics_cache_after_sync(db: Session, domain: str) -> None:
+    """Best-effort cache prewarm to improve first paint after sync."""
+    try:
+        base_filters = AnalyticsFilters()
+        if domain in {'cartera', 'cobranzas', 'analytics'}:
+            portfolio_options = AnalyticsService.fetch_portfolio_corte_options_v2(db, base_filters)
+            cache_set('portfolio/corte/options', base_filters, portfolio_options, ttl_seconds=600)
+            portfolio_fp_filters = PortfolioSummaryIn(include_rows=False)
+            portfolio_fp = AnalyticsService.fetch_portfolio_corte_first_paint_v2(db, portfolio_fp_filters)
+            cache_set('portfolio-corte-v2/first-paint', portfolio_fp_filters, portfolio_fp, ttl_seconds=180)
+            rendimiento_options = AnalyticsService.fetch_rendimiento_options_v2(db, base_filters)
+            cache_set('rendimiento-v2/options', base_filters, rendimiento_options, ttl_seconds=120)
+            rendimiento_fp = AnalyticsService.fetch_rendimiento_first_paint_v2(db, base_filters)
+            cache_set('rendimiento-v2/first-paint', base_filters, rendimiento_fp, ttl_seconds=180)
+            anuales_options = AnalyticsService.fetch_anuales_options_v2(db, base_filters)
+            cache_set('anuales-v2/options', base_filters, anuales_options, ttl_seconds=120)
+            anuales_fp = AnalyticsService.fetch_anuales_first_paint_v2(db, base_filters)
+            cache_set('anuales-v2/first-paint', base_filters, anuales_fp, ttl_seconds=180)
+        if domain in {'cobranzas', 'cartera'}:
+            cohorte_options_filters = CobranzasCohorteIn()
+            cohorte_options = AnalyticsService.fetch_cobranzas_cohorte_options_v1(db, cohorte_options_filters)
+            cache_set('cobranzas-cohorte/options', cohorte_options_filters, cohorte_options, ttl_seconds=1800)
+            cohorte_fp_filters = CobranzasCohorteFirstPaintIn()
+            cohorte_fp = AnalyticsService.fetch_cobranzas_cohorte_first_paint_v2(db, cohorte_fp_filters)
+            cache_set('cobranzas-cohorte-v2/first-paint', cohorte_fp_filters, cohorte_fp, ttl_seconds=300)
+        _append_log(domain, 'Cache prewarm completado (best-effort)')
+    except Exception as exc:
+        _append_log(domain, f'Cache prewarm omitido: {exc}')
+
+
 def _job_step_from_stage(stage: str | None) -> str | None:
     mapping = {
+        'queued': 'queued',
         'starting': 'bootstrap',
         'connecting_mysql': 'extract',
         'normalizing': 'normalize',
@@ -87,15 +162,41 @@ def _job_step_from_stage(stage: str | None) -> str | None:
         'refreshing_corte_agg': 'refresh_agg',
         'analyzing': 'analyze',
         'completed': 'finalize',
+        'cancelled': 'cancelled',
         'failed': 'failed',
     }
     return mapping.get(str(stage or '').strip().lower())
+
+
+def _status_log_list(log_json: str | None) -> list[str]:
+    """Parse log_json and return a list of strings for SyncStatusOut (avoids Pydantic validation errors)."""
+    try:
+        parsed = json.loads(log_json or '[]')
+    except Exception:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(x) for x in parsed]
 
 _state_lock = threading.Lock()
 _state_by_domain: dict[str, dict] = {}
 _running_by_domain: set[str] = set()
 _last_persist_by_domain: dict[str, dict[str, Any]] = {}
 logger = logging.getLogger(__name__)
+
+
+class SyncCancelledError(RuntimeError):
+    pass
+
+
+def _iso_utc(dt: datetime | None) -> str | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.isoformat().replace('+00:00', 'Z')
 
 
 def _query_path_for(domain: str) -> Path:
@@ -197,7 +298,7 @@ def _parse_iso_date(value: object) -> date | None:
 
 
 def _parse_payment_date(row: dict) -> date | None:
-    day = _normalize_key(row, 'Dia', 'day')
+    day = _normalize_key(row, 'Dia', 'day', 'dia')
     month = _normalize_key(row, 'Mes', 'mes', 'month')
     year = _normalize_key(row, 'AÃ±o', 'AÃƒÂ±o', 'AÃƒÆ’Ã‚Â±o', 'anio', 'year')
     if day.isdigit() and month.isdigit() and year.isdigit():
@@ -261,6 +362,7 @@ def _extract_source_markers(row: dict) -> tuple[datetime | None, str | None]:
         'modificado_en',
     ]
     id_candidates = [
+        'payment_way_id',
         'id',
         'ID',
         'payment_id',
@@ -352,10 +454,12 @@ def _normalize_record(domain: str, row: dict, seq: int) -> dict:
     payment_year = 0
     payment_amount = 0.0
     payment_via_class = ''
+    source_row_id = ''
     analytics_contracts_total = 1
     analytics_debt_total = 0.0
     analytics_paid_total = 0.0
     if domain == 'cobranzas':
+        source_row_id = _normalize_key(row, 'payment_way_id', 'account_payment_way_id', 'apw_id', 'id')
         parsed_payment_date = _parse_payment_date(row)
         payment_date = parsed_payment_date.strftime('%Y-%m-%d') if parsed_payment_date else ''
         payment_month = _parse_month(parsed_payment_date.strftime('%Y-%m-%d') if parsed_payment_date else '') or gestion_month
@@ -364,7 +468,7 @@ def _normalize_record(domain: str, row: dict, seq: int) -> dict:
         payment_via_class = _normalize_payment_via_class(via)
         # Fast canonical hash for high-volume domain (avoids expensive full JSON sort/hash).
         signature = (
-            f'{contract_id}|{gestion_month}|{payment_date}|{payment_amount}|'
+            f'{source_row_id}|{contract_id}|{gestion_month}|{payment_date}|{payment_amount}|'
             f'{payment_via_class}|{supervisor}|{un}|{via}|{tramo}'
         )
         source_hash = hashlib.sha256(signature.encode('utf-8')).hexdigest()
@@ -413,6 +517,7 @@ def _normalize_record(domain: str, row: dict, seq: int) -> dict:
         'payment_year': payment_year,
         'payment_amount': payment_amount,
         'payment_via_class': payment_via_class,
+        'source_row_id': source_row_id,
         'contracts_total': analytics_contracts_total,
         'debt_total': analytics_debt_total,
         'paid_total': analytics_paid_total,
@@ -496,6 +601,7 @@ def _fact_row_from_normalized(domain: str, normalized: dict) -> dict:
             **base,
             'via': normalized['via'],
             'tramo': tramo,
+            'source_row_id': str(normalized.get('source_row_id') or '')[:64] or None,
             'payment_date': payment_date,
             'payment_month': payment_month,
             'payment_year': payment_year,
@@ -526,7 +632,7 @@ def _source_dedupe_key(normalized: dict) -> tuple:
     if domain == 'cobranzas':
         return (
             normalized.get('domain'),
-            normalized.get('source_hash'),
+            normalized.get('source_row_id') or normalized.get('source_hash'),
         )
     return tuple(normalized[k] for k in BUSINESS_KEY_FIELDS)
 
@@ -702,12 +808,17 @@ def _build_mysql_incremental_query(
     hint = MYSQL_INCREMENTAL_HINTS.get(str(domain or '').strip().lower())
     if not hint or watermark_updated_at is None:
         return base_sql, tuple(), False
+    # Cobranzas: evitar pushdown con STR_TO_DATE por conflicto % en formato con placeholders del connector
+    if str(domain or '').strip().lower() == 'cobranzas':
+        return base_sql, tuple(), False
     updated_col = str(hint.get('updated_col') or '').strip()
     id_col = str(hint.get('id_col') or '').strip()
     date_format = str(hint.get('format') or '%Y-%m-%d %H:%i:%s')
     if not updated_col:
         return base_sql, tuple(), False
     dt_value = watermark_updated_at.strftime('%Y-%m-%d %H:%M:%S')
+    # Escapar % en date_format para que el connector MySQL no interprete %Y/%m/etc como placeholders
+    date_format_escaped = date_format.replace('%', '%%')
     wrapped_sql = _strip_sql_trailing_semicolon(base_sql)
     if not wrapped_sql:
         return base_sql, tuple(), False
@@ -715,8 +826,8 @@ def _build_mysql_incremental_query(
         sql = (
             f"SELECT * FROM ({wrapped_sql}) _src "
             f"WHERE ("
-            f"STR_TO_DATE(CAST(_src.`{updated_col}` AS CHAR), '{date_format}') > %s "
-            f"OR (STR_TO_DATE(CAST(_src.`{updated_col}` AS CHAR), '{date_format}') = %s "
+            f"STR_TO_DATE(CAST(_src.`{updated_col}` AS CHAR), '{date_format_escaped}') > %s "
+            f"OR (STR_TO_DATE(CAST(_src.`{updated_col}` AS CHAR), '{date_format_escaped}') = %s "
             f"AND CAST(_src.`{id_col}` AS CHAR) > %s)"
             f")"
         )
@@ -724,7 +835,7 @@ def _build_mysql_incremental_query(
         return sql, params, True
     sql = (
         f"SELECT * FROM ({wrapped_sql}) _src "
-        f"WHERE STR_TO_DATE(CAST(_src.`{updated_col}` AS CHAR), '{date_format}') > %s"
+        f"WHERE STR_TO_DATE(CAST(_src.`{updated_col}` AS CHAR), '{date_format_escaped}') > %s"
     )
     params = (dt_value,)
     return sql, params, True
@@ -738,7 +849,9 @@ def _resolve_mysql_connection_config(db: Session | None = None) -> dict[str, Any
         'password': settings.mysql_password,
         'database': settings.mysql_database,
         'ssl_disabled': bool(getattr(settings, 'mysql_ssl_disabled', True)),
-        'connection_timeout': 20,
+        'connection_timeout': max(5, int(getattr(settings, 'mysql_connection_timeout_seconds', 20) or 20)),
+        'read_timeout': max(30, int(getattr(settings, 'mysql_read_timeout_seconds', 600) or 600)),
+        'write_timeout': max(30, int(getattr(settings, 'mysql_write_timeout_seconds', 120) or 120)),
         'consume_results': True,
     }
     if db is None:
@@ -768,6 +881,58 @@ def _resolve_mysql_connection_config(db: Session | None = None) -> dict[str, Any
     return cfg
 
 
+def _mysql_has_new_data(
+    *,
+    domain: str,
+    watermark_updated_at: datetime | None,
+    watermark_source_id: str | None,
+    mysql_config: dict[str, Any],
+) -> bool:
+    """Run a lightweight MySQL query to see if any row has (updated, id) > watermark. On error return True (run full sync)."""
+    if domain not in MYSQL_PRECHECK_QUERIES:
+        return True
+    if watermark_updated_at is None:
+        return True
+    sql = MYSQL_PRECHECK_QUERIES.get(domain, '').strip()
+    if not sql:
+        return True
+    try:
+        conn = mysql.connector.connect(**dict(mysql_config))
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(sql)
+            row = cursor.fetchone()
+            cursor.close()
+        finally:
+            conn.close()
+        if not row:
+            return False
+        max_updated_raw = row.get('max_updated')
+        max_id_raw = row.get('max_id')
+        if max_updated_raw is None:
+            return False
+        max_updated = _parse_source_updated_at(max_updated_raw)
+        if max_updated is None:
+            return True
+        if max_updated > watermark_updated_at:
+            return True
+        if max_updated < watermark_updated_at:
+            return False
+        wm_id = str(watermark_source_id or '').strip()
+        if not wm_id:
+            return True
+        max_id_str = str(max_id_raw or '').strip()
+        if not max_id_str:
+            return True
+        try:
+            return int(max_id_str) > int(wm_id)
+        except (ValueError, TypeError):
+            return max_id_str > wm_id
+    except Exception:
+        logger.exception('[sync:%s] pre-check failed, assuming new data', domain)
+        return True
+
+
 def _iter_from_mysql(
     query_path: Path,
     *,
@@ -780,6 +945,12 @@ def _iter_from_mysql(
     cfg = dict(mysql_config or _resolve_mysql_connection_config(None))
     conn = mysql.connector.connect(**cfg)
     try:
+        # Shield long-running fetch loops from transient low socket timeouts.
+        try:
+            if getattr(conn, '_socket', None) is not None:
+                conn._socket.settimeout(float(max(30, int(cfg.get('read_timeout') or 600))))
+        except Exception:
+            pass
         cursor = conn.cursor(dictionary=True)
         try:
             query_text = query_path.read_text(encoding='utf-8')
@@ -800,7 +971,7 @@ def _iter_from_mysql(
                     used_pushdown = False
             try:
                 cursor.execute(effective_sql, effective_params)
-            except Exception:
+            except Exception as e:
                 if used_pushdown:
                     logger.warning(
                         '[sync:%s] fallback to base query (incremental pushdown not applicable at source)',
@@ -857,7 +1028,7 @@ def _adaptive_chunk_size(domain: str, configured: int) -> int:
         'gestores': int(getattr(settings, 'sync_chunk_size_gestores', 0) or 0),
     }
     tuned_defaults = {
-        'cobranzas': 16000,
+        'cobranzas': 8000,
         'cartera': 7000,
         'analytics': 12000,
         'contratos': 12000,
@@ -866,7 +1037,10 @@ def _adaptive_chunk_size(domain: str, configured: int) -> int:
     target = per_domain.get(domain_key, 0)
     if target <= 0:
         target = tuned_defaults.get(domain_key, default_chunk)
-    return max(500, min(30000, int((base + target) / 2)))
+    resolved = max(500, min(30000, int((base + target) / 2)))
+    if domain_key == 'cobranzas':
+        return min(resolved, 8000)
+    return resolved
 
 
 def _fetch_batch_size_for_domain(domain: str) -> int:
@@ -881,15 +1055,21 @@ def _fetch_batch_size_for_domain(domain: str) -> int:
     }
     override = per_domain.get(domain_key, 0)
     if override > 0:
-        return max(100, min(50000, override))
+        resolved = max(100, min(50000, override))
+        if domain_key == 'cobranzas':
+            return min(resolved, 4000)
+        return resolved
     tuned_defaults = {
         'analytics': 20000,
         'cartera': 10000,
-        'cobranzas': 12000,
+        'cobranzas': 4000,
         'contratos': 20000,
         'gestores': 20000,
     }
-    return max(100, min(50000, int(tuned_defaults.get(domain_key, base))))
+    resolved = max(100, min(50000, int(tuned_defaults.get(domain_key, base))))
+    if domain_key == 'cobranzas':
+        return min(resolved, 4000)
+    return resolved
 
 
 def _is_low_impact_mode(mode: str) -> bool:
@@ -1218,6 +1398,78 @@ def _delete_target_window_fact(
     db.commit()
 
 
+def _fact_business_key_tuple(record: dict, domain: str) -> tuple:
+    """Build a comparable tuple for fact table business key (for pre-filter lookup)."""
+    if domain == 'cartera':
+        return (
+            str(record.get('contract_id') or ''),
+            str(record.get('close_date') or '')[:10] if record.get('close_date') else '',
+        )
+    if domain == 'cobranzas':
+        source_row_id = str(record.get('source_row_id') or '').strip()
+        if source_row_id:
+            return (source_row_id,)
+        return (
+            str(record.get('contract_id') or ''),
+            str(record.get('payment_date') or '')[:10] if record.get('payment_date') else '',
+            _to_float(record.get('payment_amount')),
+            str(record.get('payment_via_class') or ''),
+        )
+    return (
+        str(record.get('contract_id') or ''),
+        str(record.get('gestion_month') or ''),
+        str(record.get('supervisor') or ''),
+        str(record.get('un') or ''),
+        str(record.get('via') or ''),
+        int(record.get('tramo') or 0),
+    )
+
+
+def _filter_rows_changed_vs_postgres(db: Session, domain: str, rows: list[dict]) -> list[dict]:
+    """Return only rows that are new or have different source_hash than current Postgres. On error return all rows."""
+    if not rows:
+        return []
+    try:
+        model = FACT_TABLE_BY_DOMAIN[domain]
+        table = model.__table__
+        if domain == 'cartera':
+            key_cols = ['contract_id', 'close_date']
+        elif domain == 'cobranzas':
+            key_cols = ['source_row_id']
+        else:
+            key_cols = ['contract_id', 'gestion_month', 'supervisor', 'un', 'via', 'tramo']
+        incoming: dict[tuple, str] = {}
+        row_by_key: dict[tuple, dict] = {}
+        for n in rows:
+            rec = _fact_row_from_normalized(domain, n)
+            key = _fact_business_key_tuple(rec, domain)
+            incoming[key] = str(rec.get('source_hash') or '')
+            row_by_key[key] = n
+        keys_list = list(incoming.keys())
+        if not keys_list:
+            return rows
+        existing: dict[tuple, str] = {}
+        chunk_size = 400
+        key_columns = [getattr(table.c, k) for k in key_cols]
+        for i in range(0, len(keys_list), chunk_size):
+            chunk = keys_list[i : i + chunk_size]
+            stmt = select(*key_columns, table.c.source_hash).where(
+                sa_tuple(*key_columns).in_(chunk)
+            )
+            for row in db.execute(stmt):
+                key = _fact_business_key_tuple(dict(zip(key_cols, row[:-1])), domain)
+                existing[key] = str(row[-1] or '')
+        out = [
+            row_by_key[key]
+            for key in keys_list
+            if key not in existing or existing[key] != incoming.get(key, '')
+        ]
+        return out
+    except Exception:
+        logger.exception('[sync:%s] postgres prefilter failed, using all rows', domain)
+        return rows
+
+
 def _upsert_fact_rows(db: Session, domain: str, rows: list[dict], *, commit: bool = True) -> tuple[int, int]:
     if not rows:
         return 0, 0
@@ -1234,7 +1486,7 @@ def _upsert_fact_rows(db: Session, domain: str, rows: list[dict], *, commit: boo
     if domain == 'cartera':
         index_cols = [table.c.contract_id, table.c.close_date]
     elif domain == 'cobranzas':
-        index_cols = [table.c.contract_id, table.c.payment_date, table.c.payment_amount, table.c.payment_via_class]
+        index_cols = [table.c.source_row_id]
     else:
         index_cols = [table.c.contract_id, table.c.gestion_month, table.c.supervisor, table.c.un, table.c.via, table.c.tramo]
 
@@ -1689,6 +1941,321 @@ def _refresh_cobranzas_cohorte_agg(db: Session, affected_months: set[str]) -> tu
     return int(deleted or 0), len(mappings)
 
 
+def _load_un_canonical_map(db: Session) -> dict[str, str]:
+    out: dict[str, str] = {'ODONTOLOGIA TTO': 'ODONTOLOGIA'}
+    rows = (
+        db.query(DimNegocioUnMap.source_un, DimNegocioUnMap.canonical_un)
+        .filter(DimNegocioUnMap.is_active.is_(True))
+        .all()
+    )
+    for src, dst in rows:
+        s = str(src or '').strip().upper()
+        d = str(dst or '').strip().upper()
+        if s and d:
+            out[s] = d
+    return out
+
+
+def _canonical_un(un_map: dict[str, str], value: object) -> str:
+    raw = str(value or 'S/D').strip().upper() or 'S/D'
+    return str(un_map.get(raw) or raw)
+
+
+def _canonical_via(value: object) -> str:
+    raw = str(value or '').strip().upper()
+    if raw == 'COBRADOR' or 'COBR' in raw:
+        return 'COBRADOR'
+    return 'DEBITO'
+
+
+def _refresh_dim_negocio_contrato(db: Session, affected_months: set[str]) -> tuple[int, int]:
+    months = sorted({str(m).strip() for m in (affected_months or set()) if str(m).strip()}, key=_month_serial)
+    if not months:
+        return 0, 0
+
+    deleted = db.query(DimNegocioContrato).filter(DimNegocioContrato.gestion_month.in_(months)).delete(synchronize_session=False)
+    db.commit()
+
+    un_map = _load_un_canonical_map(db)
+    supervisor_rows = (
+        db.query(
+            AnalyticsFact.contract_id.label('contract_id'),
+            AnalyticsFact.gestion_month.label('gestion_month'),
+            func.max(
+                case(
+                    (func.upper(func.coalesce(AnalyticsFact.supervisor, '')) != 'S/D', AnalyticsFact.supervisor),
+                    else_=literal(''),
+                )
+            ).label('supervisor'),
+        )
+        .filter(AnalyticsFact.gestion_month.in_(months))
+        .group_by(AnalyticsFact.contract_id, AnalyticsFact.gestion_month)
+        .all()
+    )
+    supervisor_map: dict[tuple[str, str], str] = {}
+    for row in supervisor_rows:
+        key = (str(row.contract_id or '').strip(), str(row.gestion_month or '').strip())
+        sup = str(row.supervisor or '').strip().upper()
+        if key[0] and key[1] and sup:
+            supervisor_map[key] = sup
+
+    rows = (
+        db.query(
+            CarteraFact.contract_id,
+            CarteraFact.gestion_month,
+            func.max(CarteraFact.un).label('un_raw'),
+            func.max(CarteraFact.supervisor).label('supervisor_raw'),
+            func.max(CarteraFact.via_cobro).label('via_raw'),
+            func.max(CarteraFact.tramo).label('tramo'),
+            func.max(CarteraFact.payload_json).label('payload_json'),
+        )
+        .filter(CarteraFact.gestion_month.in_(months))
+        .group_by(CarteraFact.contract_id, CarteraFact.gestion_month)
+        .all()
+    )
+    now = datetime.utcnow()
+    mappings: list[dict] = []
+    for row in rows:
+        contract_id = str(row.contract_id or '').strip()
+        gestion_month = str(row.gestion_month or '').strip()
+        if not contract_id or not gestion_month:
+            continue
+        tramo = int(row.tramo or 0)
+        supervisor_raw = str(row.supervisor_raw or 'S/D').strip().upper() or 'S/D'
+        supervisor_canon = supervisor_raw
+        if supervisor_canon == 'S/D':
+            supervisor_canon = str(supervisor_map.get((contract_id, gestion_month)) or 'S/D')
+        via_canon = _canonical_via(row.via_raw)
+        categoria = 'MOROSO' if tramo > 3 else 'VIGENTE'
+        sale_month = ''
+        sale_year = 0
+        try:
+            payload = json.loads(str(row.payload_json or '{}'))
+            sale_month = _month_from_any(payload.get('fecha_contrato'))
+            sale_year = _year_of(sale_month)
+        except Exception:
+            sale_month = ''
+            sale_year = 0
+        mappings.append(
+            {
+                'contract_id': contract_id,
+                'gestion_month': gestion_month,
+                'sale_month': sale_month,
+                'sale_year': int(sale_year or 0),
+                'un_raw': str(row.un_raw or 'S/D').strip().upper() or 'S/D',
+                'supervisor_raw': supervisor_raw,
+                'via_raw': str(row.via_raw or 'S/D').strip().upper() or 'S/D',
+                'tramo': tramo,
+                'categoria': categoria,
+                'un_canonica': _canonical_un(un_map, row.un_raw),
+                'supervisor_canonico': supervisor_canon,
+                'via_canonica': via_canon,
+                'categoria_canonica': categoria,
+                'mapping_version': 'v1',
+                'updated_at': now,
+            }
+        )
+    if mappings:
+        db.bulk_insert_mappings(DimNegocioContrato, mappings)
+        db.commit()
+    return int(deleted or 0), len(mappings)
+
+
+def _refresh_analytics_rendimiento_agg(db: Session, affected_months: set[str]) -> tuple[int, int]:
+    months = sorted({str(m).strip() for m in (affected_months or set()) if str(m).strip()}, key=_month_serial)
+    if not months:
+        return 0, 0
+
+    deleted = (
+        db.query(AnalyticsRendimientoAgg)
+        .filter(AnalyticsRendimientoAgg.gestion_month.in_(months))
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+
+    if db.bind is not None and db.bind.dialect.name == 'postgresql':
+        cuota_text = cast(CarteraFact.payload_json, JSONB).op('->>')('monto_cuota')
+        cuota_expr = case((cuota_text.op('~')(r'^-?\d+(\.\d+)?$'), cast(cuota_text, Numeric)), else_=literal(0))
+        debt_expr = cast(func.coalesce(CarteraFact.monto_vencido, 0.0), Numeric) + cuota_expr
+    else:
+        debt_expr = func.coalesce(CarteraFact.total_saldo, 0.0)
+
+    debt_rows = (
+        db.query(
+            CarteraFact.contract_id,
+            CarteraFact.gestion_month,
+            func.coalesce(func.sum(debt_expr), 0.0).label('debt'),
+        )
+        .filter(CarteraFact.gestion_month.in_(months))
+        .group_by(CarteraFact.contract_id, CarteraFact.gestion_month)
+        .all()
+    )
+    debt_map: dict[tuple[str, str], float] = {}
+    for row in debt_rows:
+        debt_map[(str(row.contract_id or '').strip(), str(row.gestion_month or '').strip())] = float(row.debt or 0.0)
+
+    dim_rows = (
+        db.query(DimNegocioContrato)
+        .filter(DimNegocioContrato.gestion_month.in_(months))
+        .all()
+    )
+    contract_state: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in dim_rows:
+        contract_id = str(row.contract_id or '').strip()
+        month = str(row.gestion_month or '').strip()
+        if not contract_id or not month:
+            continue
+        key = (contract_id, month)
+        contract_state[key] = {
+            'gestion_month': month,
+            'un': str(row.un_canonica or 'S/D').strip().upper() or 'S/D',
+            'supervisor': str(row.supervisor_canonico or 'S/D').strip().upper() or 'S/D',
+            'via_cobro': _canonical_via(row.via_canonica),
+            'categoria': str(row.categoria_canonica or 'VIGENTE').strip().upper() or 'VIGENTE',
+            'tramo': int(row.tramo or 0),
+            'debt': float(debt_map.get(key, 0.0)),
+            'paid_total': 0.0,
+            'paid_via_cobrador': 0.0,
+            'paid_via_debito': 0.0,
+        }
+
+    paid_rows = (
+        db.query(
+            CobranzasFact.contract_id,
+            CobranzasFact.payment_month,
+            CobranzasFact.payment_via_class,
+            func.coalesce(func.sum(CobranzasFact.payment_amount), 0.0).label('paid'),
+        )
+        .filter(CobranzasFact.payment_month.in_(months))
+        .group_by(CobranzasFact.contract_id, CobranzasFact.payment_month, CobranzasFact.payment_via_class)
+        .all()
+    )
+    for row in paid_rows:
+        key = (str(row.contract_id or '').strip(), str(row.payment_month or '').strip())
+        state = contract_state.get(key)
+        if state is None:
+            continue
+        amount = float(row.paid or 0.0)
+        via = _canonical_via(row.payment_via_class)
+        state['paid_total'] += amount
+        if via == 'COBRADOR':
+            state['paid_via_cobrador'] += amount
+        else:
+            state['paid_via_debito'] += amount
+
+    bucket_map: dict[tuple[str, str, str, str, str, int], dict[str, Any]] = {}
+    for state in contract_state.values():
+        bkey = (
+            str(state['gestion_month']),
+            str(state['un']),
+            str(state['supervisor']),
+            str(state['via_cobro']),
+            str(state['categoria']),
+            int(state['tramo']),
+        )
+        bucket = bucket_map.setdefault(
+            bkey,
+            {
+                'gestion_month': bkey[0],
+                'un': bkey[1],
+                'supervisor': bkey[2],
+                'via_cobro': bkey[3],
+                'categoria': bkey[4],
+                'tramo': bkey[5],
+                'debt_total': 0.0,
+                'paid_total': 0.0,
+                'paid_via_cobrador': 0.0,
+                'paid_via_debito': 0.0,
+                'contracts_total': 0,
+                'contracts_paid': 0,
+            },
+        )
+        bucket['debt_total'] += float(state['debt'] or 0.0)
+        bucket['paid_total'] += float(state['paid_total'] or 0.0)
+        bucket['paid_via_cobrador'] += float(state['paid_via_cobrador'] or 0.0)
+        bucket['paid_via_debito'] += float(state['paid_via_debito'] or 0.0)
+        bucket['contracts_total'] += 1
+        if float(state['paid_total'] or 0.0) > 0:
+            bucket['contracts_paid'] += 1
+
+    now = datetime.utcnow()
+    mappings = []
+    for bucket in bucket_map.values():
+        item = dict(bucket)
+        item['updated_at'] = now
+        mappings.append(item)
+    if mappings:
+        db.bulk_insert_mappings(AnalyticsRendimientoAgg, mappings)
+        db.commit()
+    return int(deleted or 0), len(mappings)
+
+
+def _refresh_analytics_anuales_agg(db: Session, affected_months: set[str]) -> tuple[int, int]:
+    months = sorted({str(m).strip() for m in (affected_months or set()) if str(m).strip()}, key=_month_serial)
+    if not months:
+        return 0, 0
+    cutoff = months[-1]
+    deleted = (
+        db.query(AnalyticsAnualesAgg)
+        .filter(AnalyticsAnualesAgg.cutoff_month == cutoff)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+
+    # Materialize a baseline annual aggregate from v1 summary for fast, no-filter rendering.
+    base = AnalyticsService.fetch_anuales_summary_v1(db, AnalyticsFilters())
+    rows = list(base.get('rows') or [])
+    now = datetime.utcnow()
+    mappings: list[dict] = []
+    for row in rows:
+        year = int(str(row.get('year') or 0) or 0)
+        if year <= 0:
+            continue
+        contracts = int(row.get('contracts') or 0)
+        contracts_vig = int(row.get('contractsVigentes') or 0)
+        culminados = int(row.get('culminados') or 0)
+        culminados_vig = int(row.get('culminadosVigentes') or 0)
+        tkp_contrato = float(row.get('tkpContrato') or 0.0)
+        tkp_pago = float(row.get('tkpPago') or 0.0)
+        tkp_trans = float(row.get('tkpTransaccional') or 0.0)
+        tkp_cul_contrato = float(row.get('tkpContratoCulminado') or 0.0)
+        tkp_cul_pago = float(row.get('tkpPagoCulminado') or 0.0)
+        tkp_cul_contrato_v = float(row.get('tkpContratoCulminadoVigente') or 0.0)
+        tkp_cul_pago_v = float(row.get('tkpPagoCulminadoVigente') or 0.0)
+        ltv = float(row.get('ltvCulminadoVigente') or 0.0)
+        mappings.append(
+            {
+                'cutoff_month': cutoff,
+                'sale_year': year,
+                'sale_month': '*',
+                'un': '*',
+                'contracts': contracts,
+                'contracts_vigentes': contracts_vig,
+                'cuota_total': tkp_contrato * contracts,
+                'paid_to_cutoff_total': tkp_trans * max(contracts, 1),
+                'tx_to_cutoff_total': contracts,
+                'paid_by_contract_month_total': tkp_pago * max(contracts, 1),
+                'paid_by_contract_month_count': contracts,
+                'culminados': culminados,
+                'culminados_vigentes': culminados_vig,
+                'cuota_cul_total': tkp_cul_contrato * max(culminados, 1),
+                'cuota_cul_total_vigente': tkp_cul_contrato_v * max(culminados_vig, 1),
+                'paid_by_contract_month_cul_total': tkp_cul_pago * max(culminados, 1),
+                'paid_by_contract_month_cul_count': culminados,
+                'paid_by_contract_month_cul_total_vigente': tkp_cul_pago_v * max(culminados_vig, 1),
+                'paid_by_contract_month_cul_count_vigente': culminados_vig,
+                'total_cobrado_cul_vigente': ltv * max(culminados_vig, 1),
+                'total_deberia_cul_vigente': float(max(culminados_vig, 1)),
+                'months_weighted_numerator_cul_vigente': float(max(culminados_vig, 1)),
+                'updated_at': now,
+            }
+        )
+    if mappings:
+        db.bulk_insert_mappings(AnalyticsAnualesAgg, mappings)
+        db.commit()
+    return int(deleted or 0), len(mappings)
+
+
 def _ensure_agg_perf_indexes(db: Session) -> None:
     # Runtime-safe indexes used by refresh_agg joins/groupings.
     if engine.dialect.name != 'postgresql':
@@ -2075,6 +2642,17 @@ def _queue_has_running_or_pending(db: Session) -> bool:
     return row is not None
 
 
+def _queue_has_manual_running_or_pending(db: Session) -> bool:
+    """True if there is a manual (non-scheduled) job pending or running."""
+    row = (
+        db.query(SyncJob.id)
+        .filter(SyncJob.status.in_(['pending', 'running']))
+        .filter(SyncJob.schedule_id.is_(None))
+        .first()
+    )
+    return row is not None
+
+
 def _queue_job(
     db: Session,
     *,
@@ -2086,6 +2664,8 @@ def _queue_job(
     close_month: str | None,
     close_month_from: str | None,
     close_month_to: str | None,
+    schedule_id: int | None = None,
+    run_group_id: str | None = None,
 ) -> None:
     row = SyncJob(
         job_id=job_id,
@@ -2100,6 +2680,8 @@ def _queue_job(
         priority=100,
         max_retries=1,
         retries=0,
+        schedule_id=schedule_id,
+        run_group_id=run_group_id,
     )
     db.add(row)
     db.commit()
@@ -2130,6 +2712,8 @@ def _claim_next_job(worker_name: str) -> dict[str, Any] | None:
             'close_month': row.close_month,
             'close_month_from': row.close_month_from,
             'close_month_to': row.close_month_to,
+            'schedule_id': getattr(row, 'schedule_id', None),
+            'run_group_id': getattr(row, 'run_group_id', None),
         }
     finally:
         db.close()
@@ -2141,9 +2725,241 @@ def _mark_queue_job_done(job_id: str, status: str, error: str | None = None) -> 
         row = db.query(SyncJob).filter(SyncJob.job_id == job_id).first()
         if row is None:
             return
+        schedule_id = getattr(row, 'schedule_id', None)
+        run_group_id = getattr(row, 'run_group_id', None)
         row.status = status
         row.error = error
         row.finished_at = datetime.utcnow()
+        db.commit()
+        if schedule_id is not None and run_group_id:
+            _update_schedule_after_run_if_done(db, schedule_id, run_group_id)
+    finally:
+        db.close()
+
+
+def _is_queue_job_cancelled(db: Session, job_id: str) -> bool:
+    row = db.query(SyncJob.status).filter(SyncJob.job_id == job_id).first()
+    if not row:
+        return False
+    return str(row[0] or '').lower() == 'cancelled'
+
+
+def _ensure_job_not_cancelled(db: Session, job_id: str, domain: str) -> None:
+    if _is_queue_job_cancelled(db, job_id):
+        _append_log(domain, 'Cancelado por solicitud del usuario')
+        raise SyncCancelledError('cancelled_by_user')
+
+
+def _compute_next_run_at(
+    interval_value: int,
+    interval_unit: str,
+    from_dt: datetime | None = None,
+) -> datetime:
+    """Compute next run time. Minimum interval is 10 minutes."""
+    now = from_dt or datetime.now(timezone.utc)
+    value = max(1, int(interval_value))
+    unit = (str(interval_unit) or 'minute').lower()
+    if unit == 'minute':
+        delta = timedelta(minutes=max(10, value))
+    elif unit == 'hour':
+        delta = timedelta(hours=value)
+    elif unit == 'day':
+        delta = timedelta(days=value)
+    elif unit == 'month':
+        # Approximate: add months then clamp to same day
+        month = now.month + value
+        year = now.year
+        while month > 12:
+            month -= 12
+            year += 1
+        try:
+            next_dt = now.replace(year=year, month=month, day=min(now.day, 28))
+        except ValueError:
+            next_dt = now.replace(year=year, month=month, day=28)
+        return next_dt.replace(tzinfo=timezone.utc)
+    else:
+        delta = timedelta(minutes=max(10, value))
+    return (now + delta).replace(tzinfo=timezone.utc)
+
+
+def _update_schedule_after_run_if_done(
+    db: Session,
+    schedule_id: int,
+    run_group_id: str,
+) -> None:
+    """When the last job of a run_group completes, update schedule last_run_* and next_run_at."""
+    remaining = (
+        db.query(SyncJob.id)
+        .filter(SyncJob.run_group_id == run_group_id)
+        .filter(SyncJob.status.in_(['pending', 'running']))
+        .count()
+    )
+    if remaining > 0:
+        return
+    schedule = db.query(SyncSchedule).filter(SyncSchedule.id == schedule_id).first()
+    if not schedule:
+        return
+    jobs = (
+        db.query(SyncJob)
+        .filter(SyncJob.run_group_id == run_group_id)
+        .order_by(SyncJob.created_at.asc())
+        .all()
+    )
+    job_ids = [j.job_id for j in jobs]
+    runs = (
+        db.query(SyncRun)
+        .filter(SyncRun.job_id.in_(job_ids))
+        .all()
+    ) if job_ids else []
+    run_by_job = {r.job_id: r for r in runs}
+    status = 'ok'
+    rows_inserted = 0
+    rows_updated = 0
+    rows_upserted = 0
+    rows_unchanged = 0
+    rows_read = 0
+    rows_skipped = 0
+    error_msgs = []
+    for j in jobs:
+        r = run_by_job.get(j.job_id)
+        if r and (getattr(r, 'error', None) or (str(getattr(r, 'stage', '') or '').lower() == 'failed')):
+            status = 'failed'
+            if r.error:
+                error_msgs.append(r.error[:200])
+        if r:
+            rows_inserted += int(getattr(r, 'rows_inserted', 0) or 0)
+            rows_updated += int(getattr(r, 'rows_updated', 0) or 0)
+            rows_upserted += int(getattr(r, 'rows_upserted', 0) or 0)
+            rows_unchanged += int(getattr(r, 'rows_unchanged', 0) or 0)
+            rows_read += int(getattr(r, 'rows_read', 0) or 0)
+            rows_skipped += int(getattr(r, 'rows_skipped', 0) or 0)
+    rows_changed_total = rows_inserted + rows_updated + rows_upserted
+    summary = {
+        'job_count': len(jobs),
+        'rows_inserted': rows_inserted,
+        'rows_updated': rows_updated,
+        'rows_upserted': rows_upserted,
+        'rows_unchanged': rows_unchanged,
+        'rows_read': rows_read,
+        'rows_skipped': rows_skipped,
+        'rows_changed_total': rows_changed_total,
+        'had_new_data': rows_changed_total > 0,
+        'errors': error_msgs[:5],
+    }
+    now = datetime.utcnow()
+    schedule.last_run_at = now
+    schedule.last_run_status = status
+    schedule.last_run_summary = json.dumps(summary, ensure_ascii=False)
+    db.commit()
+
+
+def run_scheduler_tick() -> None:
+    """Enqueue scheduled jobs whose next_run_at is due. Called periodically by the worker."""
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        schedules = (
+            db.query(SyncSchedule)
+            .filter(SyncSchedule.enabled == True)  # noqa: E712
+            .filter(SyncSchedule.paused == False)   # noqa: E712
+            .filter(
+                (SyncSchedule.next_run_at.is_(None)) | (SyncSchedule.next_run_at <= now)
+            )
+            .all()
+        )
+        for s in schedules:
+            try:
+                domains = json.loads(s.domains or '[]')
+                if not isinstance(domains, list) or not domains:
+                    s.next_run_at = _compute_next_run_at(
+                        s.interval_value, s.interval_unit, from_dt=now
+                    )
+                    db.commit()
+                    continue
+                run_group_id = str(uuid.uuid4())
+                mode = s.mode or 'incremental'
+                for domain in domains:
+                    if domain not in SYNC_DOMAIN_QUERIES:
+                        continue
+                    job_id = str(uuid.uuid4())
+                    _queue_job(
+                        db,
+                        job_id=job_id,
+                        domain=domain,
+                        mode=mode,
+                        actor='schedule',
+                        year_from=s.year_from,
+                        close_month=s.close_month,
+                        close_month_from=s.close_month_from,
+                        close_month_to=s.close_month_to,
+                        schedule_id=s.id,
+                        run_group_id=run_group_id,
+                    )
+                    _persist_sync_run(
+                        db,
+                        {
+                            'job_id': job_id,
+                            'domain': domain,
+                            'mode': mode,
+                            'year_from': s.year_from,
+                            'close_month': s.close_month,
+                            'target_table': _target_table_name(domain),
+                            'running': True,
+                            'stage': 'queued',
+                            'progress_pct': 0,
+                            'status_message': 'Programado',
+                            'rows_inserted': 0,
+                            'rows_updated': 0,
+                            'rows_skipped': 0,
+                            'rows_read': 0,
+                            'rows_upserted': 0,
+                            'rows_unchanged': 0,
+                            'throughput_rows_per_sec': 0.0,
+                            'eta_seconds': None,
+                            'current_query_file': _query_file_for(domain),
+                            'job_step': 'queued',
+                            'duplicates_detected': 0,
+                            'error': None,
+                            'started_at': now,
+                            'finished_at': None,
+                            'duration_sec': None,
+                            'log': ['Estado: ejecución programada'],
+                            'actor': 'schedule',
+                        },
+                    )
+                s.next_run_at = _compute_next_run_at(s.interval_value, s.interval_unit, from_dt=now)
+                db.commit()
+            except Exception as e:
+                logger.exception("scheduler tick schedule id=%s: %s", s.id, e)
+                db.rollback()
+    finally:
+        db.close()
+
+
+def emergency_stop_all_schedules() -> None:
+    """Pause all schedules and cancel pending/running scheduled jobs."""
+    db = SessionLocal()
+    try:
+        db.query(SyncSchedule).filter(SyncSchedule.enabled == True).update(  # noqa: E712
+            {'paused': True}, synchronize_session=False
+        )
+        db.query(SyncJob).filter(
+            SyncJob.status.in_(['pending', 'running']),
+            SyncJob.schedule_id.isnot(None),
+        ).update(
+            {'status': 'cancelled', 'error': 'cancelled_by_user', 'finished_at': datetime.utcnow()},
+            synchronize_session=False,
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def emergency_resume_all_schedules() -> None:
+    """Resume all schedules (set paused=False)."""
+    db = SessionLocal()
+    try:
+        db.query(SyncSchedule).update({'paused': False}, synchronize_session=False)
         db.commit()
     finally:
         db.close()
@@ -2283,6 +3099,11 @@ def _execute_job(
         )
         wm_filter_updated_at = watermark_row.last_updated_at if watermark_row is not None else None
         wm_filter_source_id = str(watermark_row.last_source_id or '').strip() if watermark_row is not None else ''
+        # full_all must re-read the complete source snapshot.
+        # Applying watermark here can shrink the dataset to only recent updates.
+        if mode == 'full_all':
+            wm_filter_updated_at = None
+            wm_filter_source_id = ''
         watermark_filtered_rows = 0
         if wm_filter_updated_at is not None:
             _append_log(
@@ -2290,6 +3111,71 @@ def _execute_job(
                 f'Watermark activo: updated_at>{wm_filter_updated_at.isoformat()}'
                 + (f' (id>{wm_filter_source_id})' if wm_filter_source_id else ''),
             )
+        if getattr(settings, 'sync_precheck_enabled', True):
+            if not _mysql_has_new_data(
+                domain=domain,
+                watermark_updated_at=wm_filter_updated_at,
+                watermark_source_id=wm_filter_source_id or None,
+                mysql_config=mysql_cfg,
+            ):
+                _append_log(domain, 'Pre-check: sin datos nuevos, omitiendo sync (skipped_no_changes).')
+                finished_at = datetime.now(timezone.utc)
+                duration_sec = round((finished_at - started_at).total_seconds(), 2)
+                _set_state(
+                    domain,
+                    {
+                        'running': False,
+                        'stage': 'completed',
+                        'progress_pct': 100,
+                        'status_message': 'Sin datos nuevos (skipped_no_changes)',
+                        'rows_read': 0,
+                        'rows_upserted': 0,
+                        'rows_unchanged': 0,
+                        'finished_at': finished_at.isoformat(),
+                        'duration_sec': duration_sec,
+                        'job_step': 'finalize',
+                    },
+                )
+                _persist_job_step(db, job_id, domain, 'extract', 'completed', {'rows_read': 0})
+                _persist_job_step(db, job_id, domain, 'normalize', 'completed', {'rows_read': 0, 'normalized': 0})
+                _persist_job_step(db, job_id, domain, 'replace_window', 'completed', {'months': []})
+                _persist_job_step(db, job_id, domain, 'upsert', 'completed', {'rows_upserted': 0, 'rows_unchanged': 0})
+                _persist_job_step(db, job_id, domain, 'finalize', 'completed', {'duration_sec': duration_sec})
+                _persist_job_step(db, job_id, domain, 'bootstrap', 'completed')
+                state_snap = _state_by_domain.get(domain) or {}
+                _persist_sync_run(
+                    db,
+                    {
+                        'job_id': job_id,
+                        'domain': domain,
+                        'mode': mode,
+                        'year_from': year_from,
+                        'close_month': close_month,
+                        'close_month_from': close_month_from,
+                        'close_month_to': close_month_to,
+                        'target_table': _target_table_name(domain),
+                        'running': False,
+                        'stage': 'completed',
+                        'progress_pct': 100,
+                        'status_message': 'Sin datos nuevos (skipped_no_changes)',
+                        'rows_inserted': 0,
+                        'rows_updated': 0,
+                        'rows_skipped': 0,
+                        'rows_read': 0,
+                        'rows_upserted': 0,
+                        'rows_unchanged': 0,
+                        'current_query_file': _query_file_for(domain),
+                        'job_step': 'finalize',
+                        'affected_months': [],
+                        'error': None,
+                        'finished_at': finished_at.replace(tzinfo=None),
+                        'duration_sec': duration_sec,
+                        'log': state_snap.get('log', [])[-200:],
+                        'actor': actor,
+                    },
+                )
+                logger.info('[sync:%s:%s] skipped_no_changes (pre-check)', domain, job_id)
+                return
         max_rows = _max_rows_for_domain(domain)
         low_impact_mode = _is_low_impact_mode(mode)
         default_fetch_batch = _fetch_batch_size_for_domain(domain)
@@ -2350,6 +3236,7 @@ def _execute_job(
                 mysql_config=mysql_cfg,
                 batch_size_override=effective_fetch_batch,
             ):
+                _ensure_job_not_cancelled(db, job_id, domain)
                 source_rows += len(batch)
                 # Runtime resilience: never abort a running sync for size; process incrementally.
                 hard_limit = None
@@ -2474,10 +3361,20 @@ def _execute_job(
         _ensure_cartera_partitions(db, target_months if domain == 'cartera' else set())
 
         _persist_job_step(db, job_id, domain, 'replace_window', 'running', {'months': sorted(target_months, key=_month_serial)})
-        _set_state(domain, {'stage': 'replacing_window', 'progress_pct': 55, 'status_message': 'Reemplazando ventana'})
-        if target_months:
+        incremental_delta_mode = (str(mode or '').lower() == 'incremental' and wm_filter_updated_at is not None)
+        _set_state(
+            domain,
+            {
+                'stage': 'replacing_window',
+                'progress_pct': 55,
+                'status_message': 'Omitiendo replace window (incremental por watermark)' if incremental_delta_mode else 'Reemplazando ventana',
+            },
+        )
+        if target_months and not incremental_delta_mode:
             _delete_target_window(db, domain, mode, year_from, target_months)
             _delete_target_window_fact(db, domain, mode, year_from, close_month, target_months)
+        elif target_months and incremental_delta_mode:
+            _append_log(domain, 'Incremental por watermark: se omite replace_window y se aplica UPSERT directo.')
         _persist_job_step(db, job_id, domain, 'replace_window', 'completed', {'months': sorted(target_months, key=_month_serial)})
         ordered_target_months = sorted(target_months, key=_month_serial)
         _set_state(domain, {'affected_months': ordered_target_months})
@@ -2500,12 +3397,15 @@ def _execute_job(
 
             def _apply_chunk(chunk_rows: list[dict], chunk_key: str) -> int:
                 nonlocal rows_inserted, rows_upserted, rows_unchanged, duplicates_detected, processed
+                _ensure_job_not_cancelled(db, job_id, domain)
                 if not chunk_rows:
                     return 0
                 deduped_rows, chunk_duplicates = _dedupe_rows_in_chunk(chunk_rows)
                 if not deduped_rows:
                     duplicates_detected += chunk_duplicates
                     return 0
+                if getattr(settings, 'sync_postgres_prefilter_enabled', True) and deduped_rows:
+                    deduped_rows = _filter_rows_changed_vs_postgres(db, domain, deduped_rows)
                 if persist_staging_rows:
                     _persist_staging_rows(db, job_id, domain, chunk_key, deduped_rows, commit=False)
                 if persist_sync_records:
@@ -2654,6 +3554,8 @@ def _execute_job(
                 rows_for_upsert = []
             rows_for_upsert, chunk_duplicates = _dedupe_rows_in_chunk(rows_for_upsert)
             duplicates_detected += chunk_duplicates
+            if getattr(settings, 'sync_postgres_prefilter_enabled', True) and rows_for_upsert:
+                rows_for_upsert = _filter_rows_changed_vs_postgres(db, domain, rows_for_upsert)
             if persist_sync_records:
                 rows_inserted = _upsert_sync_records(db, rows_for_upsert, commit=False)
             rows_upserted, rows_unchanged = _upsert_fact_rows(db, domain, rows_for_upsert, commit=False)
@@ -2692,7 +3594,7 @@ def _execute_job(
 
         agg_rows_written = 0
         agg_duration_sec = None
-        if domain in {'cartera', 'cobranzas'}:
+        if domain in {'cartera', 'cobranzas', 'analytics'}:
             agg_started_at = datetime.now(timezone.utc)
             _persist_job_step(db, job_id, domain, 'refresh_agg', 'running')
             _ensure_agg_perf_indexes(db)
@@ -2706,37 +3608,62 @@ def _execute_job(
                     'agg_refresh_completed': False,
                 },
             )
-            _append_log(domain, 'Iniciando recalculo de cartera_corte_agg...')
-            _set_state(
-                domain,
-                {
-                    'stage': 'refreshing_corte_agg',
-                    'progress_pct': 96,
-                    'status_message': 'Recalculando cartera_corte_agg',
-                },
-            )
-            corte_started_at = datetime.now(timezone.utc)
-            deleted_agg, agg_rows_written = _refresh_cartera_corte_agg(db, target_months)
-            corte_duration_sec = round((datetime.now(timezone.utc) - corte_started_at).total_seconds(), 2)
-            _append_log(
-                domain,
-                (
-                    f'cartera_corte_agg listo: borradas={deleted_agg}, '
-                    f'insertadas={agg_rows_written}, duracion={corte_duration_sec}s'
-                ),
-            )
+            if domain in {'cartera', 'cobranzas'}:
+                _append_log(domain, 'Iniciando recalculo de cartera_corte_agg...')
+                _set_state(
+                    domain,
+                    {
+                        'stage': 'refreshing_corte_agg',
+                        'progress_pct': 96,
+                        'status_message': 'Recalculando cartera_corte_agg',
+                    },
+                )
+                corte_started_at = datetime.now(timezone.utc)
+                deleted_agg, agg_rows_written = _refresh_cartera_corte_agg(db, target_months)
+                corte_duration_sec = round((datetime.now(timezone.utc) - corte_started_at).total_seconds(), 2)
+                _append_log(
+                    domain,
+                    (
+                        f'cartera_corte_agg listo: borradas={deleted_agg}, '
+                        f'insertadas={agg_rows_written}, duracion={corte_duration_sec}s'
+                    ),
+                )
+                _set_state(
+                    domain,
+                    {
+                        'stage': 'refreshing_corte_agg',
+                        'progress_pct': 97,
+                        'status_message': 'Recalculando cohorte de cobranzas',
+                    },
+                )
+                cohorte_started_at = datetime.now(timezone.utc)
+                deleted_cohorte, cohorte_rows_written = _refresh_cobranzas_cohorte_agg(db, target_months)
+                cohorte_duration_sec = round((datetime.now(timezone.utc) - cohorte_started_at).total_seconds(), 2)
+                agg_rows_written += int(cohorte_rows_written)
+                _append_log(
+                    domain,
+                    (
+                        f'cohorte_agg listo: borradas={deleted_cohorte}, '
+                        f'insertadas={cohorte_rows_written}, duracion={cohorte_duration_sec}s'
+                    ),
+                )
+            else:
+                deleted_agg = 0
+                deleted_cohorte = 0
+                cohorte_rows_written = 0
+
             _set_state(
                 domain,
                 {
                     'stage': 'refreshing_corte_agg',
                     'progress_pct': 97,
-                    'status_message': 'Recalculando cohorte de cobranzas',
+                    'status_message': 'Actualizando capa semantica analytics',
                 },
             )
-            cohorte_started_at = datetime.now(timezone.utc)
-            deleted_cohorte, cohorte_rows_written = _refresh_cobranzas_cohorte_agg(db, target_months)
-            cohorte_duration_sec = round((datetime.now(timezone.utc) - cohorte_started_at).total_seconds(), 2)
-            agg_rows_written += int(cohorte_rows_written)
+            deleted_dim, dim_rows_written = _refresh_dim_negocio_contrato(db, target_months)
+            deleted_rend, rend_rows_written = _refresh_analytics_rendimiento_agg(db, target_months)
+            deleted_anuales, anuales_rows_written = _refresh_analytics_anuales_agg(db, target_months)
+            agg_rows_written += int(dim_rows_written) + int(rend_rows_written) + int(anuales_rows_written)
             agg_duration_sec = round((datetime.now(timezone.utc) - agg_started_at).total_seconds(), 2)
             _set_state(
                 domain,
@@ -2752,16 +3679,18 @@ def _execute_job(
             _append_log(
                 domain,
                 (
-                    f'cohorte_agg listo: borradas={deleted_cohorte}, '
-                    f'insertadas={cohorte_rows_written}, duracion={cohorte_duration_sec}s'
+                    'Capa analytics actualizada: '
+                    f'dim_borradas={deleted_dim}, dim_insertadas={dim_rows_written}, '
+                    f'rend_borradas={deleted_rend}, rend_insertadas={rend_rows_written}, '
+                    f'anuales_borradas={deleted_anuales}, anuales_insertadas={anuales_rows_written}'
                 ),
             )
             _append_log(
                 domain,
                 (
-                    f'Agregado corte actualizado: cartera_borradas={deleted_agg}, '
-                    f'insertadas={agg_rows_written}, cohorte_borradas={deleted_cohorte}, '
-                    f'cohorte_insertadas={cohorte_rows_written}, duracion={agg_duration_sec}s'
+                    f'Agregados actualizados: cartera_borradas={deleted_agg}, '
+                    f'cohorte_borradas={deleted_cohorte}, cohorte_insertadas={cohorte_rows_written}, '
+                    f'total_insertadas={agg_rows_written}, duracion={agg_duration_sec}s'
                 ),
             )
             _persist_job_step(
@@ -2845,6 +3774,15 @@ def _execute_job(
         if domain == 'cartera':
             invalidated_options = invalidate_prefix('portfolio/options')
             invalidated_summary = invalidate_prefix('portfolio/summary')
+            invalidated_rend_v2_options = invalidate_endpoint('rendimiento-v2/options', lambda _: True)
+            invalidated_rend_v2_summary = invalidate_endpoint('rendimiento-v2/summary', lambda _: True)
+            invalidated_anuales_v2_options = invalidate_endpoint('anuales-v2/options', lambda _: True)
+            invalidated_anuales_v2_summary = invalidate_endpoint('anuales-v2/summary', lambda _: True)
+            invalidated_portfolio_fp = invalidate_endpoint('portfolio-corte-v2/first-paint', lambda _: True)
+            invalidated_rend_v2_fp = invalidate_endpoint('rendimiento-v2/first-paint', lambda _: True)
+            invalidated_anuales_v2_fp = invalidate_endpoint('anuales-v2/first-paint', lambda _: True)
+            invalidated_cohorte_v2_fp = invalidate_endpoint('cobranzas-cohorte-v2/first-paint', lambda _: True)
+            invalidated_cohorte_v2_detail = invalidate_endpoint('cobranzas-cohorte-v2/detail', lambda _: True)
             target_months_set = set(ordered_target_months)
             invalidated_corte_options = invalidate_endpoint(
                 'portfolio/corte/options',
@@ -2866,11 +3804,22 @@ def _execute_job(
                     f'portfolio/options={invalidated_options}, '
                     f'portfolio/summary={invalidated_summary}, '
                     f'portfolio/corte/options={invalidated_corte_options}, '
-                    f'portfolio/corte/summary={invalidated_corte_summary}'
+                    f'portfolio/corte/summary={invalidated_corte_summary}, '
+                    f'portfolio-corte-v2/first-paint={invalidated_portfolio_fp}, '
+                    f'rendimiento-v2/options={invalidated_rend_v2_options}, '
+                    f'rendimiento-v2/summary={invalidated_rend_v2_summary}, '
+                    f'rendimiento-v2/first-paint={invalidated_rend_v2_fp}, '
+                    f'anuales-v2/options={invalidated_anuales_v2_options}, '
+                    f'anuales-v2/summary={invalidated_anuales_v2_summary}, '
+                    f'anuales-v2/first-paint={invalidated_anuales_v2_fp}, '
+                    f'cobranzas-cohorte-v2/first-paint={invalidated_cohorte_v2_fp}, '
+                    f'cobranzas-cohorte-v2/detail={invalidated_cohorte_v2_detail}'
                 ),
             )
         if domain == 'cobranzas':
             target_months_set = set(ordered_target_months)
+            invalidated_rend_v2_summary = invalidate_endpoint('rendimiento-v2/summary', lambda _: True)
+            invalidated_anuales_v2_summary = invalidate_endpoint('anuales-v2/summary', lambda _: True)
             invalidated_corte_options = invalidate_endpoint('portfolio/corte/options', lambda _: True)
             invalidated_corte_summary = invalidate_endpoint(
                 'portfolio/corte/summary',
@@ -2891,6 +3840,30 @@ def _execute_job(
                 ),
             )
             invalidated_cohorte_options = invalidate_endpoint('cobranzas-cohorte/options', lambda _: True)
+            invalidated_cohorte_v2_fp = invalidate_endpoint(
+                'cobranzas-cohorte-v2/first-paint',
+                lambda filters: (
+                    not target_months_set
+                    or not isinstance(filters, dict)
+                    or not filters.get('cutoff_month')
+                    or str(filters.get('cutoff_month')) in target_months_set
+                ),
+            )
+            invalidated_cohorte_v2_detail = invalidate_endpoint(
+                'cobranzas-cohorte-v2/detail',
+                lambda filters: (
+                    not target_months_set
+                    or not isinstance(filters, dict)
+                    or not filters.get('cutoff_month')
+                    or str(filters.get('cutoff_month')) in target_months_set
+                ),
+            )
+            invalidated_rend_v2_fp = invalidate_endpoint('rendimiento-v2/first-paint', lambda _: True)
+            invalidated_anuales_v2_fp = invalidate_endpoint('anuales-v2/first-paint', lambda _: True)
+            try:
+                cohorte_base_cache_clear()
+            except Exception:
+                pass
             _append_log(
                 domain,
                 (
@@ -2898,9 +3871,35 @@ def _execute_job(
                     f'portfolio/corte/options={invalidated_corte_options}, '
                     f'portfolio/corte/summary={invalidated_corte_summary}, '
                     f'cobranzas-cohorte/options={invalidated_cohorte_options}, '
-                    f'cobranzas-cohorte/summary={invalidated_cohorte_summary}'
+                    f'cobranzas-cohorte/summary={invalidated_cohorte_summary}, '
+                    f'cobranzas-cohorte-v2/first-paint={invalidated_cohorte_v2_fp}, '
+                    f'cobranzas-cohorte-v2/detail={invalidated_cohorte_v2_detail}, '
+                    f'rendimiento-v2/summary={invalidated_rend_v2_summary}, '
+                    f'rendimiento-v2/first-paint={invalidated_rend_v2_fp}, '
+                    f'anuales-v2/summary={invalidated_anuales_v2_summary}, '
+                    f'anuales-v2/first-paint={invalidated_anuales_v2_fp}'
                 ),
             )
+        if domain == 'analytics':
+            invalidated_rend_v2_options = invalidate_endpoint('rendimiento-v2/options', lambda _: True)
+            invalidated_rend_v2_summary = invalidate_endpoint('rendimiento-v2/summary', lambda _: True)
+            invalidated_anuales_v2_options = invalidate_endpoint('anuales-v2/options', lambda _: True)
+            invalidated_anuales_v2_summary = invalidate_endpoint('anuales-v2/summary', lambda _: True)
+            invalidated_rend_v2_fp = invalidate_endpoint('rendimiento-v2/first-paint', lambda _: True)
+            invalidated_anuales_v2_fp = invalidate_endpoint('anuales-v2/first-paint', lambda _: True)
+            _append_log(
+                domain,
+                (
+                    'Cache invalido: '
+                    f'rendimiento-v2/options={invalidated_rend_v2_options}, '
+                    f'rendimiento-v2/summary={invalidated_rend_v2_summary}, '
+                    f'rendimiento-v2/first-paint={invalidated_rend_v2_fp}, '
+                    f'anuales-v2/options={invalidated_anuales_v2_options}, '
+                    f'anuales-v2/summary={invalidated_anuales_v2_summary}, '
+                    f'anuales-v2/first-paint={invalidated_anuales_v2_fp}'
+                ),
+            )
+        _prewarm_analytics_cache_after_sync(db, domain)
         logger.info(
             '[sync:%s:%s] completed rows_inserted=%s duplicates=%s duration_sec=%s',
             domain,
@@ -2957,22 +3956,23 @@ def _execute_job(
         _append_log(domain, f'Error: {error}')
         logger.exception('[sync:%s:%s] failed: %s', domain, job_id, error)
         state_snapshot = dict(_state_by_domain.get(domain) or {})
+        is_cancelled = isinstance(exc, SyncCancelledError) or str(error).lower() in {'cancelled', 'cancelled_by_user'}
         failed_state = {
             'running': False,
-            'stage': 'failed',
+            'stage': 'cancelled' if is_cancelled else 'failed',
             'progress_pct': 100,
-            'status_message': 'Sincronizacion con error',
+            'status_message': 'Sincronizacion cancelada' if is_cancelled else 'Sincronizacion con error',
             'rows_skipped': int(state_snapshot.get('rows_skipped') or 0),
             'skipped_unchanged_chunks': int(state_snapshot.get('skipped_unchanged_chunks') or 0),
             'chunk_key': state_snapshot.get('chunk_key'),
-            'chunk_status': 'failed',
-            'error': error,
+            'chunk_status': 'cancelled' if is_cancelled else 'failed',
+            'error': None if is_cancelled else error,
             'finished_at': finished_at.isoformat(),
             'duration_sec': duration_sec,
         }
         _set_state(domain, failed_state)
         failed_step = _job_step_from_stage((_state_by_domain.get(domain) or {}).get('stage')) or 'bootstrap'
-        _persist_job_step(db, job_id, domain, failed_step, 'failed', {'error': error})
+        _persist_job_step(db, job_id, domain, failed_step, 'cancelled' if is_cancelled else 'failed', {'error': error})
         _persist_sync_run(
             db,
             {
@@ -2985,9 +3985,9 @@ def _execute_job(
                 'close_month_to': close_month_to,
                 'target_table': _target_table_name(domain),
                 'running': False,
-                'stage': 'failed',
+                'stage': 'cancelled' if is_cancelled else 'failed',
                 'progress_pct': 100,
-                'status_message': 'Sincronizacion con error',
+                'status_message': 'Sincronizacion cancelada' if is_cancelled else 'Sincronizacion con error',
                 'rows_inserted': int(state_snapshot.get('rows_inserted') or 0),
                 'rows_updated': 0,
                 'rows_skipped': int(state_snapshot.get('rows_skipped') or 0),
@@ -2997,11 +3997,11 @@ def _execute_job(
                 'throughput_rows_per_sec': float(state_snapshot.get('throughput_rows_per_sec') or 0.0),
                 'eta_seconds': 0,
                 'current_query_file': _query_file_for(domain),
-                'job_step': 'failed',
-                'chunk_status': 'failed',
+                'job_step': 'cancelled' if is_cancelled else 'failed',
+                'chunk_status': 'cancelled' if is_cancelled else 'failed',
                 'chunk_key': state_snapshot.get('chunk_key'),
                 'skipped_unchanged_chunks': int(state_snapshot.get('skipped_unchanged_chunks') or 0),
-                'error': error,
+                'error': None if is_cancelled else error,
                 'finished_at': finished_at.replace(tzinfo=None),
                 'duration_sec': duration_sec,
                 'log': list((_state_by_domain.get(domain) or {}).get('log') or []),
@@ -3051,7 +4051,7 @@ class SyncService:
         started_at = datetime.now(timezone.utc).isoformat()
         db = SessionLocal()
         try:
-            if _queue_has_running_or_pending(db):
+            if _queue_has_manual_running_or_pending(db):
                 raise RuntimeError('Ya existe una sincronizacion en curso')
             _queue_job(
                 db,
@@ -3169,7 +4169,10 @@ class SyncService:
             mysql_config=mysql_cfg,
         ):
             for row in batch:
-                n = _normalize_record(domain, row, seq)
+                try:
+                    n = _normalize_record(domain, row, seq)
+                except Exception as norm_e:
+                    raise
                 seq += 1
                 if not _matches_mode(n['gestion_month'], mode, year_from, close_month, range_months_set):
                     continue
@@ -3295,6 +4298,8 @@ class SyncService:
                 row = db.query(SyncRun).filter(SyncRun.job_id == job_id).first()
                 if row is not None and (str(row.stage or '').lower() == 'failed' or bool(row.error)):
                     _mark_queue_job_done(job_id, 'failed', str(row.error or 'sync_failed'))
+                elif row is not None and str(row.stage or '').lower() == 'cancelled':
+                    _mark_queue_job_done(job_id, 'cancelled', 'cancelled_by_user')
                 else:
                     _mark_queue_job_done(job_id, 'completed')
             finally:
@@ -3334,6 +4339,11 @@ class SyncService:
                     partition_key=partition_key,
                 )
                 queue_pos = _queue_position(db, row.job_id)
+                queue_row = (
+                    db.query(SyncJob.status, SyncJob.error, SyncJob.finished_at)
+                    .filter(SyncJob.job_id == row.job_id)
+                    .first()
+                )
                 chunk_row = (
                     db.query(SyncExtractLog)
                     .filter(SyncExtractLog.job_id == row.job_id)
@@ -3347,13 +4357,49 @@ class SyncService:
                     except Exception:
                         details = {}
                     skipped_unchanged = int(details.get('skipped_unchanged_chunks') or 0)
+                running_value = bool(row.running)
+                stage_value = row.stage
+                status_message_value = row.status_message
+                error_value = row.error
+                finished_at_value = row.finished_at
+                progress_value = int(row.progress_pct or 0)
+                if queue_row is not None:
+                    queue_status = str(queue_row[0] or '').strip().lower()
+                    queue_error = str(queue_row[1] or '').strip()
+                    queue_finished_at = queue_row[2]
+                    if queue_status in {'cancelled', 'failed', 'completed'}:
+                        running_value = False
+                        stage_value = queue_status
+                        if queue_status == 'cancelled':
+                            status_message_value = 'Sincronizacion cancelada'
+                            error_value = None if queue_error == 'cancelled_by_user' else (queue_error or error_value)
+                            progress_value = max(progress_value, 100)
+                        elif queue_status == 'failed':
+                            status_message_value = 'Sincronizacion con error'
+                            error_value = queue_error or error_value
+                        elif queue_status == 'completed':
+                            status_message_value = 'Sincronizacion finalizada'
+                            error_value = None
+                            progress_value = max(progress_value, 100)
+                        if finished_at_value is None and queue_finished_at is not None:
+                            finished_at_value = queue_finished_at
+                        queue_pos = None
+                elif running_value and str(stage_value or '').strip().lower() == 'queued':
+                    # If the queue row disappeared, avoid frozen "queued 0%" in UI.
+                    running_value = False
+                    stage_value = 'failed'
+                    status_message_value = 'Estado de cola inconsistente'
+                    error_value = error_value or 'queue_job_missing'
+                    finished_at_value = finished_at_value or datetime.utcnow()
+                    queue_pos = None
+
                 db_result = {
                     'job_id': row.job_id,
                     'domain': row.domain,
-                    'running': bool(row.running),
-                    'stage': row.stage,
-                    'progress_pct': int(row.progress_pct or 0),
-                    'status_message': row.status_message,
+                    'running': running_value,
+                    'stage': stage_value,
+                    'progress_pct': progress_value,
+                    'status_message': status_message_value,
                     'mode': row.mode,
                     'year_from': row.year_from,
                     'close_month': row.close_month,
@@ -3368,7 +4414,7 @@ class SyncService:
                     'throughput_rows_per_sec': float(getattr(row, 'throughput_rows_per_sec', 0.0) or 0.0),
                     'eta_seconds': int(getattr(row, 'eta_seconds', 0) or 0),
                     'current_query_file': getattr(row, 'current_query_file', None) or _query_file_for(domain),
-                    'job_step': getattr(row, 'job_step', None) or _job_step_from_stage(row.stage),
+                    'job_step': getattr(row, 'job_step', None) or _job_step_from_stage(stage_value),
                     'queue_position': queue_pos,
                     'watermark': (
                         {
@@ -3394,10 +4440,10 @@ class SyncService:
                     'agg_rows_written': 0,
                     'agg_duration_sec': None,
                     'duplicates_detected': int(row.duplicates_detected or 0),
-                    'error': row.error,
-                    'log': json.loads(row.log_json or '[]'),
+                    'error': error_value,
+                    'log': _status_log_list(row.log_json),
                     'started_at': row.started_at.isoformat() if row.started_at else None,
-                    'finished_at': row.finished_at.isoformat() if row.finished_at else None,
+                    'finished_at': finished_at_value.isoformat() if finished_at_value else None,
                     'duration_sec': row.duration_sec,
                 }
         finally:
@@ -3413,6 +4459,13 @@ class SyncService:
             state.setdefault('chunk_key', None)
             state.setdefault('chunk_status', None)
             state.setdefault('skipped_unchanged_chunks', 0)
+            raw_log = state.get('log') or []
+            state['log'] = [str(x) for x in raw_log] if isinstance(raw_log, list) else []
+            # Ensure SyncStatusOut-serializable types (Pydantic expects str | None for dates)
+            for key in ('started_at', 'finished_at'):
+                v = state.get(key)
+                if hasattr(v, 'isoformat') and callable(getattr(v, 'isoformat')):
+                    state[key] = v.isoformat() if v else None
             return state
         return {'domain': domain, 'running': False, 'progress_pct': 0, 'log': []}
 
@@ -3588,3 +4641,303 @@ class SyncService:
             }
         finally:
             db.close()
+
+    @staticmethod
+    def list_schedules() -> list[dict]:
+        db = SessionLocal()
+        try:
+            rows = db.query(SyncSchedule).order_by(SyncSchedule.id.asc()).all()
+            return [
+                {
+                    'id': r.id,
+                    'name': r.name,
+                    'interval_value': r.interval_value,
+                    'interval_unit': r.interval_unit,
+                    'domains': json.loads(r.domains or '[]') if isinstance(r.domains, str) else (r.domains or []),
+                    'mode': r.mode,
+                    'year_from': r.year_from,
+                    'close_month': r.close_month,
+                    'close_month_from': r.close_month_from,
+                    'close_month_to': r.close_month_to,
+                    'enabled': bool(r.enabled),
+                    'paused': bool(r.paused),
+                    'last_run_at': _iso_utc(r.last_run_at),
+                    'last_run_status': r.last_run_status,
+                    'last_run_summary': json.loads(r.last_run_summary) if isinstance(r.last_run_summary, str) and r.last_run_summary else r.last_run_summary,
+                    'next_run_at': _iso_utc(r.next_run_at),
+                    'created_at': _iso_utc(r.created_at),
+                    'updated_at': _iso_utc(r.updated_at),
+                }
+                for r in rows
+            ]
+        finally:
+            db.close()
+
+    @staticmethod
+    def get_schedule(schedule_id: int) -> dict | None:
+        db = SessionLocal()
+        try:
+            r = db.query(SyncSchedule).filter(SyncSchedule.id == schedule_id).first()
+            if not r:
+                return None
+            return {
+                'id': r.id,
+                'name': r.name,
+                'interval_value': r.interval_value,
+                'interval_unit': r.interval_unit,
+                'domains': json.loads(r.domains or '[]') if isinstance(r.domains, str) else (r.domains or []),
+                'mode': r.mode,
+                'year_from': r.year_from,
+                'close_month': r.close_month,
+                'close_month_from': r.close_month_from,
+                'close_month_to': r.close_month_to,
+                'enabled': bool(r.enabled),
+                'paused': bool(r.paused),
+                'last_run_at': _iso_utc(r.last_run_at),
+                'last_run_status': r.last_run_status,
+                'last_run_summary': json.loads(r.last_run_summary) if isinstance(r.last_run_summary, str) and r.last_run_summary else r.last_run_summary,
+                'next_run_at': _iso_utc(r.next_run_at),
+                'created_at': _iso_utc(r.created_at),
+                'updated_at': _iso_utc(r.updated_at),
+            }
+        finally:
+            db.close()
+
+    @staticmethod
+    def create_schedule(
+        name: str,
+        interval_value: int,
+        interval_unit: str,
+        domains: list[str],
+        *,
+        mode: str | None = None,
+        year_from: int | None = None,
+        close_month: str | None = None,
+        close_month_from: str | None = None,
+        close_month_to: str | None = None,
+        enabled: bool = True,
+    ) -> dict:
+        if interval_unit == 'minute' and interval_value < 10:
+            raise ValueError('El intervalo mínimo es 10 minutos')
+        db = SessionLocal()
+        try:
+            now = datetime.utcnow()
+            r = SyncSchedule(
+                name=name,
+                interval_value=interval_value,
+                interval_unit=interval_unit,
+                domains=json.dumps(domains),
+                mode=mode,
+                year_from=year_from,
+                close_month=close_month,
+                close_month_from=close_month_from,
+                close_month_to=close_month_to,
+                enabled=enabled,
+                paused=False,
+                next_run_at=_compute_next_run_at(interval_value, interval_unit, from_dt=now),
+            )
+            db.add(r)
+            db.commit()
+            db.refresh(r)
+            return {
+                'id': r.id,
+                'name': r.name,
+                'interval_value': r.interval_value,
+                'interval_unit': r.interval_unit,
+                'domains': json.loads(r.domains or '[]'),
+                'mode': r.mode,
+                'next_run_at': _iso_utc(r.next_run_at),
+            }
+        finally:
+            db.close()
+
+    @staticmethod
+    def update_schedule(
+        schedule_id: int,
+        *,
+        name: str | None = None,
+        interval_value: int | None = None,
+        interval_unit: str | None = None,
+        domains: list[str] | None = None,
+        mode: str | None = None,
+        year_from: int | None = None,
+        close_month: str | None = None,
+        close_month_from: str | None = None,
+        close_month_to: str | None = None,
+        enabled: bool | None = None,
+        paused: bool | None = None,
+    ) -> dict | None:
+        db = SessionLocal()
+        try:
+            r = db.query(SyncSchedule).filter(SyncSchedule.id == schedule_id).first()
+            if not r:
+                return None
+            if name is not None:
+                r.name = name
+            if interval_value is not None:
+                r.interval_value = interval_value
+            if interval_unit is not None:
+                if interval_unit == 'minute' and (r.interval_value if interval_value is None else interval_value) < 10:
+                    raise ValueError('El intervalo mínimo es 10 minutos')
+                r.interval_unit = interval_unit
+            if interval_value is not None and r.interval_unit == 'minute' and interval_value < 10:
+                raise ValueError('El intervalo mínimo es 10 minutos')
+            if domains is not None:
+                r.domains = json.dumps(domains)
+            if mode is not None:
+                r.mode = mode
+            if year_from is not None:
+                r.year_from = year_from
+            if close_month is not None:
+                r.close_month = close_month
+            if close_month_from is not None:
+                r.close_month_from = close_month_from
+            if close_month_to is not None:
+                r.close_month_to = close_month_to
+            if enabled is not None:
+                r.enabled = enabled
+            if paused is not None:
+                r.paused = paused
+            db.commit()
+            db.refresh(r)
+            return {
+                'id': r.id,
+                'name': r.name,
+                'interval_value': r.interval_value,
+                'interval_unit': r.interval_unit,
+                'domains': json.loads(r.domains or '[]'),
+                'next_run_at': _iso_utc(r.next_run_at),
+            }
+        finally:
+            db.close()
+
+    @staticmethod
+    def delete_schedule(schedule_id: int) -> bool:
+        db = SessionLocal()
+        try:
+            # Keep historical jobs/runs, but detach them from the schedule before deleting
+            # to satisfy FK constraints on sync_jobs.schedule_id.
+            db.query(SyncJob).filter(SyncJob.schedule_id == schedule_id).update(
+                {'schedule_id': None},
+                synchronize_session=False,
+            )
+            deleted = db.query(SyncSchedule).filter(SyncSchedule.id == schedule_id).delete(synchronize_session=False)
+            db.commit()
+            return deleted > 0
+        finally:
+            db.close()
+
+    @staticmethod
+    def run_schedule_now(schedule_id: int) -> dict | None:
+        """Enqueue one-shot run for this schedule's domains (same run_group)."""
+        db = SessionLocal()
+        try:
+            s = db.query(SyncSchedule).filter(SyncSchedule.id == schedule_id).first()
+            if not s:
+                return None
+            domains = json.loads(s.domains or '[]') if isinstance(s.domains, str) else (s.domains or [])
+            if not domains:
+                return {'schedule_id': schedule_id, 'job_ids': [], 'message': 'Sin dominios'}
+            run_group_id = str(uuid.uuid4())
+            mode = s.mode or 'incremental'
+            job_ids = []
+            for domain in domains:
+                if domain not in SYNC_DOMAIN_QUERIES:
+                    continue
+                job_id = str(uuid.uuid4())
+                _queue_job(
+                    db,
+                    job_id=job_id,
+                    domain=domain,
+                    mode=mode,
+                    actor='schedule_run_now',
+                    year_from=s.year_from,
+                    close_month=s.close_month,
+                    close_month_from=s.close_month_from,
+                    close_month_to=s.close_month_to,
+                    schedule_id=s.id,
+                    run_group_id=run_group_id,
+                )
+                _persist_sync_run(
+                    db,
+                    {
+                        'job_id': job_id,
+                        'domain': domain,
+                        'mode': mode,
+                        'year_from': s.year_from,
+                        'close_month': s.close_month,
+                        'target_table': _target_table_name(domain),
+                        'running': True,
+                        'stage': 'queued',
+                        'progress_pct': 0,
+                        'status_message': 'Ejecutar ahora',
+                        'rows_inserted': 0,
+                        'rows_updated': 0,
+                        'rows_skipped': 0,
+                        'rows_read': 0,
+                        'rows_upserted': 0,
+                        'rows_unchanged': 0,
+                        'throughput_rows_per_sec': 0.0,
+                        'eta_seconds': None,
+                        'current_query_file': _query_file_for(domain),
+                        'job_step': 'queued',
+                        'duplicates_detected': 0,
+                        'error': None,
+                        'started_at': datetime.utcnow(),
+                        'finished_at': None,
+                        'duration_sec': None,
+                        'log': ['Ejecutar ahora (manual)'],
+                        'actor': 'schedule_run_now',
+                    },
+                )
+                job_ids.append(job_id)
+            db.commit()
+            return {'schedule_id': schedule_id, 'job_ids': job_ids}
+        finally:
+            db.close()
+
+    @staticmethod
+    def pause_schedule(schedule_id: int) -> bool:
+        db = SessionLocal()
+        try:
+            r = db.query(SyncSchedule).filter(SyncSchedule.id == schedule_id).first()
+            if not r:
+                return False
+            r.paused = True
+            db.query(SyncJob).filter(
+                SyncJob.schedule_id == schedule_id,
+                SyncJob.status.in_(['pending', 'running']),
+            ).update(
+                {'status': 'cancelled', 'error': 'cancelled_by_user', 'finished_at': datetime.utcnow()},
+                synchronize_session=False,
+            )
+            db.commit()
+            return True
+        finally:
+            db.close()
+
+    @staticmethod
+    def resume_schedule(schedule_id: int) -> bool:
+        db = SessionLocal()
+        try:
+            r = db.query(SyncSchedule).filter(SyncSchedule.id == schedule_id).first()
+            if not r:
+                return False
+            r.paused = False
+            db.commit()
+            return True
+        finally:
+            db.close()
+
+    @staticmethod
+    def emergency_stop_schedules() -> None:
+        emergency_stop_all_schedules()
+
+    @staticmethod
+    def emergency_resume_schedules() -> None:
+        emergency_resume_all_schedules()
+
+    @staticmethod
+    def run_scheduler_tick_service() -> None:
+        """Called by worker every 60s to enqueue due schedules."""
+        run_scheduler_tick()

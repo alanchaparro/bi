@@ -1,6 +1,8 @@
 ﻿/** Produccion nueva (etapa 1): solo Cartera + Configuracion */
 export const NAV_SECTIONS = [
   { id: 'analisisCartera', label: 'Analisis de Cartera', group: 'Analisis de Cartera' },
+  { id: 'analisisCarteraAnuales', label: 'Análisis Anuales', group: 'Analisis de Cartera' },
+  { id: 'analisisCarteraRendimientoLegacy', label: 'Rendimiento de Cartera', group: 'Analisis de Cartera' },
   { id: 'analisisCobranzaCohorte', label: 'Analisis Cobranzas Corte', group: 'Analisis de Cartera' },
   { id: 'config', label: 'Configuracion', group: 'Sistema' },
 ] as const

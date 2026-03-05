@@ -3,16 +3,26 @@ import axios from 'axios'
 import {
   api,
   createUser,
+  createSyncSchedule,
+  deleteSyncSchedule,
+  emergencyResumeSchedules,
+  emergencyStopSchedules,
   getMysqlConnectionConfig,
   getSyncStatus,
-  previewSync,
+  listSyncSchedules,
   listUsers,
+  pauseSyncSchedule,
+  previewSync,
+  resumeSyncSchedule,
   runSync,
+  runSyncScheduleNow,
   saveMysqlConnectionConfig,
   testMysqlConnectionConfig,
+  updateSyncSchedule,
   updateUser,
   type MysqlConnectionConfig,
   type SyncDomain,
+  type SyncScheduleOut,
   type SyncStatusResponse,
   type UserItem,
 } from '../../shared/api'
@@ -59,6 +69,13 @@ type SyncLive = {
 
 type SyncTagTone = 'ok' | 'warn' | 'info' | 'error'
 type SyncRiskLevel = 'low' | 'medium' | 'high'
+type ScheduleRuntimeState = {
+  running: boolean
+  domain: SyncDomain | null
+  progressPct: number | null
+  stage: string | null
+  statusMessage: string | null
+}
 
 type MassivePreviewItem = {
   domain: SyncDomain
@@ -79,7 +96,7 @@ type TramoRule = {
 }
 
 type RoleType = 'admin' | 'analyst' | 'viewer'
-type ConfigSection = 'usuarios' | 'negocio' | 'importaciones'
+type ConfigSection = 'usuarios' | 'negocio' | 'importaciones' | 'programacion'
 const ROLE_OPTIONS: RoleType[] = ['admin', 'analyst', 'viewer']
 
 const SYNC_DOMAINS: Array<{ value: SyncDomain; label: string }> = [
@@ -122,11 +139,74 @@ function monthSerial(mmYyyy: string): number {
   return year * 12 + month
 }
 
+function parseSyncDate(value?: string | null): Date | null {
+  if (!value) return null
+  const raw = String(value).trim()
+  const normalized = /[zZ]|[+\-]\d{2}:\d{2}$/.test(raw) ? raw : `${raw}Z`
+  const date = new Date(normalized)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
 function formatSyncTimestamp(value?: string | null): string {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
+  const date = parseSyncDate(value)
+  if (!date) return value ? String(value) : '-'
   return date.toLocaleString()
+}
+
+function formatScheduleStage(stage?: string | null, statusMessage?: string | null): string {
+  const raw = String(stage || '').trim().toLowerCase()
+  const map: Record<string, string> = {
+    queued: 'En cola',
+    starting: 'Iniciando',
+    connecting_mysql: 'Conectando',
+    extracting: 'Leyendo',
+    extract: 'Leyendo',
+    normalizing: 'Normalizando',
+    replacing_window: 'Preparando carga',
+    upserting: 'Cargando',
+    refresh_aggregates: 'Actualizando resumenes',
+    finalize: 'Finalizando',
+    completed: 'Completado',
+    failed: 'Con error',
+    cancelled: 'Cancelado',
+  }
+  if (raw && map[raw]) return map[raw]
+  const msg = String(statusMessage || '').trim()
+  if (!msg) return 'Procesando'
+  return msg.length > 48 ? `${msg.slice(0, 48)}...` : msg
+}
+
+function formatScheduleRuntimeLabel(
+  paused: boolean,
+  lastRunStatus: string | null | undefined,
+  runtime: ScheduleRuntimeState | undefined,
+): string {
+  if (paused) return 'Pausado'
+  if (runtime?.running) {
+    const domainPart = runtime.domain ? ` (${runtime.domain})` : ''
+    const pctPart = typeof runtime.progressPct === 'number' ? ` ${runtime.progressPct}%` : ''
+    const stagePart = ` - ${formatScheduleStage(runtime.stage, runtime.statusMessage)}`
+    return `Corriendo${domainPart}${pctPart}${stagePart}`
+  }
+  if (lastRunStatus === 'failed') return 'Fallo ultima ejecucion'
+  if (lastRunStatus === 'ok') return 'Listo'
+  return 'Programado'
+}
+
+function formatScheduleLastRunSummary(summary: SyncScheduleOut['last_run_summary']): string {
+  if (!summary || Array.isArray(summary) || typeof summary !== 'object') return 'Sin ejecucion previa'
+  const data = summary as Record<string, unknown>
+  const changed = Number(data.rows_changed_total ?? (Number(data.rows_inserted || 0) + Number(data.rows_updated || 0) + Number(data.rows_upserted || 0)))
+  const unchanged = Number(data.rows_unchanged || 0)
+  const read = Number(data.rows_read || 0)
+  const skipped = Number(data.rows_skipped || 0)
+  if (changed > 0) {
+    return `Ultima ejecucion: ${changed.toLocaleString()} cargadas${unchanged > 0 ? `, ${unchanged.toLocaleString()} sin cambios` : ''}`
+  }
+  if (read > 0 || unchanged > 0 || skipped > 0) {
+    return `Ultima ejecucion: sin datos nuevos${unchanged > 0 ? ` (${unchanged.toLocaleString()} sin cambios)` : ''}`
+  }
+  return 'Ultima ejecucion: sin datos nuevos'
 }
 
 function toneClass(tone: SyncTagTone): string {
@@ -205,6 +285,16 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
     ssl_disabled: true,
   })
 
+  const [schedules, setSchedules] = useState<SyncScheduleOut[]>([])
+  const [scheduleRuntime, setScheduleRuntime] = useState<Record<number, ScheduleRuntimeState>>({})
+  const [schedulesLoading, setSchedulesLoading] = useState(false)
+  const [scheduleFormName, setScheduleFormName] = useState('')
+  const [scheduleFormIntervalValue, setScheduleFormIntervalValue] = useState(10)
+  const [scheduleFormIntervalUnit, setScheduleFormIntervalUnit] = useState<'minute' | 'hour' | 'day' | 'month'>('minute')
+  const [scheduleFormDomains, setScheduleFormDomains] = useState<SyncDomain[]>(['cobranzas'])
+  const [scheduleSaving, setScheduleSaving] = useState(false)
+  const [scheduleActionLoading, setScheduleActionLoading] = useState<number | 'emergency' | null>(null)
+
   const hasCarteraSelected = selectedDomains.includes('cartera')
   const closeMonthFromValue = useMemo(() => {
     const mm = closeMonthFromPart.trim()
@@ -270,9 +360,9 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
   const throughputTone: SyncTagTone = (syncLive?.throughputRowsPerSec || 0) > 0 ? 'ok' : 'warn'
   const lastUpdatedLabel = useMemo(() => formatSyncTimestamp(syncLive?.lastUpdatedAt), [syncLive?.lastUpdatedAt])
   const isLiveFresh = useMemo(() => {
-    if (!syncLive?.lastUpdatedAt) return false
-    const ts = new Date(syncLive.lastUpdatedAt).getTime()
-    if (Number.isNaN(ts)) return false
+    const parsed = parseSyncDate(syncLive?.lastUpdatedAt)
+    if (!parsed) return false
+    const ts = parsed.getTime()
     return (Date.now() - ts) <= 12000
   }, [syncLive?.lastUpdatedAt])
   const liveTone: SyncTagTone = isLiveFresh ? 'ok' : 'warn'
@@ -332,6 +422,67 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
       setUsersLoading(false)
     }
   }, [])
+
+  const refreshScheduleRuntime = useCallback(async (list: SyncScheduleOut[]) => {
+    const runtimeEntries = await Promise.all(
+      (list || []).map(async (schedule) => {
+        const domains = Array.isArray(schedule.domains) ? schedule.domains : []
+        const checks = await Promise.all(
+          domains.map(async (domain) => {
+            try {
+              const status = await getSyncStatus({ domain })
+              return {
+                domain,
+                running: Boolean(status.running),
+                progressPct: typeof status.progress_pct === 'number' ? Math.max(0, Math.min(100, Math.round(status.progress_pct))) : null,
+                stage: status.stage ? String(status.stage) : null,
+                statusMessage: status.status_message ? String(status.status_message) : null,
+              }
+            } catch {
+              return { domain, running: false, progressPct: null, stage: null, statusMessage: null }
+            }
+          }),
+        )
+        const active = checks.find((item) => item.running)
+        return [schedule.id, {
+          running: Boolean(active),
+          domain: active?.domain || null,
+          progressPct: active?.progressPct ?? null,
+          stage: active?.stage ?? null,
+          statusMessage: active?.statusMessage ?? null,
+        }] as const
+      }),
+    )
+    setScheduleRuntime(Object.fromEntries(runtimeEntries))
+  }, [])
+
+  const loadSchedules = useCallback(async () => {
+    setSchedulesLoading(true)
+    try {
+      const list = await listSyncSchedules()
+      const safeList = list || []
+      setSchedules(safeList)
+      await refreshScheduleRuntime(safeList)
+    } catch (e) {
+      console.error(e)
+      setScheduleRuntime({})
+    } finally {
+      setSchedulesLoading(false)
+    }
+  }, [refreshScheduleRuntime])
+
+  useEffect(() => {
+    if (configSection === 'programacion') void loadSchedules()
+  }, [configSection, loadSchedules])
+
+  useEffect(() => {
+    if (configSection !== 'programacion') return
+    if (!schedules.length) return
+    const timer = window.setInterval(() => {
+      void refreshScheduleRuntime(schedules)
+    }, 8000)
+    return () => window.clearInterval(timer)
+  }, [configSection, schedules, refreshScheduleRuntime])
 
   useEffect(() => {
     void loadTramoConfig()
@@ -926,7 +1077,9 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   sample_rows: MASSIVE_PREVIEW_SAMPLE_ROWS,
                   timeout_seconds: MASSIVE_PREVIEW_TIMEOUT_SECONDS,
                 }
-              : undefined
+              : domain === 'cobranzas'
+                ? { sampled: true, sample_rows: 10000, timeout_seconds: 25 }
+                : undefined
             const preview = await previewSync(payload, previewOptions)
             previewRowsText = `${preview.estimated_rows}`
             if (preview.would_exceed_limit) {
@@ -1032,8 +1185,13 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
         }
         setSyncResult({ rows: totalApplied, log: globalLog })
       } else if (skippedDomains.length > 0) {
+        const errLine = globalLog.find((l) => l.includes(' ERROR: '))
+        const errDetail = errLine ? (errLine.split(' ERROR: ')[1] || errLine).trim() : ''
+        const errMsg = errDetail
+          ? `No se pudo ejecutar ningun dominio. Omitidos/error: ${Array.from(new Set(skippedDomains)).join(', ')}. Detalle API: ${errDetail}`
+          : `No se pudo ejecutar ningun dominio. Omitidos/error: ${Array.from(new Set(skippedDomains)).join(', ')}`
         setSyncResult({
-          error: `No se pudo ejecutar ningun dominio. Omitidos/error: ${Array.from(new Set(skippedDomains)).join(', ')}`,
+          error: errMsg,
           log: globalLog,
         })
       } else {
@@ -1138,6 +1296,15 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
           aria-selected={configSection === 'importaciones'}
         >
           Importaciones
+        </button>
+        <button
+          type="button"
+          className={`btn btn-secondary config-submenu-btn ${configSection === 'programacion' ? 'active' : ''}`}
+          onClick={() => setConfigSection('programacion')}
+          role="tab"
+          aria-selected={configSection === 'programacion'}
+        >
+          Programación
         </button>
       </div>
       <div className="config-form-wrap">
@@ -1492,67 +1659,59 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', maxWidth: '960px' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Ano (opcional)</span>
-              <input
-                className="input"
-                type="text"
-                inputMode="numeric"
-                maxLength={4}
-                placeholder="Ej: 2024"
-                value={yearFrom}
-                onChange={(e) => setYearFrom(e.target.value.replace(/[^0-9]/g, ''))}
-              />
-            </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Mes cierre desde (cartera)</span>
-              <input
-                className="input"
-                type="text"
-                inputMode="numeric"
-                maxLength={2}
-                placeholder="MM"
-                value={closeMonthFromPart}
-                onChange={(e) => setCloseMonthFromPart(e.target.value.replace(/[^0-9]/g, ''))}
-              />
-            </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Ano cierre desde (cartera)</span>
-              <input
-                className="input"
-                type="text"
-                inputMode="numeric"
-                maxLength={4}
-                placeholder="YYYY"
-                value={closeYearFromPart}
-                onChange={(e) => setCloseYearFromPart(e.target.value.replace(/[^0-9]/g, ''))}
-              />
-            </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Mes cierre hasta (cartera)</span>
-              <input
-                className="input"
-                type="text"
-                inputMode="numeric"
-                maxLength={2}
-                placeholder="MM"
-                value={closeMonthToPart}
-                onChange={(e) => setCloseMonthToPart(e.target.value.replace(/[^0-9]/g, ''))}
-              />
-            </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Ano cierre hasta (cartera)</span>
-              <input
-                className="input"
-                type="text"
-                inputMode="numeric"
-                maxLength={4}
-                placeholder="YYYY"
-                value={closeYearToPart}
-                onChange={(e) => setCloseYearToPart(e.target.value.replace(/[^0-9]/g, ''))}
-              />
-            </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '480px' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '140px' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Mes cierre desde (cartera)</span>
+                <input
+                  className="input"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={2}
+                  placeholder="MM"
+                  value={closeMonthFromPart}
+                  onChange={(e) => setCloseMonthFromPart(e.target.value.replace(/[^0-9]/g, ''))}
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '140px' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Mes cierre hasta (cartera)</span>
+                <input
+                  className="input"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={2}
+                  placeholder="MM"
+                  value={closeMonthToPart}
+                  onChange={(e) => setCloseMonthToPart(e.target.value.replace(/[^0-9]/g, ''))}
+                />
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '140px' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Ano cierre desde (cartera)</span>
+                <input
+                  className="input"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={4}
+                  placeholder="YYYY"
+                  value={closeYearFromPart}
+                  onChange={(e) => setCloseYearFromPart(e.target.value.replace(/[^0-9]/g, ''))}
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '140px' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Ano cierre hasta (cartera)</span>
+                <input
+                  className="input"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={4}
+                  placeholder="YYYY"
+                  value={closeYearToPart}
+                  onChange={(e) => setCloseYearToPart(e.target.value.replace(/[^0-9]/g, ''))}
+                />
+              </label>
+            </div>
           </div>
 
           <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', marginTop: '0.5rem' }}>
@@ -1660,7 +1819,9 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                     <span className={toneClass(throughputTone)}>Throughput: <strong>{syncLive.throughputRowsPerSec ? `${syncLive.throughputRowsPerSec.toFixed(1)} filas/s` : '-'}</strong></span>
                     <span className={toneClass(queueTone)}>Cola: <strong>{typeof syncLive.queuePosition === 'number' ? syncLive.queuePosition : '-'}</strong></span>
                     <span className={toneClass(chunkTone)}>Chunk: <strong>{syncLive.chunkStatus || '-'}</strong></span>
-                    <span className={toneClass(chunkTone)}>Chunk key: <code>{syncLive.chunkKey || '-'}</code></span>
+                    <span className={`${toneClass(chunkTone)} sync-progress-tag--long`} title={syncLive.chunkKey || '-'}>
+                      Chunk key: <code>{syncLive.chunkKey || '-'}</code>
+                    </span>
                     <span className={toneClass(watermarkTone)}>Watermark: <code>{syncLive.watermark?.partitionKey || '-'}</code></span>
                   </div>
                 </div>
@@ -1748,6 +1909,274 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
               disabled={displayLog.length === 0 && !displayError}
             >
               Exportar a TXT
+            </button>
+          </div>
+        </div>
+        )}
+
+        {configSection === 'programacion' && (
+        <div>
+          <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Programación de importaciones</h3>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', marginTop: 0, marginBottom: '0.75rem' }}>
+            Programe ejecuciones automáticas por intervalo (mínimo 10 minutos). Parar todo detiene todos los cron y cancela jobs pendientes.
+          </p>
+
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={async () => {
+                setScheduleActionLoading('emergency')
+                try {
+                  await emergencyStopSchedules()
+                  await loadSchedules()
+                } catch (e) {
+                  console.error(e)
+                } finally {
+                  setScheduleActionLoading(null)
+                }
+              }}
+              disabled={scheduleActionLoading === 'emergency'}
+            >
+              {scheduleActionLoading === 'emergency' ? 'Parando...' : 'Parar todo (emergencia)'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={async () => {
+                setScheduleActionLoading('emergency')
+                try {
+                  await emergencyResumeSchedules()
+                  await loadSchedules()
+                } catch (e) {
+                  console.error(e)
+                } finally {
+                  setScheduleActionLoading(null)
+                }
+              }}
+              disabled={scheduleActionLoading === 'emergency'}
+            >
+              {scheduleActionLoading === 'emergency' ? 'Reanudando...' : 'Reanudar todo'}
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={loadSchedules} disabled={schedulesLoading}>
+              {schedulesLoading ? 'Cargando...' : 'Actualizar lista'}
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+            {schedules.length === 0 && !schedulesLoading && (
+              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>No hay programaciones. Cree una abajo.</p>
+            )}
+            {schedules.map((s) => (
+              <div
+                key={s.id}
+                style={{
+                  padding: '0.75rem 1rem',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                }}
+              >
+                <span
+                  style={{
+                    width: '12px',
+                    height: '12px',
+                    borderRadius: '50%',
+                    flexShrink: 0,
+                    background: s.paused
+                      ? '#f59e0b'
+                      : (scheduleRuntime[s.id]?.running
+                        ? '#22c55e'
+                        : (s.last_run_status === 'failed'
+                          ? 'var(--color-error)'
+                          : (s.last_run_status === 'ok' ? 'var(--color-primary)' : '#64748b'))),
+                    opacity: 1,
+                  }}
+                  title={formatScheduleRuntimeLabel(s.paused, s.last_run_status, scheduleRuntime[s.id])}
+                  aria-hidden
+                />
+                <span style={{ fontWeight: 600 }}>{s.name}</span>
+                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+                  cada {s.interval_value} {s.interval_unit === 'minute' ? 'min' : s.interval_unit === 'hour' ? 'h' : s.interval_unit === 'day' ? 'días' : 'meses'}
+                </span>
+                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>
+                  Dominios: {Array.isArray(s.domains) ? s.domains.join(', ') : '-'}
+                </span>
+                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>
+                  Última: {s.last_run_at ? formatSyncTimestamp(s.last_run_at) : '-'}
+                </span>
+                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>
+                  Próxima: {s.next_run_at ? formatSyncTimestamp(s.next_run_at) : '-'}
+                </span>
+                <span
+                  style={{
+                    color: s.paused
+                      ? '#f59e0b'
+                      : (scheduleRuntime[s.id]?.running
+                        ? '#22c55e'
+                        : (s.last_run_status === 'failed'
+                          ? 'var(--color-error)'
+                          : (s.last_run_status === 'ok' ? 'var(--color-primary)' : '#64748b'))),
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  {formatScheduleRuntimeLabel(s.paused, s.last_run_status, scheduleRuntime[s.id])}
+                </span>
+                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
+                  {formatScheduleLastRunSummary(s.last_run_summary)}
+                </span>
+                <div style={{ display: 'flex', gap: '0.35rem', marginLeft: 'auto' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.8rem' }}
+                    disabled={scheduleActionLoading !== null}
+                    onClick={async () => {
+                      setScheduleActionLoading(s.id)
+                      try {
+                        await runSyncScheduleNow(s.id)
+                        await loadSchedules()
+                      } catch (e) {
+                        console.error(e)
+                      } finally {
+                        setScheduleActionLoading(null)
+                      }
+                    }}
+                  >
+                    Ejecutar ahora
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.8rem' }}
+                    disabled={scheduleActionLoading !== null}
+                    onClick={async () => {
+                      setScheduleActionLoading(s.id)
+                      try {
+                        if (s.paused) await resumeSyncSchedule(s.id)
+                        else await pauseSyncSchedule(s.id)
+                        await loadSchedules()
+                      } catch (e) {
+                        console.error(e)
+                      } finally {
+                        setScheduleActionLoading(null)
+                      }
+                    }}
+                  >
+                    {s.paused ? 'Reanudar' : 'Pausar'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.8rem' }}
+                    disabled={scheduleActionLoading !== null}
+                    onClick={async () => {
+                      if (!window.confirm('¿Eliminar esta programación?')) return
+                      setScheduleActionLoading(s.id)
+                      try {
+                        await deleteSyncSchedule(s.id)
+                        await loadSchedules()
+                      } catch (e) {
+                        console.error(e)
+                      } finally {
+                        setScheduleActionLoading(null)
+                      }
+                    }}
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>Nueva programación</h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '480px' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Nombre</span>
+              <input
+                className="input"
+                value={scheduleFormName}
+                onChange={(e) => setScheduleFormName(e.target.value)}
+                placeholder="Ej: Carga horaria"
+                disabled={scheduleSaving}
+              />
+            </label>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Cada</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={10}
+                  value={scheduleFormIntervalValue}
+                  onChange={(e) => setScheduleFormIntervalValue(Math.max(10, Number(e.target.value) || 10))}
+                  disabled={scheduleSaving}
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Unidad</span>
+                <select
+                  className="input"
+                  value={scheduleFormIntervalUnit}
+                  onChange={(e) => setScheduleFormIntervalUnit(e.target.value as 'minute' | 'hour' | 'day' | 'month')}
+                  disabled={scheduleSaving}
+                >
+                  <option value="minute">Minutos (mín. 10)</option>
+                  <option value="hour">Horas</option>
+                  <option value="day">Días</option>
+                  <option value="month">Meses</option>
+                </select>
+              </label>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Dominios</span>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {SYNC_DOMAINS.map((d) => (
+                  <label key={d.value} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={scheduleFormDomains.includes(d.value)}
+                      onChange={(e) => {
+                        if (e.target.checked) setScheduleFormDomains((prev) => [...prev, d.value])
+                        else setScheduleFormDomains((prev) => prev.filter((x) => x !== d.value))
+                      }}
+                      disabled={scheduleSaving}
+                    />
+                    <span>{d.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={scheduleSaving || !scheduleFormName.trim() || scheduleFormDomains.length === 0 || (scheduleFormIntervalUnit === 'minute' && scheduleFormIntervalValue < 10)}
+              onClick={async () => {
+                setScheduleSaving(true)
+                try {
+                  await createSyncSchedule({
+                    name: scheduleFormName.trim(),
+                    interval_value: scheduleFormIntervalUnit === 'minute' ? Math.max(10, scheduleFormIntervalValue) : scheduleFormIntervalValue,
+                    interval_unit: scheduleFormIntervalUnit,
+                    domains: scheduleFormDomains,
+                  })
+                  setScheduleFormName('')
+                  setScheduleFormIntervalValue(10)
+                  setScheduleFormDomains(['cobranzas'])
+                  await loadSchedules()
+                } catch (e) {
+                  console.error(e)
+                } finally {
+                  setScheduleSaving(false)
+                }
+              }}
+            >
+              {scheduleSaving ? 'Creando...' : 'Crear programación'}
             </button>
           </div>
         </div>

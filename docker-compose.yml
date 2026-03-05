@@ -11,6 +11,9 @@ services:
       -c effective_cache_size=5GB
       -c work_mem=16MB
       -c maintenance_work_mem=512MB
+      -c random_page_cost=1.3
+      -c effective_io_concurrency=100
+      -c max_parallel_workers_per_gather=4
       -c max_connections=120
       -c checkpoint_completion_target=0.9
     env_file:

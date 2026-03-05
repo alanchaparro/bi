@@ -1,6 +1,7 @@
 ﻿import React, { useCallback, useEffect, useState } from 'react'
 import {
   login,
+  markPerfRoute,
   logout,
   restoreSession,
   setAuthToken,
@@ -18,6 +19,8 @@ import { SidebarNav } from './components/SidebarNav'
 import { ConfigView } from './modules/config/ConfigView'
 import { AnalisisCarteraView } from './modules/analisisCartera/AnalisisCarteraView'
 import { AnalisisCobranzasCohorteView } from './modules/analisisCobranzasCohorte/AnalisisCobranzasCohorteView'
+import { AnalisisRendimientoView } from './modules/analisisRendimiento/AnalisisRendimientoView'
+import { AnalisisAnualesView } from './modules/analisisAnuales/AnalisisAnualesView'
 
 type GlobalSyncLive = {
   running?: boolean
@@ -49,7 +52,7 @@ export default function App() {
   const [loginError, setLoginError] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [activeSectionId, setActiveSectionId] = useState<string>('analisisCartera')
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const [globalSyncLive, setGlobalSyncLive] = useState<GlobalSyncLive | null>(null)
 
   const role = auth?.role ?? ''
@@ -135,6 +138,18 @@ export default function App() {
     void boot()
   }, [])
 
+  useEffect(() => {
+    const routeMap: Record<string, 'cartera' | 'cohorte' | 'rendimiento' | 'anuales' | 'brokers'> = {
+      analisisCartera: 'cartera',
+      analisisCobranzaCohorte: 'cohorte',
+      analisisCarteraRendimientoLegacy: 'rendimiento',
+      analisisCarteraAnuales: 'anuales',
+      config: 'brokers',
+    }
+    const route = routeMap[activeSectionId]
+    if (route) markPerfRoute(route)
+  }, [activeSectionId])
+
   if (loading) {
     return <div className="loading-page">Cargando aplicación...</div>
   }
@@ -215,6 +230,14 @@ export default function App() {
 
         <section id="analisisCartera" className={`app-section ${activeSectionId === 'analisisCartera' ? '' : 'hidden'}`}>
           <AnalisisCarteraView />
+        </section>
+
+        <section id="analisisCarteraAnuales" className={`app-section ${activeSectionId === 'analisisCarteraAnuales' ? '' : 'hidden'}`}>
+          <AnalisisAnualesView />
+        </section>
+
+        <section id="analisisCarteraRendimientoLegacy" className={`app-section ${activeSectionId === 'analisisCarteraRendimientoLegacy' ? '' : 'hidden'}`}>
+          <AnalisisRendimientoView />
         </section>
 
         <section id="analisisCobranzaCohorte" className={`app-section ${activeSectionId === 'analisisCobranzaCohorte' ? '' : 'hidden'}`}>

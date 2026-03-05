@@ -12,6 +12,17 @@ RUN npm run build
 FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 # SPA: fallback to index.html for client-side routes
-RUN echo 'server { listen 80; root /usr/share/nginx/html; index index.html; location / { try_files $uri $uri/ /index.html; } }' > /etc/nginx/conf.d/default.conf
+RUN echo 'server { \
+listen 80; \
+root /usr/share/nginx/html; \
+index index.html; \
+gzip on; \
+gzip_comp_level 5; \
+gzip_min_length 1024; \
+gzip_vary on; \
+gzip_proxied any; \
+gzip_types application/json text/plain text/css application/javascript application/xml text/xml; \
+location / { try_files $uri $uri/ /index.html; } \
+}' > /etc/nginx/conf.d/default.conf
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

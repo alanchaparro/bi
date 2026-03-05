@@ -1944,6 +1944,20 @@ label.input-label {
   color: var(--color-text);
 }
 
+.sync-progress-tag--long {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  align-items: flex-start;
+  border-radius: 10px;
+  padding: 0.28rem 0.55rem;
+}
+
+.sync-progress-tag--long code {
+  white-space: inherit;
+}
+
 .sync-safe-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -2054,5 +2068,147 @@ label.input-label {
 
   .sync-safe-modal-row {
     grid-template-columns: 1fr 1fr;
+  }
+}
+
+.legacy-report-view {
+  display: grid;
+  gap: 1rem;
+}
+
+.legacy-report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.legacy-report-frame-wrap {
+  padding: 0.5rem;
+}
+
+.legacy-report-frame {
+  width: 100%;
+  min-height: 80vh;
+  border: 0;
+  border-radius: 12px;
+  background: #0b1329;
+}
+
+.rendimiento-card {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.rendimiento-label-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  min-height: 40px;
+  padding: 0 0.55rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.64rem;
+  font-size: 0.83rem;
+  color: var(--color-text-muted);
+  background: var(--input-bg-strong);
+}
+
+.rendimiento-label-toggle input {
+  accent-color: var(--color-primary);
+}
+
+.rendimiento-alert {
+  margin-top: 10px;
+}
+
+.cohorte-inline-summary {
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  background: color-mix(in srgb, var(--color-surface-elevated) 78%, transparent);
+  font-size: 0.86rem;
+}
+
+.rendimiento-kpis-auto {
+  margin-top: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.rendimiento-kpis-auto .cohorte-kpi-card.is-dragging {
+  opacity: 0.62;
+  transform: scale(0.98);
+}
+
+.rendimiento-kpis-auto .cohorte-kpi-card.is-drop-target {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 60%, #ffffff 10%);
+  outline-offset: -2px;
+}
+
+.rendimiento-grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: 1.35fr 1fr;
+}
+
+.rendimiento-charts-grid {
+  grid-template-columns: 1fr;
+  gap: 0.8rem;
+}
+
+.rend-chart-card {
+  padding: 12px;
+}
+
+.rend-chart-title {
+  margin-top: 0;
+}
+
+.rend-chart-svg {
+  width: 100%;
+  min-height: 240px;
+  overflow: visible;
+}
+
+.rend-axis-line {
+  stroke: color-mix(in srgb, var(--color-border) 85%, transparent);
+  stroke-width: 1;
+}
+
+.rend-grid-line {
+  stroke: color-mix(in srgb, var(--color-border) 55%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.rend-axis-text {
+  fill: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.rend-label-bg {
+  fill: rgba(15, 23, 42, 0.9);
+  stroke: color-mix(in srgb, var(--color-primary) 55%, transparent);
+  stroke-width: 1;
+}
+
+.rend-label-text {
+  fill: #e2e8f0;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.rend-no-data {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 1100px) {
+  .rendimiento-grid {
+    grid-template-columns: 1fr;
   }
 }

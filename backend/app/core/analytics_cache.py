@@ -21,6 +21,23 @@ _hits_by_endpoint: dict[str, int] = defaultdict(int)
 _misses_by_endpoint: dict[str, int] = defaultdict(int)
 
 
+def _canonicalize(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: _canonicalize(v) for k, v in sorted(value.items(), key=lambda item: str(item[0]))}
+    if isinstance(value, list):
+        normalized = [_canonicalize(v) for v in value]
+        dedup: builtins.set[str] = builtins.set()
+        ordered: list[Any] = []
+        for item in normalized:
+            key = json.dumps(item, sort_keys=True, default=str)
+            if key in dedup:
+                continue
+            dedup.add(key)
+            ordered.append(item)
+        return sorted(ordered, key=lambda item: json.dumps(item, sort_keys=True, default=str))
+    return value
+
+
 def _signature(filters: Any) -> str:
     if hasattr(filters, 'model_dump'):
         data = filters.model_dump()
@@ -28,7 +45,7 @@ def _signature(filters: Any) -> str:
         data = filters
     else:
         data = {}
-    raw = json.dumps(data, sort_keys=True, default=str)
+    raw = json.dumps(_canonicalize(data), sort_keys=True, default=str)
     return hashlib.sha256(raw.encode()).hexdigest()
 
 

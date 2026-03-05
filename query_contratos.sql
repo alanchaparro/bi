@@ -3,6 +3,8 @@ SELECT
     c.`date`,
     c.amount AS monto_cuota,
     c.status,
+    c.created_at,
+    c.updated_at,
 
     CONCAT_WS(' ', seller.first_name, seller.last_name)       AS Vendedor,
     CASE

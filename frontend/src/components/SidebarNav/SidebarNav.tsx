@@ -14,6 +14,8 @@ const SECTION_ICON: Record<string, string> = {
   cartera: '[]',
   cobranzas: '$',
   analisisCartera: 'AC',
+  analisisCarteraAnuales: 'AA',
+  analisisCarteraRendimientoLegacy: 'RL',
   acaMovimiento: '->',
   acaAnuales: '->',
   rendimiento: 'R',

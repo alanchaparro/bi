@@ -3,8 +3,10 @@ import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter";
 import { ActiveFilterChips, type FilterChip } from "../../components/filters/ActiveFilterChips";
 import { ToastStack, type ToastMessage, type ToastType } from "../../components/feedback/ToastStack";
 import {
+  getPortfolioCorteFirstPaint,
   getPortfolioCorteOptions,
   getPortfolioCorteSummary,
+  markPerfReady,
   type PortfolioCorteOptionsResponse,
   type PortfolioCorteSummaryResponse,
 } from "../../shared/api";
@@ -496,9 +498,28 @@ export function AnalisisCarteraView() {
   }, [optionsReady, summaryData, loadSummary, loadKpiSummary, appliedFilters]);
 
   useEffect(() => {
+    if (!optionsReady || summaryData) return;
+    void (async () => {
+      try {
+        const fp = await getPortfolioCorteFirstPaint({ ...toPayload(appliedFilters), include_rows: false });
+        if (fp?.kpis) {
+          setKpiSummaryData((prev) => ({ ...(prev || {}), kpis: fp.kpis }));
+        }
+      } catch {
+        // non-blocking fallback
+      }
+    })();
+  }, [appliedFilters, optionsReady, summaryData, toPayload]);
+
+  useEffect(() => {
     if (!optionsReady || !summaryData) return;
     void loadKpiSummary(appliedFilters);
   }, [kpiMode, appliedFilters, optionsReady, summaryData, loadKpiSummary]);
+
+  useEffect(() => {
+    if (!summaryData || !optionsReady || loadingSummary || loadingKpis) return;
+    void markPerfReady("cartera");
+  }, [loadingKpis, loadingSummary, optionsReady, summaryData]);
 
   const applyFilters = useCallback(async () => {
     if (loadingOptions) return;

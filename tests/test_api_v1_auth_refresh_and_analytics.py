@@ -17,7 +17,7 @@ from app.main import app  # noqa: E402
 from app.core.rate_limit import rate_limiter  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
-from app.models.brokers import AnalyticsContractSnapshot, AuthUser, AuthUserState  # noqa: E402
+from app.models.brokers import AnalyticsContractSnapshot, AuthUser, AuthUserState, FrontendPerfMetric  # noqa: E402
 
 TEST_ADMIN_USER = os.environ.get('TEST_ADMIN_USER', os.environ.get('DEMO_ADMIN_USER', 'admin'))
 TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', os.environ.get('DEMO_ADMIN_PASSWORD', 'change_me_demo_admin_password'))
@@ -206,6 +206,139 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
         payload = r.json()
         self.assertEqual(payload.get('error_code'), 'INVALID_PAYLOAD')
         self.assertTrue(payload.get('trace_id'))
+
+    def test_analytics_anuales_options_uses_cache(self):
+        login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
+        token = login.json()['access_token']
+        headers = {'Authorization': f'Bearer {token}'}
+
+        fake_options = {
+            'options': {'uns': ['MEDICINA ESTETICA'], 'years': ['2025'], 'contract_months': ['01/2025']},
+            'default_cutoff': '02/2026',
+            'meta': {'source': 'api-v1'},
+        }
+        with patch('app.services.analytics_service.AnalyticsService.fetch_anuales_options_v1', return_value=fake_options) as mocked:
+            payload = {'un': ['__CACHE_ANUALES_OPT__']}
+            r1 = self.client.post('/api/v1/analytics/anuales/options', json=payload, headers=headers)
+            r2 = self.client.post('/api/v1/analytics/anuales/options', json=payload, headers=headers)
+            self.assertEqual(r1.status_code, 200)
+            self.assertEqual(r2.status_code, 200)
+            self.assertEqual(r1.json().get('default_cutoff'), '02/2026')
+            self.assertEqual(mocked.call_count, 1)
+
+    def test_analytics_anuales_summary_uses_cache(self):
+        login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
+        token = login.json()['access_token']
+        headers = {'Authorization': f'Bearer {token}'}
+
+        fake_summary = {
+            'rows': [{'year': '2025', 'contracts': 2}],
+            'cutoff': '02/2026',
+            'meta': {'source': 'api-v1'},
+        }
+        with patch('app.services.analytics_service.AnalyticsService.fetch_anuales_summary_v1', return_value=fake_summary) as mocked:
+            payload = {'un': ['__CACHE_ANUALES_SUM__']}
+            r1 = self.client.post('/api/v1/analytics/anuales/summary', json=payload, headers=headers)
+            r2 = self.client.post('/api/v1/analytics/anuales/summary', json=payload, headers=headers)
+            self.assertEqual(r1.status_code, 200)
+            self.assertEqual(r2.status_code, 200)
+            self.assertEqual(r1.json().get('cutoff'), '02/2026')
+            self.assertEqual(mocked.call_count, 1)
+
+    def test_analytics_rendimiento_v2_options_uses_cache(self):
+        login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
+        token = login.json()['access_token']
+        headers = {'Authorization': f'Bearer {token}'}
+
+        fake_options = {
+            'options': {'uns': ['ODONTOLOGIA'], 'tramos': ['0'], 'gestion_months': ['02/2026']},
+            'default_gestion_month': '02/2026',
+            'meta': {'source': 'api-v2', 'source_table': 'analytics_rendimiento_agg'},
+        }
+        with patch('app.services.analytics_service.AnalyticsService.fetch_rendimiento_options_v2', return_value=fake_options) as mocked:
+            payload = {'un': ['__CACHE_REND_V2_OPT__']}
+            r1 = self.client.post('/api/v1/analytics/rendimiento-v2/options', json=payload, headers=headers)
+            r2 = self.client.post('/api/v1/analytics/rendimiento-v2/options', json=payload, headers=headers)
+            self.assertEqual(r1.status_code, 200)
+            self.assertEqual(r2.status_code, 200)
+            self.assertEqual(r1.json().get('default_gestion_month'), '02/2026')
+            self.assertIn('cache_hit', r2.json().get('meta', {}))
+            self.assertEqual(mocked.call_count, 1)
+
+    def test_analytics_anuales_v2_summary_uses_cache(self):
+        login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
+        token = login.json()['access_token']
+        headers = {'Authorization': f'Bearer {token}'}
+
+        fake_summary = {
+            'rows': [{'year': '2025', 'contracts': 10}],
+            'cutoff': '02/2026',
+            'meta': {'source': 'api-v2', 'source_table': 'analytics_anuales_agg'},
+        }
+        with patch('app.services.analytics_service.AnalyticsService.fetch_anuales_summary_v2', return_value=fake_summary) as mocked:
+            payload = {'un': ['__CACHE_ANUALES_V2_SUM__']}
+            r1 = self.client.post('/api/v1/analytics/anuales-v2/summary', json=payload, headers=headers)
+            r2 = self.client.post('/api/v1/analytics/anuales-v2/summary', json=payload, headers=headers)
+            self.assertEqual(r1.status_code, 200)
+            self.assertEqual(r2.status_code, 200)
+            self.assertEqual(r1.json().get('cutoff'), '02/2026')
+            self.assertIn('pipeline_version', r2.json().get('meta', {}))
+            self.assertEqual(mocked.call_count, 1)
+
+    def test_analytics_cobranzas_cohorte_v2_first_paint_uses_cache(self):
+        login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
+        token = login.json()['access_token']
+        headers = {'Authorization': f'Bearer {token}'}
+
+        fake_payload = {
+            'cutoff_month': '02/2026',
+            'effective_cartera_month': '02/2026',
+            'totals': {'activos': 1, 'pagaron': 1, 'deberia': 10.0, 'cobrado': 10.0, 'pct_pago_contratos': 1, 'pct_cobertura_monto': 1},
+            'by_year': {'2026': {'activos': 1, 'pagaron': 1, 'deberia': 10.0, 'cobrado': 10.0, 'pct_pago_contratos': 1, 'pct_cobertura_monto': 1}},
+            'top_sale_months': [],
+            'meta': {'source': 'api-v2', 'source_table': 'cobranzas_cohorte_agg'},
+        }
+        with patch('app.services.analytics_service.AnalyticsService.fetch_cobranzas_cohorte_first_paint_v2', return_value=fake_payload) as mocked:
+            payload = {'cutoff_month': '02/2026', 'un': ['__CACHE_COH_FP__']}
+            r1 = self.client.post('/api/v1/analytics/cobranzas-cohorte-v2/first-paint', json=payload, headers=headers)
+            r2 = self.client.post('/api/v1/analytics/cobranzas-cohorte-v2/first-paint', json=payload, headers=headers)
+            self.assertEqual(r1.status_code, 200)
+            self.assertEqual(r2.status_code, 200)
+            self.assertIn('cache_hit', r2.json().get('meta', {}))
+            self.assertEqual(mocked.call_count, 1)
+
+    def test_telemetry_frontend_perf_ingest_and_summary(self):
+        login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
+        token = login.json()['access_token']
+        headers = {'Authorization': f'Bearer {token}'}
+
+        db = SessionLocal()
+        try:
+            db.query(FrontendPerfMetric).delete()
+            db.commit()
+        finally:
+            db.close()
+
+        payload = {
+            'route': 'cohorte',
+            'session_id': 'sess_test_12345',
+            'trace_id': 'trace_test_1',
+            'ttfb_ms': 120.5,
+            'fcp_ms': 300.1,
+            'ready_ms': 980.3,
+            'api_calls': [{'endpoint': '/analytics/cobranzas-cohorte-v2/first-paint', 'ms': 220.0, 'cache_hit': False}],
+            'timestamp_utc': '2026-03-05T15:00:00Z',
+            'app_version': 'test',
+        }
+        ing = self.client.post('/api/v1/telemetry/frontend-perf', json=payload, headers=headers)
+        self.assertEqual(ing.status_code, 200)
+        self.assertTrue(ing.json().get('ok'))
+
+        sm = self.client.get('/api/v1/telemetry/frontend-perf/summary?route=cohorte', headers=headers)
+        self.assertEqual(sm.status_code, 200)
+        body = sm.json()
+        self.assertGreaterEqual(int(body.get('sample_count') or 0), 1)
+        self.assertIn('ready_ms', body)
 
 
 if __name__ == '__main__':

@@ -52,7 +52,12 @@ export function MultiSelectFilter({
           : `${selected.length} seleccionados`;
 
   return (
-    <div ref={containerRef} aria-label={label} className={className} style={{ position: "relative" }}>
+    <div
+      ref={containerRef}
+      aria-label={label}
+      className={className}
+      style={{ position: "relative", zIndex: open ? 600 : "auto", isolation: "isolate" }}
+    >
       <label className="input-label">{label}</label>
       <button
         type="button"
@@ -92,11 +97,12 @@ export function MultiSelectFilter({
             border: "1px solid var(--color-border)",
             borderRadius: "var(--radius-sm)",
             padding: "0.5rem",
-            background: "var(--dropdown-bg)",
+            background: "var(--input-bg-strong)",
             color: "var(--color-text)",
-            zIndex: 50,
-            boxShadow: "var(--shadow-md)",
-            backdropFilter: "blur(8px)",
+            zIndex: 610,
+            boxShadow: "0 16px 32px rgba(2, 6, 23, 0.55)",
+            backdropFilter: "none",
+            opacity: 1,
           }}
         >
           <input

@@ -52,18 +52,18 @@ class PortfolioSummaryIn(AnalyticsFilters):
 
 class PortfolioOptionsOut(BaseModel):
     options: dict[str, list[str]]
-    meta: dict[str, str]
+    meta: dict[str, str | bool | None]
 
 
 class PortfolioCorteOptionsOut(BaseModel):
     options: dict[str, list[str]]
-    meta: dict[str, str]
+    meta: dict[str, str | bool | None]
 
 
 class PortfolioCorteSummaryOut(BaseModel):
     kpis: dict[str, float | int]
     charts: dict[str, dict]
-    meta: dict[str, str]
+    meta: dict[str, str | bool | None]
 
 
 class CobranzasCohorteIn(BaseModel):
@@ -86,4 +86,15 @@ class CobranzasCohorteIn(BaseModel):
 class CobranzasCohorteOptionsOut(BaseModel):
     options: dict[str, list[str]]
     default_cutoff: str | None = None
-    meta: dict[str, str]
+    meta: dict[str, str | bool | None]
+
+
+class CobranzasCohorteFirstPaintIn(CobranzasCohorteIn):
+    top_n_sale_months: int = Field(default=12, ge=1, le=36)
+
+
+class CobranzasCohorteDetailIn(CobranzasCohorteIn):
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=24, ge=1, le=120)
+    sort_by: str = Field(default='sale_month', pattern='^(sale_month|cobrado|deberia|pagaron)$')
+    sort_dir: str = Field(default='asc', pattern='^(asc|desc)$')

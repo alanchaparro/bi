@@ -2167,8 +2167,10 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 self._send_json({"supervisors": load_brokers_supervisors()})
             return
 
-        if self.path == '/':
+        if parsed_path.path == '/':
             self.path = '/dashboard.html'
+            if parsed_path.query:
+                self.path = f'{self.path}?{parsed_path.query}'
         return http.server.SimpleHTTPRequestHandler.do_GET(self)
 
     def do_POST(self):

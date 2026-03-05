@@ -225,6 +225,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         dataReadiness: { cartera: false, cobranzas: false, gestores: false, contratos: false, analytics: false }
     };
 
+    function tabFromUrl() {
+        try {
+            const qs = new URLSearchParams(window.location.search || '');
+            const tab = String(qs.get('tab') || '').trim();
+            return tab || '';
+        } catch (e) {
+            return '';
+        }
+    }
+
     function showInfo(message) {
         if (uiNotify.showInfo) uiNotify.showInfo(message);
         console.info(message);
@@ -605,6 +615,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         brokersMora: document.getElementById('brokers-mora-content'),
         config: document.getElementById('config-content')
     };
+    const requestedTab = tabFromUrl();
+    const hasRequestedTab = !!requestedTab && Object.prototype.hasOwnProperty.call(contents, requestedTab);
 
     // Data State
     let state = {
@@ -772,8 +784,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             showTabsNav();
             dropZone.classList.add('hidden');
 
-            // Auto-navigate to Performance if all exist
-            if (aData) {
+            if (hasRequestedTab) {
+                switchTab(requestedTab);
+            } else if (aData) {
                 switchTab('analisisCartera');
             } else if (cData && cobData) {
                 switchTab('rendimiento');
@@ -786,14 +799,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Never force upload screen on refresh; keep local-first flow via Config
             showTabsNav();
             dropZone.classList.add('hidden');
-            switchTab('config');
+            switchTab(hasRequestedTab ? requestedTab : 'config');
         }
     } catch (e) {
         console.error('Error loading from IDB:', e);
         loading.classList.add('hidden');
         showTabsNav();
         dropZone.classList.add('hidden');
-        switchTab('config');
+        switchTab(hasRequestedTab ? requestedTab : 'config');
     }
 
     // Drag and Drop

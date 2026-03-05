@@ -208,3 +208,94 @@ class SyncChunkLogsOut(BaseModel):
     job_id: str
     domain: str | None = None
     chunks: list[SyncChunkLogOut] = Field(default_factory=list)
+
+
+SYNC_SCHEDULE_INTERVAL_UNITS = {'minute', 'hour', 'day', 'month'}
+
+
+class SyncScheduleCreateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    interval_value: int = Field(ge=1)
+    interval_unit: str = Field(min_length=1, max_length=16)
+    domains: list[str] = Field(min_length=1)
+
+    @field_validator('interval_unit')
+    @classmethod
+    def validate_interval_unit(cls, v: str) -> str:
+        u = (v or '').strip().lower()
+        if u not in SYNC_SCHEDULE_INTERVAL_UNITS:
+            raise ValueError(f'interval_unit debe ser uno de: {sorted(SYNC_SCHEDULE_INTERVAL_UNITS)}')
+        return u
+
+    @field_validator('domains')
+    @classmethod
+    def validate_domains(cls, v: list) -> list:
+        if not v:
+            raise ValueError('domains no puede estar vacio')
+        out = []
+        for d in v:
+            n = str(d).strip().lower()
+            if n not in SYNC_DOMAINS:
+                raise ValueError(f'dominio invalido: {d}')
+            out.append(n)
+        return out
+
+
+class SyncScheduleUpdateIn(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    interval_value: int | None = Field(default=None, ge=1)
+    interval_unit: str | None = Field(default=None, min_length=1, max_length=16)
+    domains: list[str] | None = None
+    mode: str | None = None
+    year_from: int | None = None
+    close_month: str | None = None
+    close_month_from: str | None = None
+    close_month_to: str | None = None
+    enabled: bool | None = None
+    paused: bool | None = None
+
+    @field_validator('interval_unit')
+    @classmethod
+    def validate_interval_unit(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        u = (v or '').strip().lower()
+        if u not in SYNC_SCHEDULE_INTERVAL_UNITS:
+            raise ValueError(f'interval_unit debe ser uno de: {sorted(SYNC_SCHEDULE_INTERVAL_UNITS)}')
+        return u
+
+    @field_validator('domains')
+    @classmethod
+    def validate_domains(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return None
+        if not v:
+            raise ValueError('domains no puede estar vacio')
+        out = []
+        for d in v:
+            n = str(d).strip().lower()
+            if n not in SYNC_DOMAINS:
+                raise ValueError(f'dominio invalido: {d}')
+            out.append(n)
+        return out
+
+
+class SyncScheduleOut(BaseModel):
+    id: int
+    name: str
+    interval_value: int
+    interval_unit: str
+    domains: list[str]
+    mode: str | None = None
+    year_from: int | None = None
+    close_month: str | None = None
+    close_month_from: str | None = None
+    close_month_to: str | None = None
+    enabled: bool = True
+    paused: bool = False
+    last_run_at: str | None = None
+    last_run_status: str | None = None
+    last_run_summary: dict | list | None = None
+    next_run_at: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
