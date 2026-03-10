@@ -4,8 +4,8 @@ import urllib.request
 
 
 BASE = os.getenv('E2E_API_BASE', 'http://localhost:8000/api/v1').rstrip('/')
-E2E_USERNAME = os.getenv('E2E_USERNAME', 'admin')
-E2E_PASSWORD = os.getenv('E2E_PASSWORD', 'change_me_demo_admin_password')
+E2E_USERNAME = os.getenv('E2E_USERNAME', os.getenv('DEMO_ADMIN_USER', 'admin'))
+E2E_PASSWORD = os.getenv('E2E_PASSWORD', os.getenv('DEMO_ADMIN_PASSWORD', 'change_me_demo_admin_password'))
 
 
 def post(path: str, payload: dict, token: str | None = None):

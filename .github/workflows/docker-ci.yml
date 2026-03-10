@@ -14,6 +14,10 @@ jobs:
   docker-validate:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      API_V1_WORKERS: "1"
+      DB_BOOTSTRAP_ON_START: "false"
+      DB_DEMO_PROBE_ON_START: "false"
 
     steps:
       - name: Checkout
