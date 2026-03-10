@@ -8,6 +8,7 @@ from sqlalchemy import inspect, text
 from app.db.session import SessionLocal, engine
 from app.core.config import settings
 from app.models.brokers import (
+    AnalyticsContractSnapshot,
     AnalyticsSourceFreshness,
     AuditLog,
     AuthSession,
@@ -37,6 +38,7 @@ def ensure_runtime_schema() -> None:
         CommissionRules,
         PrizeRules,
         AuditLog,
+        AnalyticsContractSnapshot,
         AnalyticsSourceFreshness,
     ]
     for model in runtime_tables:

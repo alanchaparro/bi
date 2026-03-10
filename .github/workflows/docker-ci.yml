@@ -23,6 +23,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: CI Environment Overrides
+        shell: bash
+        run: |
+          cp .env.example .env
+          {
+            echo "API_V1_WORKERS=1"
+            echo "DB_BOOTSTRAP_ON_START=false"
+            echo "DB_DEMO_PROBE_ON_START=false"
+          } >> .env
+
       - name: Docker Compose Version
         run: docker compose version
 
