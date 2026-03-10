@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///./data/test_sync_restart_cleanup.db")
+os.environ["DATABASE_URL"] = "sqlite:///./data/test_sync_restart_cleanup.db"
 
 from app.db.session import SessionLocal, engine  # noqa: E402
 from app.models.brokers import SyncJob, SyncRun  # noqa: E402

@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///./data/test_app_v1.db")
+os.environ["DATABASE_URL"] = "sqlite:///./data/test_app_v1.db"
 
 from app.services.analytics_service import AnalyticsService  # noqa: E402
 

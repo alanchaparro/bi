@@ -9,14 +9,16 @@ from fastapi.testclient import TestClient
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
 
-os.environ.setdefault('DATABASE_URL', 'sqlite:///./data/test_app_v1.db')
+os.environ['DATABASE_URL'] = 'sqlite:///./data/test_app_v1.db'
 os.environ.setdefault('JWT_SECRET_KEY', 'test_secret_key')
 os.environ.setdefault('JWT_REFRESH_SECRET_KEY', 'test_refresh_secret')
 
 from app.main import app  # noqa: E402
 from app.core.rate_limit import rate_limiter  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
+from app.db.base import Base  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
+from app.db.session import engine  # noqa: E402
 from app.models.brokers import AnalyticsContractSnapshot, AuthUser, AuthUserState, FrontendPerfMetric  # noqa: E402
 
 TEST_ADMIN_USER = os.environ.get('TEST_ADMIN_USER', os.environ.get('DEMO_ADMIN_USER', 'admin'))
@@ -28,6 +30,8 @@ TEST_ANALYST_PASSWORD = os.environ.get('TEST_ANALYST_PASSWORD', os.environ.get('
 class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # Ensure all mapped tables are present in the isolated sqlite test DB.
+        Base.metadata.create_all(bind=engine)
         db = SessionLocal()
         try:
             db.query(AuthUserState).delete()

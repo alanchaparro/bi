@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
 
-os.environ.setdefault('DATABASE_URL', 'sqlite:///./data/test_app_v1.db')
+os.environ['DATABASE_URL'] = 'sqlite:///./data/test_app_v1.db'
 os.environ.setdefault('JWT_SECRET_KEY', 'test_secret_key')
 os.environ.setdefault('JWT_REFRESH_SECRET_KEY', 'test_refresh_secret')
 

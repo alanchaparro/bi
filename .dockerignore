@@ -18,10 +18,7 @@ __pycache__
 *.pyd
 *.log
 
-# CI/docs/dev files not needed at runtime
-docs
-tests
-scripts
+# CI/dev files not needed at runtime
 .github
 frontend/node_modules
 frontend/dist
