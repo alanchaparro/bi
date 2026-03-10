@@ -29,6 +29,8 @@ TEST_ANALYST_PASSWORD = os.environ.get('TEST_ANALYST_PASSWORD', os.environ.get('
 class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        AuthUser.__table__.create(bind=engine, checkfirst=True)
+        AuthUserState.__table__.create(bind=engine, checkfirst=True)
         # Some test DB bootstraps can miss this table; create it defensively.
         FrontendPerfMetric.__table__.create(bind=engine, checkfirst=True)
         db = SessionLocal()
