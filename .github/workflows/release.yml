@@ -25,10 +25,12 @@ jobs:
         run: docker compose --profile dev up -d dashboard api-v1
 
       - name: Backend Lint (compile/static)
-        run: docker compose --profile dev run --rm dashboard python -m py_compile start_dashboard.py backend/app/main.py
+        run: docker compose --profile dev exec -T dashboard python -m py_compile start_dashboard.py backend/app/main.py
 
       - name: Backend Unit + Integration Tests
-        run: docker compose --profile dev run --rm dashboard python -m unittest discover -s tests -p "test_*.py"
+        run: |
+          docker compose --profile dev exec -T dashboard sh -lc "pwd && ls -la tests"
+          docker compose --profile dev exec -T dashboard python -m unittest discover -s tests -p "test_*.py"
 
       - name: Backend Coverage
         run: |

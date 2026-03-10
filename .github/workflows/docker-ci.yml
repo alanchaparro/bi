@@ -23,19 +23,21 @@ jobs:
         run: docker compose version
 
       - name: Build Image
-        run: docker compose build --no-cache
+        run: docker compose --profile dev build --no-cache dashboard api-v1
 
       - name: Start Services (Legacy + API v1)
         run: docker compose --profile dev up -d dashboard api-v1
 
       - name: Compile Check
-        run: docker compose run --rm dashboard python -m py_compile start_dashboard.py
+        run: docker compose --profile dev exec -T dashboard python -m py_compile start_dashboard.py
 
       - name: Unit Tests
-        run: docker compose run --rm dashboard python -m unittest discover -s tests -p "test_*.py"
+        run: |
+          docker compose --profile dev exec -T dashboard sh -lc "pwd && ls -la tests"
+          docker compose --profile dev exec -T dashboard python -m unittest discover -s tests -p "test_*.py"
 
       - name: API v1 Contract Tests
-        run: docker compose --profile dev run --rm dashboard python -m unittest tests.test_api_v1_brokers_config -v
+        run: docker compose --profile dev exec -T dashboard python -m unittest tests.test_api_v1_brokers_config -v
 
       - name: Smoke - Health Endpoints
         shell: bash
@@ -48,7 +50,7 @@ jobs:
           grep -q "\"ok\":true" /tmp/v1-health.json
 
       - name: Export OpenAPI v1
-        run: docker compose --profile dev run --rm dashboard python scripts/export_openapi_v1.py
+        run: docker compose --profile dev exec -T dashboard python scripts/export_openapi_v1.py
 
       - name: Setup Node
         uses: actions/setup-node@v4
