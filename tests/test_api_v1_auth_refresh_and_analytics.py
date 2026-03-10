@@ -16,7 +16,6 @@ os.environ.setdefault('JWT_REFRESH_SECRET_KEY', 'test_refresh_secret')
 from app.main import app  # noqa: E402
 from app.core.rate_limit import rate_limiter  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
-from app.db.base import Base  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 from app.db.session import engine  # noqa: E402
 from app.models.brokers import AnalyticsContractSnapshot, AuthUser, AuthUserState, FrontendPerfMetric  # noqa: E402
@@ -30,8 +29,8 @@ TEST_ANALYST_PASSWORD = os.environ.get('TEST_ANALYST_PASSWORD', os.environ.get('
 class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # Ensure all mapped tables are present in the isolated sqlite test DB.
-        Base.metadata.create_all(bind=engine)
+        # Some test DB bootstraps can miss this table; create it defensively.
+        FrontendPerfMetric.__table__.create(bind=engine, checkfirst=True)
         db = SessionLocal()
         try:
             db.query(AuthUserState).delete()
