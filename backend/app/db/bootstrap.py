@@ -5,12 +5,42 @@ from datetime import datetime
 
 from sqlalchemy import inspect, text
 
-from app.db.base import Base
 from app.db.session import SessionLocal, engine
 from app.core.config import settings
-from app.models.brokers import CommissionRules
+from app.models.brokers import (
+    AnalyticsSourceFreshness,
+    AuditLog,
+    AuthSession,
+    AuthUser,
+    AuthUserState,
+    BrokersSupervisorScope,
+    CommissionRules,
+    PrizeRules,
+    UserPreference,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def ensure_runtime_schema() -> None:
+    """
+    Create only the runtime tables required for auth/config/bootstrap flows.
+    Avoid global Base.metadata.create_all(), which is not safe in concurrent
+    startup scenarios and can clash with existing index objects.
+    """
+    runtime_tables = [
+        AuthUser,
+        AuthUserState,
+        AuthSession,
+        UserPreference,
+        BrokersSupervisorScope,
+        CommissionRules,
+        PrizeRules,
+        AuditLog,
+        AnalyticsSourceFreshness,
+    ]
+    for model in runtime_tables:
+        model.__table__.create(bind=engine, checkfirst=True)
 
 
 def ensure_sync_schema_compatibility() -> None:
@@ -28,7 +58,10 @@ def ensure_sync_schema_compatibility() -> None:
         sync_job_columns = {c.get("name") for c in inspector.get_columns("sync_jobs")}
 
         if "sync_schedules" not in inspector.get_table_names():
-            Base.metadata.tables["sync_schedules"].create(bind=conn, checkfirst=True)
+            # Local import avoids loading all metadata just to backfill one table.
+            from app.models.brokers import SyncSchedule
+
+            SyncSchedule.__table__.create(bind=conn, checkfirst=True)
 
         if "schedule_id" not in sync_job_columns:
             conn.execute(text("ALTER TABLE sync_jobs ADD COLUMN schedule_id INTEGER"))
@@ -64,7 +97,7 @@ def bootstrap_database_with_demo_probe() -> None:
     Ensure schema exists and run a short insert/delete probe to validate write path.
     The probe leaves no demo data persisted.
     """
-    Base.metadata.create_all(bind=engine)
+    ensure_runtime_schema()
     ensure_sync_schema_compatibility()
 
     if not settings.db_demo_probe_on_start:

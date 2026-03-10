@@ -17,12 +17,13 @@ def read_rules(path: Path, key: str):
 def main():
     root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(root / 'backend'))
-    from app.db.base import Base
     from app.db.session import SessionLocal, engine
+    from app.models.brokers import AuditLog, BrokersSupervisorScope, CommissionRules, PrizeRules
     from app.services.brokers_config_service import BrokersConfigService
 
     data_dir = root / 'data'
-    Base.metadata.create_all(bind=engine)
+    for model in [BrokersSupervisorScope, CommissionRules, PrizeRules, AuditLog]:
+        model.__table__.create(bind=engine, checkfirst=True)
 
     supervisors = read_rules(data_dir / 'brokers_supervisors.json', 'supervisors')
     commissions = read_rules(data_dir / 'commissions_rules.json', 'rules')

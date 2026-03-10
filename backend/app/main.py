@@ -11,14 +11,13 @@ from app.api.v1.router import router as v1_router
 from app.core.config import settings
 from app.core.prod_check import validate_production_config
 from app.core.analytics_cache import set as cache_set
-from app.db.bootstrap import bootstrap_database_with_demo_probe, ensure_sync_schema_compatibility
-from app.db.base import Base
-from app.db.session import SessionLocal, engine
+from app.db.bootstrap import bootstrap_database_with_demo_probe, ensure_runtime_schema, ensure_sync_schema_compatibility
+from app.db.session import SessionLocal
 from app.schemas.analytics import AnalyticsFilters, CobranzasCohorteFirstPaintIn, CobranzasCohorteIn, PortfolioSummaryIn
 from app.services.analytics_service import AnalyticsService
 
 if settings.app_env != 'prod' and not settings.db_bootstrap_on_start:
-    Base.metadata.create_all(bind=engine)
+    ensure_runtime_schema()
     ensure_sync_schema_compatibility()
 
 app = FastAPI(title=settings.app_name, version='1.0.0')
