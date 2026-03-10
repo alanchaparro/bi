@@ -40,7 +40,7 @@ jobs:
           set -e
           cat /tmp/unit-tests.log
           if [ "$rc" -ne 0 ]; then
-            short="$(head -n 30 /tmp/unit-tests.log | tr '\n' ' ' | tr -s ' ')"
+            short="$(tail -n 60 /tmp/unit-tests.log | tr '\n' ' ' | tr -s ' ')"
             echo "::error::Unit Tests failed: ${short}"
             exit "$rc"
           fi
