@@ -1,11 +1,14 @@
-﻿import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  clearAnalyticsApiCache,
   login,
   markPerfRoute,
   logout,
   restoreSession,
   setAuthToken,
   setOnUnauthorized,
+  USE_UI_IOS_REFINEMENT,
+  UI_IOS_REFINEMENT_MODULES,
 } from './shared/api'
 import type {
   LoginRequest,
@@ -38,6 +41,13 @@ type GlobalSyncLive = {
   lastUpdatedAt?: string | null
 }
 
+type GlobalScheduleLive = {
+  runningCount: number
+  domains: string[]
+  progressPct?: number | null
+  lastUpdatedAt?: string | null
+}
+
 export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     try {
@@ -54,15 +64,19 @@ export default function App() {
   const [activeSectionId, setActiveSectionId] = useState<string>('analisisCartera')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [globalSyncLive, setGlobalSyncLive] = useState<GlobalSyncLive | null>(null)
+  const [globalScheduleLive, setGlobalScheduleLive] = useState<GlobalScheduleLive | null>(null)
 
   const role = auth?.role ?? ''
   const globalSyncPct = Math.max(0, Math.min(100, Math.round(globalSyncLive?.progressPct || 0)))
   const globalSyncQuery = globalSyncLive?.currentQueryFile || '-'
   const showGlobalSync = Boolean(globalSyncLive?.running)
   const headerLiveFresh = (() => {
+    // Si hay una sincronización/planificación activa, se considera "en vivo"
+    // aunque el timestamp no se haya refrescado todavía.
+    if (showGlobalSync || Boolean((globalScheduleLive?.runningCount || 0) > 0)) return true
     const ts = globalSyncLive?.lastUpdatedAt ? new Date(globalSyncLive.lastUpdatedAt).getTime() : Number.NaN
     if (Number.isNaN(ts)) return false
-    return (Date.now() - ts) <= 12000
+    return (Date.now() - ts) <= 90000
   })()
   const headerLiveLabel = headerLiveFresh ? 'En vivo' : 'Desfasado'
   const globalSyncTone = globalSyncLive?.error
@@ -72,6 +86,12 @@ export default function App() {
       : globalSyncLive?.chunkStatus === 'unchanged'
         ? 'warn'
         : 'info'
+  const showScheduleLive = Boolean((globalScheduleLive?.runningCount || 0) > 0)
+  const schedulePct = Math.max(0, Math.min(100, Math.round(globalScheduleLive?.progressPct || 0)))
+  const scheduleDomainLabel = String(globalScheduleLive?.domains?.[0] || '').trim()
+  const scheduleTooltip = scheduleDomainLabel
+    ? `Actualización de ${scheduleDomainLabel} en progreso${schedulePct > 0 ? ` (${schedulePct}%)` : ''}`
+    : `Actualización en progreso${schedulePct > 0 ? ` (${schedulePct}%)` : ''}`
 
   const handleLogin = useCallback(async (payload: LoginRequest) => {
     setLoginError(null)
@@ -113,12 +133,29 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
+    if (USE_UI_IOS_REFINEMENT) {
+      document.documentElement.setAttribute('data-ui-refinement', 'ios')
+      document.documentElement.setAttribute('data-ui-refinement-modules', UI_IOS_REFINEMENT_MODULES || 'all')
+    } else {
+      document.documentElement.removeAttribute('data-ui-refinement')
+      document.documentElement.removeAttribute('data-ui-refinement-modules')
+    }
     try {
       localStorage.setItem('ui-theme', theme)
     } catch {
       // ignore storage failures
     }
   }, [theme])
+
+  const prevSyncRunningRef = useRef<boolean | null>(null)
+  useEffect(() => {
+    const wasRunning = prevSyncRunningRef.current
+    const isRunning = Boolean(globalSyncLive?.running)
+    prevSyncRunningRef.current = isRunning
+    if (wasRunning === true && !isRunning) {
+      clearAnalyticsApiCache()
+    }
+  }, [globalSyncLive?.running])
 
   useEffect(() => {
     const boot = async () => {
@@ -172,82 +209,96 @@ export default function App() {
 
   return (
     <>
-      <header className="app-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <SidebarNav
-            sections={[...NAV_SECTIONS]}
-            activeId={activeSectionId}
-            onSelect={setActiveSectionId}
-            sidebarOpen={sidebarOpen}
-            onToggleSidebar={() => setSidebarOpen((o) => !o)}
-            onCloseSidebar={() => setSidebarOpen(false)}
-          />
-          <h1>EPEM - Cartera de Cobranzas</h1>
-        </div>
-        <div className="user-info">
-          {showGlobalSync ? (
+      <SidebarNav
+        sections={[...NAV_SECTIONS]}
+        activeId={activeSectionId}
+        onSelect={setActiveSectionId}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((o) => !o)}
+        onCloseSidebar={() => setSidebarOpen(false)}
+      />
+      <div className="app-shell">
+        <header className="app-header">
+          <div className="app-header-title-wrap">
+            <h1>EPEM - Cartera de Cobranzas</h1>
+          </div>
+          <div className="user-info">
+            {showScheduleLive ? (
+              <button
+                type="button"
+                className="header-schedule-pill"
+                onClick={() => setActiveSectionId('config')}
+                title={scheduleTooltip}
+                aria-label={scheduleTooltip}
+              >
+                <span className="header-schedule-glyph" aria-hidden>P</span>
+                <span className="header-schedule-pct">{`${schedulePct}%`}</span>
+              </button>
+            ) : null}
+            {showGlobalSync ? (
+              <button
+                type="button"
+                className={`header-sync-pill header-sync-pill--${globalSyncTone}`}
+                onClick={() => setActiveSectionId('config')}
+                title={
+                  `${globalSyncLive?.message || 'Sincronizando...'}`
+                  + ` | ${globalSyncPct}%`
+                  + ` | ${globalSyncLive?.jobStep || '-'}`
+                  + ` | ETA ${globalSyncLive?.etaSeconds ?? '-'}s`
+                  + ` | Cola ${typeof globalSyncLive?.queuePosition === 'number' ? globalSyncLive.queuePosition : '-'}`
+                  + ` | Chunk ${globalSyncLive?.chunkStatus || '-'}`
+                  + ` | Skipped ${globalSyncLive?.skippedUnchangedChunks ?? 0}`
+                  + ` | ${globalSyncQuery}`
+                  + ` | Estado ${headerLiveLabel}`
+                }
+                aria-label={`Sincronizacion en curso ${globalSyncPct} por ciento`}
+              >
+                <span className={`header-sync-icon header-sync-icon--${globalSyncTone}`} aria-hidden />
+                <span className="header-sync-text">{globalSyncPct}%</span>
+                <span className="header-sync-domain">{String(globalSyncLive?.currentDomain || '-')}</span>
+                <span className={`header-sync-live ${headerLiveFresh ? 'is-live' : 'is-stale'}`}>{headerLiveLabel}</span>
+              </button>
+            ) : null}
+            <span>Rol: <strong>{role || '-'}</strong></span>
             <button
               type="button"
-              className={`header-sync-pill header-sync-pill--${globalSyncTone}`}
-              onClick={() => setActiveSectionId('config')}
-              title={
-                `${globalSyncLive?.message || 'Sincronizando...'}`
-                + ` | ${globalSyncPct}%`
-                + ` | ${globalSyncLive?.jobStep || '-'}`
-                + ` | ETA ${globalSyncLive?.etaSeconds ?? '-'}s`
-                + ` | Cola ${typeof globalSyncLive?.queuePosition === 'number' ? globalSyncLive.queuePosition : '-'}`
-                + ` | Chunk ${globalSyncLive?.chunkStatus || '-'}`
-                + ` | Skipped ${globalSyncLive?.skippedUnchangedChunks ?? 0}`
-                + ` | ${globalSyncQuery}`
-                + ` | Estado ${headerLiveLabel}`
-              }
-              aria-label={`Sincronizacion en curso ${globalSyncPct} por ciento`}
+              className="theme-toggle"
+              onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+              title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+              aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
             >
-              <span className={`header-sync-icon header-sync-icon--${globalSyncTone}`} aria-hidden />
-              <span className="header-sync-text">{globalSyncPct}%</span>
-              <span className="header-sync-domain">{String(globalSyncLive?.currentDomain || '-')}</span>
-              <span className={`header-sync-live ${headerLiveFresh ? 'is-live' : 'is-stale'}`}>{headerLiveLabel}</span>
+              {theme === 'dark' ? '☀️' : '🌙'}
             </button>
-          ) : null}
-          <span>Rol: <strong>{role || '-'}</strong></span>
-          <button
-            type="button"
-            className="theme-toggle"
-            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-            title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-            aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-          >
-            {theme === 'dark' ? '☀️' : '🌙'}
-          </button>
-          <button type="button" className="btn btn-secondary" onClick={handleLogout}>
-            Cerrar sesión
-          </button>
-        </div>
-      </header>
+            <button type="button" className="btn btn-secondary" onClick={handleLogout}>
+              Cerrar sesión
+            </button>
+          </div>
+        </header>
 
-      <main className="app-content">
-        {error ? <div className="alert-error">{error}</div> : null}
+        <main className="app-content">
+          {error ? <div className="alert-error">{error}</div> : null}
 
-        <section id="analisisCartera" className={`app-section ${activeSectionId === 'analisisCartera' ? '' : 'hidden'}`}>
-          <AnalisisCarteraView />
-        </section>
+          <section id="analisisCartera" className={`app-section ${activeSectionId === 'analisisCartera' ? '' : 'hidden'}`}>
+            <AnalisisCarteraView />
+          </section>
 
-        <section id="analisisCarteraAnuales" className={`app-section ${activeSectionId === 'analisisCarteraAnuales' ? '' : 'hidden'}`}>
-          <AnalisisAnualesView />
-        </section>
+          <section id="analisisCarteraAnuales" className={`app-section ${activeSectionId === 'analisisCarteraAnuales' ? '' : 'hidden'}`}>
+            <AnalisisAnualesView />
+          </section>
 
-        <section id="analisisCarteraRendimientoLegacy" className={`app-section ${activeSectionId === 'analisisCarteraRendimientoLegacy' ? '' : 'hidden'}`}>
-          <AnalisisRendimientoView />
-        </section>
+          <section id="analisisCarteraRendimientoLegacy" className={`app-section ${activeSectionId === 'analisisCarteraRendimientoLegacy' ? '' : 'hidden'}`}>
+            <AnalisisRendimientoView />
+          </section>
 
-        <section id="analisisCobranzaCohorte" className={`app-section ${activeSectionId === 'analisisCobranzaCohorte' ? '' : 'hidden'}`}>
-          <AnalisisCobranzasCohorteView />
-        </section>
+          <section id="analisisCobranzaCohorte" className={`app-section ${activeSectionId === 'analisisCobranzaCohorte' ? '' : 'hidden'}`}>
+            <AnalisisCobranzasCohorteView />
+          </section>
 
-        <section id="config" className={`app-section ${activeSectionId === 'config' ? '' : 'hidden'}`}>
-          <ConfigView onSyncLiveChange={setGlobalSyncLive} />
-        </section>
-      </main>
+          <section id="config" className={`app-section ${activeSectionId === 'config' ? '' : 'hidden'}`}>
+            <ConfigView onSyncLiveChange={setGlobalSyncLive} onScheduleLiveChange={setGlobalScheduleLive} />
+          </section>
+        </main>
+      </div>
     </>
   )
 }

@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: docker-build docker-up docker-down docker-logs docker-test docker-compile docker-smoke docker-validate docker-up-dev docker-up-prod docker-api-test docker-openapi-export frontend-generate-types frontend-build frontend-test docker-smoke-v1 docker-perf-smoke-v1 docker-parity-v1 docker-ci docker-migrate-verify docker-e2e-brokers docker-smoke-deploy-v1 docker-release-finalize
+.PHONY: docker-build docker-up docker-down docker-logs docker-test docker-compile docker-smoke docker-validate docker-up-dev docker-up-prod docker-api-test docker-openapi-export frontend-generate-types frontend-build frontend-test docker-smoke-v1 docker-perf-smoke-v1 docker-parity-v1 docker-ci docker-migrate-verify docker-e2e-brokers docker-smoke-deploy-v1 docker-release-finalize git-hooks-install git-security-check
 
 docker-build:
 	docker compose build --no-cache
@@ -81,3 +81,9 @@ docker-validate: docker-up docker-compile docker-test docker-smoke
 docker-ci: docker-up-dev docker-compile docker-test docker-api-test docker-smoke docker-smoke-v1 docker-perf-smoke-v1 docker-openapi-export frontend-generate-types frontend-test frontend-build
 
 docker-release-finalize: docker-up-dev docker-compile docker-test docker-api-test docker-smoke-v1 docker-migrate-verify docker-e2e-brokers docker-perf-smoke-v1 docker-parity-v1 docker-smoke-deploy-v1 docker-openapi-export frontend-generate-types frontend-test frontend-build
+
+git-hooks-install:
+	sh scripts/install-git-hooks.sh
+
+git-security-check:
+	sh scripts/git-security-check.sh pre-push

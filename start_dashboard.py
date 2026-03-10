@@ -1795,7 +1795,6 @@ def compute_anuales_summary(params):
         paid_by_contract_month_cul_count_vigente = 0
         total_cobrado_cul_vigente = 0.0
         total_deberia_cul_vigente = 0.0
-        months_weighted_numerator_cul_vigente = 0.0
 
         for c in year_contracts:
             c_id = str(c.get("_cId", ""))
@@ -1842,7 +1841,6 @@ def compute_anuales_summary(params):
                             cobrado += to_float(amount, 0.0)
                     total_cobrado_cul_vigente += cobrado
                     total_deberia_cul_vigente += deberia
-                    months_weighted_numerator_cul_vigente += (months * deberia)
 
         tkp_contrato_culminado = (cuota_cul_total / culminados) if culminados > 0 else 0.0
         tkp_pago_culminado = (paid_by_contract_month_cul_total / paid_by_contract_month_cul_count) if paid_by_contract_month_cul_count > 0 else 0.0
@@ -1851,8 +1849,7 @@ def compute_anuales_summary(params):
             paid_by_contract_month_cul_total_vigente / paid_by_contract_month_cul_count_vigente
         ) if paid_by_contract_month_cul_count_vigente > 0 else 0.0
         ltv_culminado_vigente = (
-            (total_cobrado_cul_vigente / total_deberia_cul_vigente) *
-            (months_weighted_numerator_cul_vigente / total_deberia_cul_vigente)
+            total_cobrado_cul_vigente / total_deberia_cul_vigente
         ) if total_deberia_cul_vigente > 0 else 0.0
 
         rows.append({

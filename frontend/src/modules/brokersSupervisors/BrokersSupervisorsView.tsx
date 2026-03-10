@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { SectionHeader } from '../../components/layout/SectionHeader'
 import { getApiErrorMessage } from '../../shared/apiErrors'
 
 type Props = {
@@ -41,12 +42,12 @@ export function BrokersSupervisorsView({ allSupervisors, enabledSupervisors, can
 
   return (
     <section className="card">
-      <h2>Supervisores habilitados</h2>
+      <SectionHeader title="Supervisores habilitados" subtitle="Selecciona los supervisores que pueden acceder al sistema." />
       {error ? <div className="alert-error">{error}</div> : null}
-      <div className="table-wrap" style={{ maxHeight: 220, overflow: 'auto', padding: '0.75rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.25rem' }}>
+      <div className="table-wrap supervisors-checkbox-wrap">
+        <div className="supervisors-grid">
           {options.map((v) => (
-            <label key={v} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: canEdit ? 'pointer' : 'default' }}>
+            <label key={v} className="supervisors-label">
               <input
                 type="checkbox"
                 checked={selected.includes(v)}
@@ -58,7 +59,7 @@ export function BrokersSupervisorsView({ allSupervisors, enabledSupervisors, can
           ))}
         </div>
       </div>
-      <div style={{ marginTop: '1rem' }}>
+      <div className="flex-actions flex-actions--top">
         <button type="button" className="btn btn-primary" onClick={save} disabled={!canEdit || saving}>
           {saving ? 'Guardando…' : 'Guardar supervisores'}
         </button>

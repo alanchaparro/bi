@@ -19,7 +19,7 @@ describe('AppNav', () => {
 
   it('marks the active section with aria-current="true" and class active', () => {
     render(<AppNav sections={[...NAV_SECTIONS]} activeId="config" />)
-    const activeLink = screen.getByRole('link', { name: 'Configuracion' })
+    const activeLink = screen.getByRole('link', { name: 'Configuración' })
     expect(activeLink.getAttribute('aria-current')).toBe('true')
     expect(activeLink.classList.contains('active')).toBe(true)
 

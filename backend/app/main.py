@@ -10,9 +10,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.v1.router import router as v1_router
 from app.core.config import settings
 from app.core.prod_check import validate_production_config
+from app.core.analytics_cache import set as cache_set
 from app.db.bootstrap import bootstrap_database_with_demo_probe, ensure_sync_schema_compatibility
 from app.db.base import Base
-from app.db.session import engine
+from app.db.session import SessionLocal, engine
+from app.schemas.analytics import AnalyticsFilters, CobranzasCohorteFirstPaintIn, CobranzasCohorteIn, PortfolioSummaryIn
+from app.services.analytics_service import AnalyticsService
 
 if settings.app_env != 'prod' and not settings.db_bootstrap_on_start:
     Base.metadata.create_all(bind=engine)
@@ -115,8 +118,48 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
 app.include_router(v1_router)
 
 
+def _prewarm_analytics_cache_on_startup() -> None:
+    db = SessionLocal()
+    try:
+        base = AnalyticsFilters()
+        portfolio_options = AnalyticsService.fetch_portfolio_corte_options_v2(db, base)
+        cache_set('portfolio-corte-v2/options', base, portfolio_options, ttl_seconds=600)
+        portfolio_summary_filters = PortfolioSummaryIn(include_rows=False)
+        portfolio_summary = AnalyticsService.fetch_portfolio_corte_summary_v2(db, portfolio_summary_filters)
+        cache_set('portfolio-corte-v2/summary', portfolio_summary_filters, portfolio_summary, ttl_seconds=180)
+        portfolio_fp = AnalyticsService.fetch_portfolio_corte_first_paint_v2(db, portfolio_summary_filters)
+        cache_set('portfolio-corte-v2/first-paint', portfolio_summary_filters, portfolio_fp, ttl_seconds=180)
+
+        cohorte_filters = CobranzasCohorteIn()
+        cohorte_options = AnalyticsService.fetch_cobranzas_cohorte_options_v1(db, cohorte_filters)
+        cache_set('cobranzas-cohorte-v2/options', cohorte_filters, cohorte_options, ttl_seconds=1800)
+        cohorte_fp_filters = CobranzasCohorteFirstPaintIn()
+        cohorte_fp = AnalyticsService.fetch_cobranzas_cohorte_first_paint_v2(db, cohorte_fp_filters)
+        cache_set('cobranzas-cohorte-v2/first-paint', cohorte_fp_filters, cohorte_fp, ttl_seconds=300)
+
+        rendimiento_options = AnalyticsService.fetch_rendimiento_options_v2(db, base)
+        cache_set('rendimiento-v2/options', base, rendimiento_options, ttl_seconds=120)
+        rendimiento_summary = AnalyticsService.fetch_rendimiento_summary_v2(db, base)
+        cache_set('rendimiento-v2/summary', base, rendimiento_summary, ttl_seconds=300)
+        rendimiento_fp = AnalyticsService.fetch_rendimiento_first_paint_v2(db, base)
+        cache_set('rendimiento-v2/first-paint', base, rendimiento_fp, ttl_seconds=180)
+
+        anuales_options = AnalyticsService.fetch_anuales_options_v2(db, base)
+        cache_set('anuales-v2/options', base, anuales_options, ttl_seconds=120)
+        anuales_summary = AnalyticsService.fetch_anuales_summary_v2(db, base)
+        cache_set('anuales-v2/summary', base, anuales_summary, ttl_seconds=300)
+        anuales_fp = AnalyticsService.fetch_anuales_first_paint_v2(db, base)
+        cache_set('anuales-v2/first-paint', base, anuales_fp, ttl_seconds=180)
+    except Exception:
+        # Best effort: startup must continue even if prewarm fails.
+        pass
+    finally:
+        db.close()
+
+
 @app.on_event('startup')
 def _bootstrap_db_on_startup() -> None:
     validate_production_config()
     if settings.db_bootstrap_on_start:
         bootstrap_database_with_demo_probe()
+    _prewarm_analytics_cache_on_startup()

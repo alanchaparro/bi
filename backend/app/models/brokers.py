@@ -284,6 +284,10 @@ class CarteraFact(Base):
     close_date = Column(Date, nullable=False, index=True)
     close_month = Column(String(7), nullable=False, index=True)
     close_year = Column(Integer, nullable=False, index=True)
+    contract_date = Column(Date, nullable=True, index=True)
+    contract_month = Column(String(7), nullable=False, default='', index=True)
+    culm_date = Column(Date, nullable=True, index=True)
+    culm_month = Column(String(7), nullable=False, default='', index=True)
     gestion_month = Column(String(7), nullable=False, index=True)
     supervisor = Column(String(128), nullable=False, default='S/D')
     un = Column(String(128), nullable=False, default='S/D')
@@ -291,6 +295,7 @@ class CarteraFact(Base):
     tramo = Column(Integer, nullable=False, default=0)
     category = Column(String(16), nullable=False, default='VIGENTE')
     contracts_total = Column(Integer, nullable=False, default=1)
+    cuota_amount = Column(Float, nullable=False, default=0.0)
     monto_vencido = Column(Float, nullable=False, default=0.0)
     total_saldo = Column(Float, nullable=False, default=0.0)
     capital_saldo = Column(Float, nullable=False, default=0.0)
@@ -504,6 +509,136 @@ class AnalyticsAnualesAgg(Base):
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class DimTime(Base):
+    __tablename__ = 'dim_time'
+
+    id = Column(Integer, primary_key=True, index=True)
+    month_key = Column(String(7), nullable=False, unique=True, index=True)
+    year = Column(Integer, nullable=False, index=True)
+    quarter = Column(Integer, nullable=False, index=True)
+    month = Column(Integer, nullable=False, index=True)
+    month_name = Column(String(16), nullable=False, default='')
+    sort_key = Column(Integer, nullable=False, index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DimUn(Base):
+    __tablename__ = 'dim_un'
+
+    id = Column(Integer, primary_key=True, index=True)
+    un_raw = Column(String(128), nullable=False, index=True)
+    un_canonica = Column(String(128), nullable=False, index=True)
+    mapping_version = Column(String(32), nullable=False, default='v1')
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DimSupervisor(Base):
+    __tablename__ = 'dim_supervisor'
+
+    id = Column(Integer, primary_key=True, index=True)
+    supervisor_raw = Column(String(128), nullable=False, index=True)
+    supervisor_canonico = Column(String(128), nullable=False, index=True)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DimVia(Base):
+    __tablename__ = 'dim_via'
+
+    id = Column(Integer, primary_key=True, index=True)
+    via_raw = Column(String(32), nullable=False, index=True)
+    via_canonica = Column(String(32), nullable=False, index=True)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DimCategoria(Base):
+    __tablename__ = 'dim_categoria'
+
+    id = Column(Integer, primary_key=True, index=True)
+    categoria_raw = Column(String(16), nullable=False, index=True)
+    categoria_canonica = Column(String(16), nullable=False, index=True)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DimContractMonth(Base):
+    __tablename__ = 'dim_contract_month'
+
+    id = Column(Integer, primary_key=True, index=True)
+    contract_id = Column(String(64), nullable=False, index=True)
+    gestion_month = Column(String(7), nullable=False, index=True)
+    sale_month = Column(String(7), nullable=False, default='', index=True)
+    sale_year = Column(Integer, nullable=False, default=0, index=True)
+    un_canonica = Column(String(128), nullable=False, default='S/D', index=True)
+    supervisor_canonico = Column(String(128), nullable=False, default='S/D', index=True)
+    via_canonica = Column(String(32), nullable=False, default='DEBITO', index=True)
+    categoria_canonica = Column(String(16), nullable=False, default='VIGENTE', index=True)
+    tramo = Column(Integer, nullable=False, default=0, index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class MvOptionsCartera(Base):
+    __tablename__ = 'mv_options_cartera'
+
+    id = Column(Integer, primary_key=True, index=True)
+    gestion_month = Column(String(7), nullable=False, index=True)
+    close_month = Column(String(7), nullable=False, index=True)
+    contract_year = Column(Integer, nullable=False, default=0, index=True)
+    un = Column(String(128), nullable=False, default='S/D', index=True)
+    supervisor = Column(String(128), nullable=False, default='S/D', index=True)
+    via_cobro = Column(String(32), nullable=False, default='DEBITO', index=True)
+    categoria = Column(String(16), nullable=False, default='VIGENTE', index=True)
+    tramo = Column(Integer, nullable=False, default=0, index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class MvOptionsCohorte(Base):
+    __tablename__ = 'mv_options_cohorte'
+
+    id = Column(Integer, primary_key=True, index=True)
+    cutoff_month = Column(String(7), nullable=False, index=True)
+    un = Column(String(128), nullable=False, default='S/D', index=True)
+    supervisor = Column(String(128), nullable=False, default='S/D', index=True)
+    via_cobro = Column(String(32), nullable=False, default='DEBITO', index=True)
+    categoria = Column(String(16), nullable=False, default='VIGENTE', index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class MvOptionsRendimiento(Base):
+    __tablename__ = 'mv_options_rendimiento'
+
+    id = Column(Integer, primary_key=True, index=True)
+    gestion_month = Column(String(7), nullable=False, index=True)
+    un = Column(String(128), nullable=False, default='S/D', index=True)
+    supervisor = Column(String(128), nullable=False, default='S/D', index=True)
+    via_cobro = Column(String(32), nullable=False, default='DEBITO', index=True)
+    categoria = Column(String(16), nullable=False, default='VIGENTE', index=True)
+    tramo = Column(Integer, nullable=False, default=0, index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class MvOptionsAnuales(Base):
+    __tablename__ = 'mv_options_anuales'
+
+    id = Column(Integer, primary_key=True, index=True)
+    cutoff_month = Column(String(7), nullable=False, index=True)
+    sale_month = Column(String(7), nullable=False, index=True)
+    sale_year = Column(Integer, nullable=False, default=0, index=True)
+    un = Column(String(128), nullable=False, default='S/D', index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AnalyticsSourceFreshness(Base):
+    __tablename__ = 'analytics_source_freshness'
+
+    source_table = Column(String(64), primary_key=True)
+    max_updated_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
+    last_job_id = Column(String(64), nullable=True, index=True)
+
+
 class FrontendPerfMetric(Base):
     __tablename__ = 'frontend_perf_metrics'
 
@@ -547,8 +682,15 @@ Index(
     SyncRecord.tramo,
     unique=True,
 )
-Index('ux_cartera_fact_contract_close_date', CarteraFact.contract_id, CarteraFact.close_date, unique=True)
+Index(
+    'ix_cartera_fact_contract_close_gestion',
+    CarteraFact.contract_id,
+    CarteraFact.close_date,
+    CarteraFact.gestion_month,
+)
 Index('ix_cartera_fact_un_close_month', CarteraFact.un, CarteraFact.close_month)
+Index('ix_cartera_fact_gestion_un_supervisor_tramo', CarteraFact.gestion_month, CarteraFact.un, CarteraFact.supervisor, CarteraFact.tramo)
+Index('ix_cartera_fact_gestion_close_contract', CarteraFact.gestion_month, CarteraFact.close_month, CarteraFact.contract_id)
 Index('ix_cartera_fact_supervisor_close_month', CarteraFact.supervisor, CarteraFact.close_month)
 Index('ix_cartera_fact_tramo_close_month', CarteraFact.tramo, CarteraFact.close_month)
 Index('ix_cartera_fact_un_close_month_tramo', CarteraFact.un, CarteraFact.close_month, CarteraFact.tramo)
@@ -570,6 +712,7 @@ Index(
 )
 Index('ix_cobranzas_fact_un_gestion_month', CobranzasFact.un, CobranzasFact.gestion_month)
 Index('ix_cobranzas_fact_payment_month_un', CobranzasFact.payment_month, CobranzasFact.un)
+Index('ix_cobranzas_fact_payment_month_contract_via', CobranzasFact.payment_month, CobranzasFact.contract_id, CobranzasFact.payment_via_class)
 Index(
     'ux_contratos_fact_business_key',
     ContratosFact.contract_id,
@@ -654,5 +797,20 @@ Index(
     unique=True,
 )
 Index('ix_analytics_anuales_agg_cutoff_un', AnalyticsAnualesAgg.cutoff_month, AnalyticsAnualesAgg.un)
+Index('ux_dim_un_key', DimUn.un_raw, DimUn.mapping_version, unique=True)
+Index('ux_dim_supervisor_key', DimSupervisor.supervisor_raw, unique=True)
+Index('ux_dim_via_key', DimVia.via_raw, unique=True)
+Index('ux_dim_categoria_key', DimCategoria.categoria_raw, unique=True)
+Index('ux_dim_contract_month_key', DimContractMonth.contract_id, DimContractMonth.gestion_month, unique=True)
+Index('ux_mv_options_cartera_key', MvOptionsCartera.gestion_month, MvOptionsCartera.close_month, MvOptionsCartera.un, MvOptionsCartera.supervisor, MvOptionsCartera.via_cobro, MvOptionsCartera.categoria, MvOptionsCartera.tramo, MvOptionsCartera.contract_year, unique=True)
+Index('ux_mv_options_cohorte_key', MvOptionsCohorte.cutoff_month, MvOptionsCohorte.un, MvOptionsCohorte.supervisor, MvOptionsCohorte.via_cobro, MvOptionsCohorte.categoria, unique=True)
+Index('ux_mv_options_rendimiento_key', MvOptionsRendimiento.gestion_month, MvOptionsRendimiento.un, MvOptionsRendimiento.supervisor, MvOptionsRendimiento.via_cobro, MvOptionsRendimiento.categoria, MvOptionsRendimiento.tramo, unique=True)
+Index('ux_mv_options_anuales_key', MvOptionsAnuales.cutoff_month, MvOptionsAnuales.sale_month, MvOptionsAnuales.sale_year, MvOptionsAnuales.un, unique=True)
+Index('ix_analytics_source_freshness_updated_at', AnalyticsSourceFreshness.updated_at)
+Index('ix_analytics_source_freshness_last_job_id', AnalyticsSourceFreshness.last_job_id)
+Index('ix_cartera_fact_updated_at_desc', CarteraFact.updated_at.desc())
+Index('ix_cobranzas_fact_updated_at_desc', CobranzasFact.updated_at.desc())
+Index('ix_cartera_corte_agg_updated_at_desc', CarteraCorteAgg.updated_at.desc())
+Index('ix_cobranzas_cohorte_agg_updated_at_desc', CobranzasCohorteAgg.updated_at.desc())
 Index('ix_frontend_perf_route_event_at', FrontendPerfMetric.route, FrontendPerfMetric.event_at)
 Index('ix_analytics_anuales_agg_cutoff_year', AnalyticsAnualesAgg.cutoff_month, AnalyticsAnualesAgg.sale_year)

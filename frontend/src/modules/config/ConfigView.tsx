@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
+import { SectionHeader } from '../../components/layout/SectionHeader'
 import {
   api,
   createUser,
@@ -31,6 +32,7 @@ import { getApiErrorMessage } from '../../shared/apiErrors'
 type Props = {
   onReloadBrokers?: () => Promise<void>
   onSyncLiveChange?: (state: SyncLive | null) => void
+  onScheduleLiveChange?: (state: { runningCount: number; domains: string[]; progressPct?: number | null; lastUpdatedAt?: string | null } | null) => void
 }
 
 type SyncLive = {
@@ -234,7 +236,7 @@ function getAppliedRows(status: Pick<SyncStatusResponse, "rows_upserted" | "rows
   return Number(status.rows_inserted || 0)
 }
 
-export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
+export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveChange }: Props) {
   const resumeAttemptedRef = useRef(false)
   const previewEnabledRef = useRef(true)
   const [configSection, setConfigSection] = useState<ConfigSection>('usuarios')
@@ -371,6 +373,45 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
     onSyncLiveChange?.(syncLive)
   }, [onSyncLiveChange, syncLive])
 
+  useEffect(() => {
+    const active = (schedules || [])
+      .filter((schedule) => {
+        const runtime = scheduleRuntime[schedule.id]
+        return !schedule.paused && Boolean(runtime?.running)
+      })
+    if (!active.length) {
+      onScheduleLiveChange?.(null)
+      return
+    }
+    const domains = Array.from(
+      new Set(
+        active.map((schedule) => {
+          const runtime = scheduleRuntime[schedule.id]
+          return String(runtime?.domain || '').trim()
+        }).filter((value) => value.length > 0),
+      ),
+    )
+    onScheduleLiveChange?.({
+      runningCount: active.length,
+      domains,
+      progressPct: active.length > 0
+        ? Math.max(
+            0,
+            Math.min(
+              100,
+              Math.round(
+                active.reduce((acc, schedule) => {
+                  const runtime = scheduleRuntime[schedule.id]
+                  return acc + Number(runtime?.progressPct || 0)
+                }, 0) / active.length,
+              ),
+            ),
+          )
+        : null,
+      lastUpdatedAt: new Date().toISOString(),
+    })
+  }, [onScheduleLiveChange, scheduleRuntime, schedules])
+
   const toggleDomain = useCallback((domain: SyncDomain, checked: boolean) => {
     setSelectedDomains((prev) => {
       if (checked) {
@@ -472,17 +513,16 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
   }, [refreshScheduleRuntime])
 
   useEffect(() => {
-    if (configSection === 'programacion') void loadSchedules()
-  }, [configSection, loadSchedules])
+    void loadSchedules()
+  }, [loadSchedules])
 
   useEffect(() => {
-    if (configSection !== 'programacion') return
     if (!schedules.length) return
     const timer = window.setInterval(() => {
       void refreshScheduleRuntime(schedules)
     }, 8000)
     return () => window.clearInterval(timer)
-  }, [configSection, schedules, refreshScheduleRuntime])
+  }, [schedules, refreshScheduleRuntime])
 
   useEffect(() => {
     void loadTramoConfig()
@@ -533,7 +573,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
         ssl_disabled: Boolean(mysqlConfig.ssl_disabled),
       })
       setMysqlConfig(saved)
-      setMysqlMessage({ ok: true, text: 'Configuracion MySQL guardada.' })
+      setMysqlMessage({ ok: true, text: 'Configuración MySQL guardada.' })
     } catch (e: unknown) {
       setMysqlMessage({ ok: false, text: getApiErrorMessage(e) })
     } finally {
@@ -673,7 +713,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
       return
     }
     if (password.length < 6) {
-      setUsersMessage({ ok: false, text: 'La contrasena debe tener al menos 6 caracteres.' })
+      setUsersMessage({ ok: false, text: 'La contraseña debe tener al menos 6 caracteres.' })
       return
     }
     setUsersSaving(true)
@@ -1102,7 +1142,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
             const previewErrorMsg = getApiErrorMessage(previewError)
             if (/deshabilitad/i.test(previewErrorMsg)) {
               previewEnabledRef.current = false
-              globalLog.push(`[${domain}] preview deshabilitado por configuracion; se continua sin estimacion`)
+              globalLog.push(`[${domain}] preview deshabilitado por configuración; se continúa sin estimación`)
             } else if (/timeout|timed out|exceeded/i.test(previewErrorMsg)) {
               globalLog.push(`[${domain}] preview timeout; se continua sin estimacion`)
             } else {
@@ -1268,8 +1308,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
 
   return (
     <section className="card config-card">
-      <h2>Configuracion</h2>
-      <div className="config-submenu" role="tablist" aria-label="Subsecciones de configuracion">
+      <SectionHeader title="Configuración" subtitle="Usuarios, negocio, importaciones y programación." />
+      <div className="config-submenu" role="tablist" aria-label="Subsecciones de configuración">
         <button
           type="button"
           className={`btn btn-secondary config-submenu-btn ${configSection === 'usuarios' ? 'active' : ''}`}
@@ -1286,7 +1326,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
           role="tab"
           aria-selected={configSection === 'negocio'}
         >
-          Configuracion de negocio
+          Configuración de negocio
         </button>
         <button
           type="button"
@@ -1311,28 +1351,28 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
         {configSection === 'negocio' && (
         <>
           <div>
-            <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>API</h3>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', margin: 0 }}>
+            <h3 className="config-section-title">API</h3>
+            <p className="config-muted-text config-no-margin">
               Base URL: <code>{baseUrl}</code>
             </p>
           </div>
 
           <div>
-            <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Estado de conexion</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <h3 className="config-section-title">Estado de conexion</h3>
+            <div className="config-row-wrap-tight">
               <button type="button" className="btn btn-secondary" onClick={checkHealth} disabled={healthLoading}>
                 {healthLoading ? 'Comprobando...' : 'Comprobar conexion'}
               </button>
               {health && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                  <span style={{ color: health.ok ? 'var(--color-primary)' : 'var(--color-error)', fontWeight: 500 }}>
+                <div className="config-label-col">
+                  <span className={health.ok ? 'status-ok' : 'status-error'}>
                     {health.ok ? 'OK Conectado' : 'ERROR Sin conexion'}
                     {health.db_ok !== undefined && ` (DB: ${health.db_ok ? 'OK' : 'Error'})`}
                     {health.mysql_ok !== undefined && health.mysql_ok !== null && ` (MySQL: ${health.mysql_ok ? 'OK' : 'Error'})`}
                     {health.mysql_ok === null && ' (MySQL: no configurado)'}
                   </span>
                   {health.error && (
-                    <div className="alert-error" style={{ fontSize: '0.85rem', maxWidth: '40rem' }}>
+                    <div className="alert-error config-alert-compact">
                       {health.error}
                     </div>
                   )}
@@ -1342,13 +1382,13 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
           </div>
 
           <div>
-            <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Conexion MySQL (extraccion)</h3>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', marginTop: 0 }}>
-              Esta configuracion se usa para extraer datos en sincronizacion.
+            <h3 className="config-section-title">Conexion MySQL (extraccion)</h3>
+            <p className="config-section-subtitle">
+              Esta configuración se usa para extraer datos en sincronización.
             </p>
-            <div className="config-grid-3" style={{ marginTop: '0.5rem' }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Host</span>
+            <div className="config-grid-3 config-mt-xs">
+              <label className="config-label-col">
+                <span className="config-label-caption">Host</span>
                 <input
                   className="input"
                   value={mysqlConfig.host}
@@ -1357,8 +1397,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
               </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Puerto</span>
+              <label className="config-label-col">
+                <span className="config-label-caption">Puerto</span>
                 <input
                   className="input"
                   type="number"
@@ -1368,8 +1408,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
               </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Base</span>
+              <label className="config-label-col">
+                <span className="config-label-caption">Base</span>
                 <input
                   className="input"
                   value={mysqlConfig.database}
@@ -1378,8 +1418,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
               </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Usuario</span>
+              <label className="config-label-col">
+                <span className="config-label-caption">Usuario</span>
                 <input
                   className="input"
                   value={mysqlConfig.user}
@@ -1388,8 +1428,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
               </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Contrasena</span>
+              <label className="config-label-col">
+                <span className="config-label-caption">Contraseña</span>
                 <input
                   className="input"
                   type="password"
@@ -1399,7 +1439,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
               </label>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', marginTop: '1.8rem' }}>
+              <label className="config-check-row config-mt-lg">
                 <input
                   type="checkbox"
                   checked={mysqlConfig.ssl_disabled}
@@ -1409,7 +1449,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                 <span>MYSQL_SSL_DISABLED</span>
               </label>
             </div>
-            <div style={{ marginTop: '0.55rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div className="config-row-wrap-tight config-mt-sm">
               <button type="button" className="btn btn-primary" onClick={() => void handleSaveMysqlConfig()} disabled={mysqlLoading || mysqlSaving || mysqlTesting}>
                 {mysqlSaving ? 'Guardando...' : 'Guardar MySQL'}
               </button>
@@ -1420,7 +1460,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                 {mysqlLoading ? 'Cargando...' : 'Recargar MySQL'}
               </button>
               {mysqlMessage && (
-                <span style={{ color: mysqlMessage.ok ? 'var(--color-primary)' : 'var(--color-error)', fontWeight: 500 }}>
+                <span className={mysqlMessage.ok ? 'status-ok' : 'status-error'}>
                   {mysqlMessage.text}
                 </span>
               )}
@@ -1431,14 +1471,14 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
 
         {configSection === 'usuarios' && (
         <div>
-          <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Usuarios y Roles</h3>
-          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', marginTop: 0 }}>
+          <h3 className="config-section-title">Usuarios y Roles</h3>
+          <p className="config-section-subtitle">
             Crear usuarios, asignar rol y activar/desactivar acceso.
           </p>
 
-          <div className="config-grid-3" style={{ marginTop: '0.75rem' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Username</span>
+          <div className="config-grid-3 config-mt-md">
+            <label className="config-label-col">
+              <span className="config-label-caption">Username</span>
               <input
                 className="input"
                 value={newUsername}
@@ -1448,8 +1488,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
               />
             </label>
 
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Contrasena</span>
+            <label className="config-label-col">
+              <span className="config-label-caption">Contraseña</span>
               <input
                 className="input"
                 type="password"
@@ -1460,8 +1500,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
               />
             </label>
 
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Rol</span>
+            <label className="config-label-col">
+              <span className="config-label-caption">Rol</span>
               <select className="input" value={newRole} onChange={(e) => setNewRole((e.target.value as RoleType) || 'viewer')} disabled={usersBusy}>
                 {ROLE_OPTIONS.map((r) => (
                   <option key={r} value={r}>{r}</option>
@@ -1470,8 +1510,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
             </label>
           </div>
 
-          <div style={{ marginTop: '0.55rem', display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+          <div className="config-row-wrap config-mt-sm">
+            <label className="config-check-row">
               <input type="checkbox" checked={newIsActive} onChange={(e) => setNewIsActive(e.target.checked)} disabled={usersBusy} />
               <span>Activo</span>
             </label>
@@ -1482,20 +1522,20 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
               {usersLoading ? 'Cargando...' : 'Recargar usuarios'}
             </button>
             {usersMessage && (
-              <span style={{ color: usersMessage.ok ? 'var(--color-primary)' : 'var(--color-error)', fontWeight: 500 }}>
+              <span className={usersMessage.ok ? 'status-ok' : 'status-error'}>
                 {usersMessage.text}
               </span>
             )}
           </div>
 
-          <div style={{ marginTop: '0.75rem', display: 'grid', gap: '0.45rem' }}>
+          <div className="config-list-wrap">
             {users.length === 0 ? (
-              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', margin: 0 }}>
+              <p className="config-section-subtitle config-no-margin">
                 Sin usuarios en base de datos.
               </p>
             ) : (
               users.map((u) => (
-                <div key={u.username} className="config-grid-3" style={{ alignItems: 'center' }}>
+                <div key={u.username} className="config-grid-3 config-items-center">
                   <input className="input" value={u.username} readOnly />
 
                   <select
@@ -1512,8 +1552,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                     ))}
                   </select>
 
-                  <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <div className="config-row-wrap-tight">
+                    <label className="config-check-row config-check-row-tight">
                       <input
                         type="checkbox"
                         checked={Boolean(u.is_active)}
@@ -1528,7 +1568,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                     <input
                       className="input"
                       type="password"
-                      placeholder="Nueva contrasena (opcional)"
+                      placeholder="Nueva contraseña (opcional)"
                       value={rowPasswordDraft[u.username] || ''}
                       onChange={(e) => setRowPasswordDraft((prev) => ({ ...prev, [u.username]: e.target.value }))}
                       disabled={usersBusy}
@@ -1546,14 +1586,14 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
 
         {configSection === 'negocio' && (
         <div>
-          <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Reglas de Tramo por Unidad de Negocio</h3>
-          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', marginTop: 0 }}>
+          <h3 className="config-section-title">Reglas de Tramo por Unidad de Negocio</h3>
+          <p className="config-section-subtitle">
             Elige varios tramos + Unidad de Negocio + Categoria, luego agrega la regla.
           </p>
 
-          <div className="config-grid-3" style={{ marginTop: '0.75rem' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Unidad de Negocio</span>
+          <div className="config-grid-3 config-mt-md">
+            <label className="config-label-col">
+              <span className="config-label-caption">Unidad de Negocio</span>
               <input
                 className="input"
                 list="un-options"
@@ -1569,8 +1609,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
               </datalist>
             </label>
 
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Categoria</span>
+            <label className="config-label-col">
+              <span className="config-label-caption">Categoria</span>
               <select className="input" value={ruleCategory} onChange={(e) => setRuleCategory(e.target.value === 'MOROSO' ? 'MOROSO' : 'VIGENTE')}>
                 <option value="VIGENTE">VIGENTE</option>
                 <option value="MOROSO">MOROSO</option>
@@ -1582,11 +1622,11 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
             </button>
           </div>
 
-          <div style={{ marginTop: '0.75rem' }}>
-            <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Tramos (multiple)</span>
-            <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap', marginTop: '0.35rem' }}>
+          <div className="config-mt-md">
+            <span className="config-label-caption">Tramos (multiple)</span>
+            <div className="config-row-wrap config-mt-2xs">
               {TRAMO_OPTIONS.map((t) => (
-                <label key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                <label key={t} className="config-check-row config-check-row-tight">
                   <input
                     type="checkbox"
                     checked={ruleTramos.includes(t)}
@@ -1599,7 +1639,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
             </div>
           </div>
 
-          <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="config-row-wrap-tight config-mt-md">
             <button type="button" className="btn btn-primary" onClick={saveTramoRules} disabled={configBusy}>
               {tramoConfigSaving ? 'Guardando...' : 'Guardar reglas'}
             </button>
@@ -1607,19 +1647,19 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
               {tramoConfigLoading ? 'Cargando...' : 'Recargar reglas'}
             </button>
             {tramoConfigMessage && (
-              <span style={{ color: tramoConfigMessage.ok ? 'var(--color-primary)' : 'var(--color-error)', fontWeight: 500 }}>
+              <span className={tramoConfigMessage.ok ? 'status-ok' : 'status-error'}>
                 {tramoConfigMessage.text}
               </span>
             )}
           </div>
 
-          <div style={{ marginTop: '0.75rem' }}>
+          <div className="config-mt-md">
             {tramoRules.length === 0 ? (
-              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', margin: 0 }}>
+              <p className="config-section-subtitle config-no-margin">
                 Sin reglas por UN.
               </p>
             ) : (
-              <div style={{ display: 'grid', gap: '0.4rem' }}>
+              <div className="config-grid-gap-sm">
                 {tramoRules
                   .slice()
                   .sort((a, b) => (a.un + a.category).localeCompare(b.un + b.category))
@@ -1640,13 +1680,13 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
 
         {configSection === 'importaciones' && (
         <div>
-          <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Carga dual SQL</h3>
+          <h3 className="config-section-title">Carga dual SQL</h3>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.75rem' }}>
-            <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Dominios SQL (multiple)</span>
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <div className="config-stack-xs config-mb-md">
+            <span className="config-label-caption">Dominios SQL (multiple)</span>
+            <div className="config-row-wrap">
               {SYNC_DOMAINS.map((d) => (
-                <label key={d.value} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                <label key={d.value} className="config-check-row">
                   <input
                     type="checkbox"
                     checked={selectedDomains.includes(d.value)}
@@ -1659,10 +1699,10 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '480px' }}>
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '140px' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Mes cierre desde (cartera)</span>
+          <div className="config-stack-sm config-stack-sm-max">
+            <div className="config-row-wrap">
+              <label className="config-label-col config-minw-140">
+                <span className="config-label-caption">Mes cierre desde (cartera)</span>
                 <input
                   className="input"
                   type="text"
@@ -1673,8 +1713,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   onChange={(e) => setCloseMonthFromPart(e.target.value.replace(/[^0-9]/g, ''))}
                 />
               </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '140px' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Mes cierre hasta (cartera)</span>
+              <label className="config-label-col config-minw-140">
+                <span className="config-label-caption">Mes cierre hasta (cartera)</span>
                 <input
                   className="input"
                   type="text"
@@ -1686,9 +1726,9 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                 />
               </label>
             </div>
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '140px' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Ano cierre desde (cartera)</span>
+            <div className="config-row-wrap">
+              <label className="config-label-col config-minw-140">
+                <span className="config-label-caption">Año cierre desde (cartera)</span>
                 <input
                   className="input"
                   type="text"
@@ -1699,8 +1739,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   onChange={(e) => setCloseYearFromPart(e.target.value.replace(/[^0-9]/g, ''))}
                 />
               </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '140px' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Ano cierre hasta (cartera)</span>
+              <label className="config-label-col config-minw-140">
+                <span className="config-label-caption">Año cierre hasta (cartera)</span>
                 <input
                   className="input"
                   type="text"
@@ -1714,16 +1754,16 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
             </div>
           </div>
 
-          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', marginTop: '0.5rem' }}>
+          <p className="config-section-subtitle config-mt-sm">
             Modo de carga: <strong>{modeLabel}</strong>
           </p>
           {allDomainsSelected && (
-            <p style={{ color: '#f59e0b', fontSize: '0.82rem', marginTop: '0.35rem', marginBottom: '0.2rem' }}>
+            <p className="config-warn-text">
               Modo masivo: se ejecutara en cola estricta (1 dominio por vez) para proteger RAM/CPU.
             </p>
           )}
 
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="config-row-wrap-tight">
             <button type="button" className="btn btn-primary" onClick={handleSync} disabled={busy}>
               {syncLoading ? 'Sincronizando...' : 'Ejecutar carga'}
             </button>
@@ -1731,7 +1771,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
               {reloadLoading ? 'Recargando...' : 'Recargar vista'}
             </button>
               {showSyncResult && syncResult && (
-              <span style={{ color: syncResult.error ? 'var(--color-error)' : 'var(--color-primary)', fontWeight: 500 }}>
+              <span className={syncResult.error ? 'status-error' : 'status-ok'}>
                 {syncResult.error
                   ? `ERROR ${syncResult.error}`
                   : Number(syncResult.rows || 0) > 0
@@ -1827,14 +1867,14 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                 </div>
               </div>
 
-              <div style={{ fontSize: '0.82rem', marginBottom: '0.4rem', color: 'var(--color-text-muted)' }}>
+              <div className="config-meta">
                 Avance general
               </div>
               <div
                 style={{
                   width: '100%',
                   height: '10px',
-                  background: 'rgba(255,255,255,0.12)',
+                  background: 'var(--glass-border)',
                   borderRadius: '999px',
                   overflow: 'hidden',
                 }}
@@ -1849,7 +1889,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '0.5rem', fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>
+              <div className="config-meta-block">
                 <span>Tabla destino: {syncLive.targetTable || '-'}</span>
                 <span>Leidas: {syncLive.rowsRead ?? 0}</span>
                 <span>Insertadas: {syncLive.rowsInserted ?? 0}</span>
@@ -1866,9 +1906,9 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
             </div>
           )}
 
-          <div className="sync-logs-section" style={{ marginTop: '1.25rem' }}>
-            <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Logs de importación</h3>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', marginTop: 0, marginBottom: '0.5rem' }}>
+          <div className="sync-logs-section config-mt-xl">
+            <h3 className="config-section-title">Logs de importación</h3>
+            <p className="config-section-subtitle config-mb-sm">
               Registro de la última ejecución. Si hubo errores, aparecen aquí. Puedes exportar todo a un archivo TXT.
             </p>
             {displayError && (
@@ -1891,8 +1931,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
               style={{
                 marginBottom: '0.75rem',
                 padding: '0.75rem',
-                background: 'rgba(0,0,0,0.2)',
-                border: '1px solid rgba(255,255,255,0.12)',
+                background: 'var(--table-head-bg)',
+                border: '1px solid var(--color-border)',
                 borderRadius: '8px',
                 fontSize: '0.8rem',
                 whiteSpace: 'pre-wrap',
@@ -1916,12 +1956,12 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
 
         {configSection === 'programacion' && (
         <div>
-          <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Programación de importaciones</h3>
-          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', marginTop: 0, marginBottom: '0.75rem' }}>
+          <h3 className="config-section-title">Programación de importaciones</h3>
+          <p className="config-section-subtitle">
             Programe ejecuciones automáticas por intervalo (mínimo 10 minutos). Parar todo detiene todos los cron y cancela jobs pendientes.
           </p>
 
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+          <div className="config-actions-row">
             <button
               type="button"
               className="btn btn-primary"
@@ -1963,77 +2003,61 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+          <div className="config-stack-md" style={{ marginBottom: '1.5rem' }}>
             {schedules.length === 0 && !schedulesLoading && (
-              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>No hay programaciones. Cree una abajo.</p>
+              <p className="config-muted-text">No hay programaciones. Cree una abajo.</p>
             )}
             {schedules.map((s) => (
-              <div
-                key={s.id}
-                style={{
-                  padding: '0.75rem 1rem',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  borderRadius: '8px',
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  gap: '0.75rem',
-                }}
-              >
+              <div key={s.id} className="schedule-card">
                 <span
+                  className="schedule-dot"
                   style={{
-                    width: '12px',
-                    height: '12px',
-                    borderRadius: '50%',
-                    flexShrink: 0,
                     background: s.paused
-                      ? '#f59e0b'
+                      ? 'var(--color-state-warn)'
                       : (scheduleRuntime[s.id]?.running
-                        ? '#22c55e'
+                        ? 'var(--color-state-ok)'
                         : (s.last_run_status === 'failed'
                           ? 'var(--color-error)'
-                          : (s.last_run_status === 'ok' ? 'var(--color-primary)' : '#64748b'))),
-                    opacity: 1,
+                          : (s.last_run_status === 'ok' ? 'var(--color-primary)' : 'var(--color-text-muted)'))),
                   }}
                   title={formatScheduleRuntimeLabel(s.paused, s.last_run_status, scheduleRuntime[s.id])}
                   aria-hidden
                 />
-                <span style={{ fontWeight: 600 }}>{s.name}</span>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+                <span className="schedule-name">{s.name}</span>
+                <span className="config-inline-meta">
                   cada {s.interval_value} {s.interval_unit === 'minute' ? 'min' : s.interval_unit === 'hour' ? 'h' : s.interval_unit === 'day' ? 'días' : 'meses'}
                 </span>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>
+                <span className="config-inline-meta">
                   Dominios: {Array.isArray(s.domains) ? s.domains.join(', ') : '-'}
                 </span>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>
+                <span className="config-inline-meta">
                   Última: {s.last_run_at ? formatSyncTimestamp(s.last_run_at) : '-'}
                 </span>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>
+                <span className="config-inline-meta">
                   Próxima: {s.next_run_at ? formatSyncTimestamp(s.next_run_at) : '-'}
                 </span>
                 <span
                   style={{
                     color: s.paused
-                      ? '#f59e0b'
+                      ? 'var(--color-state-warn)'
                       : (scheduleRuntime[s.id]?.running
-                        ? '#22c55e'
+                        ? 'var(--color-state-ok)'
                         : (s.last_run_status === 'failed'
                           ? 'var(--color-error)'
-                          : (s.last_run_status === 'ok' ? 'var(--color-primary)' : '#64748b'))),
+                          : (s.last_run_status === 'ok' ? 'var(--color-primary)' : 'var(--color-text-muted)'))),
                     fontSize: '0.82rem',
                     fontWeight: 600,
                   }}
                 >
                   {formatScheduleRuntimeLabel(s.paused, s.last_run_status, scheduleRuntime[s.id])}
                 </span>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
+                <span className="config-inline-meta">
                   {formatScheduleLastRunSummary(s.last_run_summary)}
                 </span>
-                <div style={{ display: 'flex', gap: '0.35rem', marginLeft: 'auto' }}>
+                <div className="schedule-actions">
                   <button
                     type="button"
-                    className="btn btn-secondary"
-                    style={{ fontSize: '0.8rem' }}
+                    className="btn btn-secondary btn-small"
                     disabled={scheduleActionLoading !== null}
                     onClick={async () => {
                       setScheduleActionLoading(s.id)
@@ -2051,8 +2075,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   </button>
                   <button
                     type="button"
-                    className="btn btn-secondary"
-                    style={{ fontSize: '0.8rem' }}
+                    className="btn btn-secondary btn-small"
                     disabled={scheduleActionLoading !== null}
                     onClick={async () => {
                       setScheduleActionLoading(s.id)
@@ -2071,8 +2094,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   </button>
                   <button
                     type="button"
-                    className="btn btn-secondary"
-                    style={{ fontSize: '0.8rem' }}
+                    className="btn btn-secondary btn-small"
                     disabled={scheduleActionLoading !== null}
                     onClick={async () => {
                       if (!window.confirm('¿Eliminar esta programación?')) return
@@ -2094,10 +2116,10 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
             ))}
           </div>
 
-          <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>Nueva programación</h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '480px' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Nombre</span>
+          <h4 className="config-section-title config-subtitle-sm">Nueva programación</h4>
+          <div className="config-stack-sm config-stack-sm-max">
+            <label className="config-label-col">
+              <span className="config-label-caption">Nombre</span>
               <input
                 className="input"
                 value={scheduleFormName}
@@ -2106,9 +2128,9 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                 disabled={scheduleSaving}
               />
             </label>
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Cada</span>
+            <div className="config-row-wrap">
+              <label className="config-label-col">
+                <span className="config-label-caption">Cada</span>
                 <input
                   className="input"
                   type="number"
@@ -2118,8 +2140,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                   disabled={scheduleSaving}
                 />
               </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Unidad</span>
+              <label className="config-label-col">
+                <span className="config-label-caption">Unidad</span>
                 <select
                   className="input"
                   value={scheduleFormIntervalUnit}
@@ -2133,11 +2155,11 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
                 </select>
               </label>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Dominios</span>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <div className="config-stack-sm">
+              <span className="config-label-caption">Dominios</span>
+              <div className="config-row-wrap-tight">
                 {SYNC_DOMAINS.map((d) => (
-                  <label key={d.value} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <label key={d.value} className="config-check-row">
                     <input
                       type="checkbox"
                       checked={scheduleFormDomains.includes(d.value)}
@@ -2185,3 +2207,4 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange }: Props) {
     </section>
   )
 }
+

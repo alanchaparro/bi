@@ -15,11 +15,12 @@ os.environ.setdefault('JWT_REFRESH_SECRET_KEY', 'test_refresh_secret')
 
 from app.main import app  # noqa: E402
 from app.core.rate_limit import rate_limiter  # noqa: E402
+from app.core.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 from app.models.brokers import AuthUser, AuthUserState  # noqa: E402
 
-TEST_ADMIN_USER = os.environ.get('TEST_ADMIN_USER', os.environ.get('DEMO_ADMIN_USER', 'admin'))
-TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', os.environ.get('DEMO_ADMIN_PASSWORD', 'change_me_demo_admin_password'))
+TEST_ADMIN_USER = os.environ.get('TEST_SYNC_ADMIN_USER', 'sync_admin')
+TEST_ADMIN_PASSWORD = os.environ.get('TEST_SYNC_ADMIN_PASSWORD', 'sync_admin_123')
 
 
 class ApiV1SyncTests(unittest.TestCase):
@@ -28,7 +29,19 @@ class ApiV1SyncTests(unittest.TestCase):
         db = SessionLocal()
         try:
             db.query(AuthUserState).delete()
-            db.query(AuthUser).filter(AuthUser.username == TEST_ADMIN_USER).delete(synchronize_session=False)
+            row = db.query(AuthUser).filter(AuthUser.username == TEST_ADMIN_USER).first()
+            if row is None:
+                row = AuthUser(
+                    username=TEST_ADMIN_USER,
+                    password_hash=hash_password(TEST_ADMIN_PASSWORD),
+                    role='admin',
+                    is_active=True,
+                )
+                db.add(row)
+            else:
+                row.password_hash = hash_password(TEST_ADMIN_PASSWORD)
+                row.role = 'admin'
+                row.is_active = True
             db.commit()
         finally:
             db.close()

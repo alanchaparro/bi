@@ -210,6 +210,68 @@ class SyncChunkLogsOut(BaseModel):
     chunks: list[SyncChunkLogOut] = Field(default_factory=list)
 
 
+class AdminAnalyticsOptionsRebuildIn(BaseModel):
+    scope: str = Field(default='full', pattern='^(full|months)$')
+    months: list[str] | None = None
+
+    @field_validator('months')
+    @classmethod
+    def validate_months(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        out: list[str] = []
+        for item in value:
+            normalized = SyncRunIn._normalize_mm_yyyy(item, 'months')
+            if normalized is not None:
+                out.append(normalized)
+        return out
+
+    @model_validator(mode='after')
+    def validate_scope_requirements(self) -> 'AdminAnalyticsOptionsRebuildIn':
+        if self.scope == 'months' and not self.months:
+            raise ValueError('months requerido cuando scope=months')
+        return self
+
+
+class AdminAnalyticsOptionsConsistencyRowOut(BaseModel):
+    ok: bool
+    expected_months: int
+    actual_months: int
+    missing_months: list[str] = Field(default_factory=list)
+    stale_months: list[str] = Field(default_factory=list)
+
+
+class AdminAnalyticsOptionsConsistencyOut(BaseModel):
+    ok: bool
+    checks: dict[str, AdminAnalyticsOptionsConsistencyRowOut]
+    last_checked_at: str
+
+
+class AdminAnalyticsOptionsRebuildOut(BaseModel):
+    scope: str
+    months: list[str] = Field(default_factory=list)
+    rebuilt_rows: dict[str, int]
+    auto_rebuilt: bool = False
+    auto_rebuilt_rows: dict[str, int] = Field(default_factory=dict)
+    consistency: AdminAnalyticsOptionsConsistencyOut
+    cache_invalidated: dict[str, int] = Field(default_factory=dict)
+    rebuilt_at: str
+    actor: str
+
+
+class AdminAnalyticsFreshnessRowOut(BaseModel):
+    source_table: str
+    max_updated_at: str | None = None
+    tracked_updated_at: str | None = None
+    last_job_id: str | None = None
+    from_tracker: bool = False
+
+
+class AdminAnalyticsFreshnessOut(BaseModel):
+    generated_at: str
+    rows: list[AdminAnalyticsFreshnessRowOut] = Field(default_factory=list)
+
+
 SYNC_SCHEDULE_INTERVAL_UNITS = {'minute', 'hour', 'day', 'month'}
 
 

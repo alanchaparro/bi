@@ -1,6 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
+import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
+import { AnalysisSelectionSummary } from '../../components/analytics/AnalysisSelectionSummary'
+import { EmptyState } from '../../components/feedback/EmptyState'
+import { ErrorState } from '../../components/feedback/ErrorState'
+import { LoadingState } from '../../components/feedback/LoadingState'
 import {
   getCobranzasCohorteDetail,
   getCobranzasCohorteFirstPaint,
@@ -79,6 +84,17 @@ function readStoredOrder(defaults: KpiId[]): KpiId[] {
 }
 
 const pct = (v: number) => `${(Number(v || 0) * 100).toFixed(1)}%`
+
+const monthMinusOne = (mmYYYY: string | undefined | null): string => {
+  const value = String(mmYYYY || '').trim()
+  const match = /^(\d{1,2})\/(\d{4})$/.exec(value)
+  if (!match) return ''
+  const month = Number(match[1])
+  const year = Number(match[2])
+  if (!Number.isInteger(month) || !Number.isInteger(year) || month < 1 || month > 12) return ''
+  if (month === 1) return `12/${year - 1}`
+  return `${String(month - 1).padStart(2, '0')}/${year}`
+}
 
 export function AnalisisCobranzasCohorteView() {
   const [loadingOptions, setLoadingOptions] = useState(true)
@@ -200,6 +216,13 @@ export function AnalisisCobranzasCohorteView() {
     }
   }, [filters, loadDetail, loadFirstPaint])
 
+  const clearFilters = useCallback(() => {
+    setFilters({
+      ...EMPTY_FILTERS,
+      cutoffMonth: options.cutoffMonths?.[options.cutoffMonths.length - 1] ?? '',
+    })
+  }, [options.cutoffMonths])
+
   const onReset = useCallback(async () => {
     try {
       setApplying(true)
@@ -255,10 +278,15 @@ export function AnalisisCobranzasCohorteView() {
     return Number(totals?.cobrado || 0) / contratosConPago
   }, [totals?.cobrado, totals?.pagaron])
 
-  const byYearEntries = useMemo(
-    () => Object.entries(summary?.by_year || {}).sort((a, b) => Number(b[0] || 0) - Number(a[0] || 0)),
-    [summary?.by_year],
-  )
+  const byTramoEntries = useMemo(() => {
+    const byTramo = summary?.by_tramo || {}
+    const tramoEntries = Object.entries(byTramo)
+    if (tramoEntries.length > 0) {
+      return tramoEntries.sort((a, b) => Number(a[0] || 0) - Number(b[0] || 0))
+    }
+    return Object.entries(summary?.by_year || {}).sort((a, b) => Number(b[0] || 0) - Number(a[0] || 0))
+  }, [summary?.by_tramo, summary?.by_year])
+  const usesTramoBreakdown = useMemo(() => Object.keys(summary?.by_tramo || {}).length > 0, [summary?.by_tramo])
 
   const activeFilterChips = useMemo<FilterChip[]>(() => {
     const blocks: Array<{ key: MultiValueFilterKey; label: string }> = [
@@ -280,7 +308,7 @@ export function AnalisisCobranzasCohorteView() {
     }))
   }, [])
 
-  const hasRows = detailRows.length > 0 || byYearEntries.length > 0
+  const hasRows = detailRows.length > 0 || byTramoEntries.length > 0
   const noCohorteData = options.cutoffMonths.length === 0
 
   const moveKpi = useCallback((fromId: KpiId, toId: KpiId) => {
@@ -301,67 +329,75 @@ export function AnalisisCobranzasCohorteView() {
       title: 'Total Cobrado',
       value: formatGsFull(totals?.cobrado || 0),
       note: `${formatCount(totals?.pagaron || 0)} contratos pagaron`,
-      className: 'cohorte-kpi-primary',
+      className: 'analysis-kpi-primary',
     },
     deberia_cobrar: {
-      title: 'Deberia Cobrar',
+      title: 'Debería Cobrar',
       value: formatGsFull(totals?.deberia || 0),
       note: `${formatCount(totals?.activos || 0)} contratos activos`,
-      className: 'cohorte-kpi-gold',
+      className: 'analysis-kpi-gold',
     },
     pago_contratos: {
       title: '% Pago Contratos',
       value: pct(totals?.pct_pago_contratos || 0),
-      className: 'cohorte-kpi-emerald',
+      className: 'analysis-kpi-emerald',
     },
     cobertura_monto: {
       title: '% Cobertura Monto',
       value: pct(totals?.pct_cobertura_monto || 0),
-      className: 'cohorte-kpi-violet',
+      className: 'analysis-kpi-violet',
     },
     ticket_transaccional: {
       title: 'Ticket Transaccional',
       value: formatGsFull(ticketTransaccional),
       note: `${formatCount(totals?.transacciones || 0)} transacciones`,
-      className: 'cohorte-kpi-cyan',
+      className: 'analysis-kpi-cyan',
     },
     ticket_contrato: {
       title: 'Ticket Contrato',
       value: formatGsFull(ticketContrato),
       note: `${formatCount(totals?.pagaron || 0)} contratos con pago`,
-      className: 'cohorte-kpi-amber',
+      className: 'analysis-kpi-amber',
     },
   }
 
+  const gestionBase = String(summary?.effective_cartera_month || summary?.cutoff_month || '')
+  const cierreBase = monthMinusOne(gestionBase)
+
+  const metaCohorte = (summary?.cutoff_month != null || summary?.effective_cartera_month != null) ? (
+    <>
+      {summary?.cutoff_month ? (
+        <span className="analysis-meta-chip">Corte de cobranza: <strong>{summary.cutoff_month}</strong></span>
+      ) : null}
+      {gestionBase ? (
+        <span className="analysis-meta-chip">
+          Gesti&oacute;n usada: <strong>{gestionBase}</strong>
+          {cierreBase ? <> (Cierre base: <strong>{cierreBase}</strong>)</> : null}
+        </span>
+      ) : null}
+    </>
+  ) : undefined
+
   return (
-    <section className="card analysis-card cohorte-card">
-      <div className="cohorte-header">
-        <div className="cohorte-header-row">
-          <span className="cohorte-kicker">Panel ejecutivo</span>
-          <span className="cohorte-live-pill">Cobranzas corte</span>
-        </div>
-        <h2>Analisis de Cobranzas por Corte</h2>
-        <p className="cohorte-subtitle">Cobro del corte seleccionado, segmentado por mes/ano de venta.</p>
-        <div className="cohorte-meta-row">
-          {summary?.cutoff_month ? (
-            <span className="cohorte-meta-chip">Corte de cobranza: <strong>{summary.cutoff_month}</strong></span>
-          ) : null}
-          {summary?.effective_cartera_month ? (
-            <span className="cohorte-meta-chip">Cartera usada: <strong>{summary.effective_cartera_month}</strong></span>
-          ) : null}
-        </div>
-      </div>
+    <section className="card analysis-card analysis-panel-card">
+      <AnalyticsPageHeader
+        kicker="Panel ejecutivo"
+        pill="Cobranzas corte"
+        title="Análisis de Cobranzas por Corte"
+        subtitle="Cobro del corte seleccionado, segmentado por mes/año de venta."
+        meta={metaCohorte}
+      />
 
       {loadingOptions ? (
-        <div className="cohorte-skeleton-wrap" aria-live="polite" aria-busy="true">
-          <div className="cohorte-skeleton-grid">
+        <div className="analysis-skeleton-wrap" aria-live="polite" aria-busy="true">
+          <div className="analysis-skeleton-grid">
             <div className="analysis-skeleton-input" />
             <div className="analysis-skeleton-input" />
             <div className="analysis-skeleton-input" />
             <div className="analysis-skeleton-input" />
             <div className="analysis-skeleton-input" />
           </div>
-          <div className="cohorte-skeleton-kpis">
+          <div className="analysis-skeleton-kpis">
             <div className="analysis-skeleton-kpi" />
             <div className="analysis-skeleton-kpi" />
             <div className="analysis-skeleton-kpi" />
@@ -369,21 +405,21 @@ export function AnalisisCobranzasCohorteView() {
             <div className="analysis-skeleton-kpi" />
             <div className="analysis-skeleton-kpi" />
           </div>
-          <div className="cohorte-skeleton-table" />
-          <div className="cohorte-skeleton-table" />
+          <div className="analysis-skeleton-table" />
+          <div className="analysis-skeleton-table" />
         </div>
       ) : null}
 
       {!loadingOptions ? (
         <>
-          <div className="cohorte-filters-grid">
-            <div className="cohorte-filter-control">
-              <label className="input-label">Mes/Ano de Cobro</label>
+          <div className="analysis-filters-grid">
+            <div className="analysis-filter-control">
+              <label className="input-label">Mes/Año de Cobro</label>
               <select
                 className="input"
                 value={filters.cutoffMonth}
                 onChange={(e) => setFilters((prev) => ({ ...prev, cutoffMonth: e.target.value }))}
-                aria-label="Mes/Ano de Cobro"
+                aria-label="Mes/Año de Cobro"
               >
                 {options.cutoffMonths.map((month) => (
                   <option key={month} value={month}>{month}</option>
@@ -392,7 +428,7 @@ export function AnalisisCobranzasCohorteView() {
             </div>
 
             <MultiSelectFilter
-              className="cohorte-filter-control"
+              className="analysis-filter-control"
               label="Unidad de Negocio"
               options={options.uns}
               selected={filters.uns}
@@ -400,14 +436,14 @@ export function AnalisisCobranzasCohorteView() {
               placeholder="Todos"
             />
 
-            <div className="cohorte-filter-control cohorte-via-control">
-              <label className="input-label">Via de Cobro</label>
-              <div className="cohorte-via-toggle" role="radiogroup" aria-label="Via de Cobro">
+            <div className="analysis-filter-control analysis-via-control">
+              <label className="input-label">Vía de Cobro</label>
+              <div className="analysis-via-toggle" role="radiogroup" aria-label="Vía de Cobro">
                 <button
                   type="button"
                   role="radio"
                   aria-checked={selectedVia === ''}
-                  className={`cohorte-via-btn ${selectedVia === '' ? 'is-active' : ''}`}
+                  className={`analysis-via-btn ${selectedVia === '' ? 'is-active' : ''}`}
                   onClick={() => setFilters((prev) => ({ ...prev, vias: [] }))}
                 >
                   Todos
@@ -416,7 +452,7 @@ export function AnalisisCobranzasCohorteView() {
                   type="button"
                   role="radio"
                   aria-checked={selectedVia === 'DEBITO'}
-                  className={`cohorte-via-btn ${selectedVia === 'DEBITO' ? 'is-active' : ''}`}
+                  className={`analysis-via-btn ${selectedVia === 'DEBITO' ? 'is-active' : ''}`}
                   onClick={() => setFilters((prev) => ({ ...prev, vias: ['DEBITO'] }))}
                 >
                   Debito
@@ -425,7 +461,7 @@ export function AnalisisCobranzasCohorteView() {
                   type="button"
                   role="radio"
                   aria-checked={selectedVia === 'COBRADOR'}
-                  className={`cohorte-via-btn ${selectedVia === 'COBRADOR' ? 'is-active' : ''}`}
+                  className={`analysis-via-btn ${selectedVia === 'COBRADOR' ? 'is-active' : ''}`}
                   onClick={() => setFilters((prev) => ({ ...prev, vias: ['COBRADOR'] }))}
                 >
                   Cobrador
@@ -434,7 +470,7 @@ export function AnalisisCobranzasCohorteView() {
             </div>
 
             <MultiSelectFilter
-              className="cohorte-filter-control"
+              className="analysis-filter-control"
               label="Supervisor"
               options={options.supervisors}
               selected={filters.supervisors}
@@ -442,14 +478,14 @@ export function AnalisisCobranzasCohorteView() {
               placeholder="Todos"
             />
 
-            <div className="cohorte-filter-control cohorte-category-control">
-              <label className="input-label">Categoria</label>
-              <div className="cohorte-category-toggle" role="radiogroup" aria-label="Categoria">
+            <div className="analysis-filter-control analysis-category-control">
+              <label className="input-label">Categoría</label>
+              <div className="analysis-category-toggle" role="radiogroup" aria-label="Categoría">
                 <button
                   type="button"
                   role="radio"
                   aria-checked={selectedCategoria === ''}
-                  className={`cohorte-category-btn ${selectedCategoria === '' ? 'is-active' : ''}`}
+                  className={`analysis-category-btn ${selectedCategoria === '' ? 'is-active' : ''}`}
                   onClick={() => setFilters((prev) => ({ ...prev, categorias: [] }))}
                 >
                   Todas
@@ -458,7 +494,7 @@ export function AnalisisCobranzasCohorteView() {
                   type="button"
                   role="radio"
                   aria-checked={selectedCategoria === 'VIGENTE'}
-                  className={`cohorte-category-btn ${selectedCategoria === 'VIGENTE' ? 'is-active' : ''}`}
+                  className={`analysis-category-btn ${selectedCategoria === 'VIGENTE' ? 'is-active' : ''}`}
                   onClick={() => setFilters((prev) => ({ ...prev, categorias: ['VIGENTE'] }))}
                 >
                   Vigente
@@ -467,7 +503,7 @@ export function AnalisisCobranzasCohorteView() {
                   type="button"
                   role="radio"
                   aria-checked={selectedCategoria === 'MOROSO'}
-                  className={`cohorte-category-btn ${selectedCategoria === 'MOROSO' ? 'is-active' : ''}`}
+                  className={`analysis-category-btn ${selectedCategoria === 'MOROSO' ? 'is-active' : ''}`}
                   onClick={() => setFilters((prev) => ({ ...prev, categorias: ['MOROSO'] }))}
                 >
                   Moroso
@@ -476,51 +512,62 @@ export function AnalisisCobranzasCohorteView() {
             </div>
           </div>
 
-          <div className="analysis-actions-row cohorte-actions">
+          <div className="analysis-actions-row analysis-actions">
             <button type="button" className="btn btn-primary" onClick={onApply} disabled={applying}>
               {applying ? <span className="inline-spinner" aria-hidden /> : null}
               {applying ? 'Aplicando...' : 'Aplicar filtros'}
             </button>
-            <button type="button" className="btn btn-secondary" onClick={onReset} disabled={applying}>
-              Resetear
+            <button type="button" className="btn btn-secondary" onClick={clearFilters} disabled={applying}>
+              Limpiar filtros
             </button>
-            <span className="cohorte-active-count">
+            <button type="button" className="btn btn-secondary" onClick={onReset} disabled={applying}>
+              Resetear filtros
+            </button>
+            <span className="analysis-active-count">
               {activeFilterChips.length} filtro{activeFilterChips.length === 1 ? '' : 's'} activo{activeFilterChips.length === 1 ? '' : 's'}
             </span>
           </div>
 
-          <div className="cohorte-active-filters">
+          <div className="analysis-active-filters">
             <ActiveFilterChips chips={activeFilterChips} onRemove={removeChip} />
           </div>
 
+          <AnalysisSelectionSummary
+            items={[
+              { label: "Mes/Año Cobro", value: appliedFilters.cutoffMonth || "—" },
+              { label: "UN", value: appliedFilters.uns.length ? appliedFilters.uns.join(", ") : "Todas" },
+              { label: "Vía", value: appliedFilters.vias.length ? appliedFilters.vias.join(", ") : "Todas" },
+              { label: "Categoría", value: appliedFilters.categorias.length ? appliedFilters.categorias.join(", ") : "Todas" },
+              { label: "Supervisor", value: appliedFilters.supervisors.length ? appliedFilters.supervisors.join(", ") : "Todos" },
+            ]}
+          />
+
           {noCohorteData ? (
-            <div className="analysis-empty">
-              Sin datos de cobranzas por corte. Debe sincronizar dominios <strong>cartera</strong> y <strong>cobranzas</strong>
-              para poblar <code>cobranzas_cohorte_agg</code>.
-            </div>
+            <EmptyState
+              className="analysis-empty"
+              message={
+                <>
+                  Sin datos de cobranzas por corte. Debe sincronizar dominios <strong>cartera</strong> y <strong>cobranzas</strong>
+                  para poblar <code>cobranzas_cohorte_agg</code>.
+                </>
+              }
+            />
           ) : null}
 
-          {error ? (
-            <div className="alert-error cohorte-error">
-              <span>{error}</span>
-              <button type="button" className="btn btn-secondary" onClick={() => void retryLastRequest()} disabled={applying}>
-                Reintentar
-              </button>
-            </div>
-          ) : null}
+          {error ? <ErrorState message={error} className="analysis-error" onRetry={() => void retryLastRequest()} disabled={applying} /> : null}
 
           {applying && summary ? <div className="summary-loading-note">Actualizando resultados...</div> : null}
-          {loadingSummary && !summary ? <div className="summary-loading-note">Cargando resumen inicial...</div> : null}
+          {loadingSummary && !summary ? <LoadingState message="Cargando resumen inicial..." className="summary-loading-note" /> : null}
           {loadingDetail && summary ? <div className="summary-loading-note">Cargando detalle...</div> : null}
 
-          <div className={`cohorte-results ${applying ? 'cohorte-results-updating' : ''}`}>
-            <div className="cohorte-kpis">
+          <div className={`analysis-results ${applying ? 'analysis-results-updating' : ''}`}>
+            <div className="analysis-kpis">
               {kpiOrder.map((kpiId) => {
                 const card = kpiCards[kpiId]
                 return (
                   <article
                     key={kpiId}
-                    className={`card kpi-card cohorte-kpi-card ${card.className} ${dragOverKpi === kpiId ? 'chart-drop-target' : ''} ${draggingKpi === kpiId ? 'dragging-card' : ''}`}
+                    className={`card kpi-card analysis-kpi-card ${card.className} ${dragOverKpi === kpiId ? 'chart-drop-target' : ''} ${draggingKpi === kpiId ? 'dragging-card' : ''}`}
                     draggable
                     onDragStart={(e) => {
                       setDraggingKpi(kpiId)
@@ -548,35 +595,35 @@ export function AnalisisCobranzasCohorteView() {
                       <span className="chart-drag-handle" title="Arrastrar para reordenar" aria-hidden>::</span>
                     </div>
                     <div className="kpi-card-value" title={card.value}>{card.value}</div>
-                    {card.note ? <small className="cohorte-kpi-note">{card.note}</small> : null}
+                    {card.note ? <small className="analysis-kpi-note">{card.note}</small> : null}
                   </article>
                 )
               })}
             </div>
 
-            {!hasRows ? (
-              <div className="analysis-empty">Sin datos para los filtros seleccionados. Ajusta filtros y vuelve a aplicar.</div>
-            ) : null}
+            {!hasRows ? <EmptyState className="analysis-empty" message="Sin datos para los filtros seleccionados. Ajusta filtros y vuelve a aplicar." /> : null}
 
-            <div className="cohorte-table-section">
-              <p className="cohorte-table-caption">Resumen de efectividad por ano de venta.</p>
-              <div className="table-wrap cohorte-table-wrap cohorte-table-wrap-annual">
+            <div className="analysis-table-section">
+              <p className="analysis-table-caption">
+                {usesTramoBreakdown ? 'Resumen de efectividad por tramo.' : 'Resumen de efectividad por año de venta.'}
+              </p>
+              <div className="table-wrap analysis-table-wrap analysis-table-wrap-annual">
                 <table>
                   <thead>
                     <tr>
-                      <th>Ano</th>
+                      <th>{usesTramoBreakdown ? 'Tramo' : 'Año'}</th>
                       <th className="num">Activos</th>
                       <th className="num">Pagaron</th>
                       <th className="num">% Pago Contratos</th>
-                      <th className="num">Deberia</th>
+                      <th className="num">Debería</th>
                       <th className="num">Cobrado</th>
                       <th className="num">% Cobertura Monto</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {byYearEntries.map(([year, row]) => (
-                      <tr key={year}>
-                        <td className="cohorte-key-cell">{year}</td>
+                    {byTramoEntries.map(([key, row]) => (
+                      <tr key={key}>
+                        <td className="analysis-key-cell">{usesTramoBreakdown ? `Tramo ${key}` : key}</td>
                         <td className="num">{formatCount(row.activos || 0)}</td>
                         <td className="num">{formatCount(row.pagaron || 0)}</td>
                         <td className="num">{pct(row.pct_pago_contratos || 0)}</td>
@@ -590,17 +637,17 @@ export function AnalisisCobranzasCohorteView() {
               </div>
             </div>
 
-            <div className="cohorte-table-section">
-              <p className="cohorte-table-caption">Detalle mensual por cohorte de contratos.</p>
-              <div className="table-wrap cohorte-table-wrap cohorte-table-wrap-monthly">
+            <div className="analysis-table-section">
+              <p className="analysis-table-caption">Detalle mensual por cohorte de contratos.</p>
+              <div className="table-wrap analysis-table-wrap analysis-table-wrap-monthly">
                 <table>
                   <thead>
                     <tr>
-                      <th>Mes/Ano Contrato</th>
+                      <th>Mes/Año Contrato</th>
                       <th className="num">Activos</th>
                       <th className="num">Pagaron</th>
                       <th className="num">% Pago Contratos</th>
-                      <th className="num">Deberia</th>
+                      <th className="num">Debería</th>
                       <th className="num">Cobrado</th>
                       <th className="num">% Cobertura Monto</th>
                     </tr>
@@ -608,7 +655,7 @@ export function AnalisisCobranzasCohorteView() {
                   <tbody>
                     {(detailRows || []).map((row) => (
                       <tr key={row.sale_month}>
-                        <td className="cohorte-key-cell">{row.sale_month}</td>
+                        <td className="analysis-key-cell">{row.sale_month}</td>
                         <td className="num">{formatCount(row.activos || 0)}</td>
                         <td className="num">{formatCount(row.pagaron || 0)}</td>
                         <td className="num">{pct(row.pct_pago_contratos || 0)}</td>
@@ -621,7 +668,7 @@ export function AnalisisCobranzasCohorteView() {
                 </table>
               </div>
               {detailHasNext ? (
-                <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'center' }}>
+                <div className="analysis-detail-more-wrap">
                   <button
                     type="button"
                     className="btn btn-secondary"

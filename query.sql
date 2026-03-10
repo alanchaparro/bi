@@ -15,13 +15,7 @@ SELECT
     IF(c.type_plan = 1, 'INDIVIDUAL', 'FAMILIAR') AS tipo_plan,
     CASE
         WHEN c.contract_type = 1 THEN 'COBRADOR'
-        ELSE (
-            SELECT de.name 
-            FROM epem.contracting_entities ce
-            JOIN epem.debit_entities de ON ce.debitentity_id = de.id
-            WHERE ce.contract_id = c.id
-            LIMIT 1
-        )
+        ELSE ce_via.via_de_cobro
     END AS via_de_cobro,
     c.persons_amount AS asegurados,
     c.quotas_amount AS periodo_cuotas,
@@ -109,5 +103,15 @@ LEFT JOIN epem.contract_situations cs
     ON cs.contract_id = c.id 
     AND cs.type = 3 
     AND cs.status = 1
+LEFT JOIN (
+    SELECT
+        ce.contract_id,
+        MIN(de.name) AS via_de_cobro
+    FROM epem.contracting_entities ce
+    JOIN epem.debit_entities de
+        ON ce.debitentity_id = de.id
+    GROUP BY ce.contract_id
+) ce_via
+    ON ce_via.contract_id = c.id
 WHERE ccd.closed_date > '2020-12-31' 
   AND c.enterprise_id IN (1, 2, 5);

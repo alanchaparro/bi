@@ -72,8 +72,8 @@ class AnualesBusinessRulesTests(unittest.TestCase):
         self.assertEqual(row.get("culminados"), 2)
         self.assertEqual(row.get("culminadosVigentes"), 1)
         self.assertAlmostEqual(row.get("tkpPagoCulminadoVigente", 0.0), 100.0, places=6)
-        # Contract 1: cobrado=200, deberia=200, months=2 => LTV = 1 * 2 = 2
-        self.assertAlmostEqual(row.get("ltvCulminadoVigente", 0.0), 2.0, places=6)
+        # Contract 1: cobrado=200, deberia=200 => LTV = 1.0 (100%)
+        self.assertAlmostEqual(row.get("ltvCulminadoVigente", 0.0), 1.0, places=6)
 
 
 if __name__ == "__main__":

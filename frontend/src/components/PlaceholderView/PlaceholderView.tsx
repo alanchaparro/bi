@@ -9,7 +9,7 @@ export function PlaceholderView({ title, message = 'Módulo en desarrollo. Próx
   return (
     <section className="card">
       <h2>{title}</h2>
-      <p style={{ color: 'var(--color-text-muted)' }}>{message}</p>
+      <p className="text-muted">{message}</p>
     </section>
   )
 }

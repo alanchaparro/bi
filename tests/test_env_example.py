@@ -9,6 +9,13 @@ class EnvExampleTests(unittest.TestCase):
         env = (ROOT / '.env.example').read_text(encoding='utf-8')
         for key in ['MYSQL_HOST', 'MYSQL_PORT', 'MYSQL_USER', 'MYSQL_PASSWORD', 'MYSQL_DATABASE']:
             self.assertIn(key + '=', env)
+        for key in [
+            'SYNC_QUERY_VARIANT_CARTERA',
+            'SYNC_QUERY_VARIANT_COBRANZAS',
+            'SYNC_QUERY_VARIANT_CONTRATOS',
+            'SYNC_QUERY_VARIANT_GESTORES',
+        ]:
+            self.assertIn(key + '=', env)
 
 
 if __name__ == '__main__':

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.brokers import (
     AnalyticsContractSnapshot,
+    AnalyticsSourceFreshness,
     AnalyticsAnualesAgg,
     AnalyticsRendimientoAgg,
     BrokersSupervisorScope,
@@ -25,8 +26,13 @@ from app.models.brokers import (
     CarteraFact,
     CobranzasCohorteAgg,
     CobranzasFact,
+    MvOptionsAnuales,
+    MvOptionsCartera,
+    MvOptionsCohorte,
+    MvOptionsRendimiento,
     CommissionRules,
     DimNegocioContrato,
+    DimNegocioUnMap,
     PrizeRules,
 )
 from app.schemas.analytics import (
@@ -36,7 +42,6 @@ from app.schemas.analytics import (
     CobranzasCohorteIn,
     PortfolioSummaryIn,
 )
-from app.services.brokers_config_service import BrokersConfigService
 
 
 _COHORTE_BASE_CACHE_TTL_SEC = 900
@@ -45,6 +50,8 @@ _COHORTE_BASE_CACHE_LOCK = Lock()
 _LEGACY_CLIENT_LOCK = Lock()
 _LEGACY_CLIENT: httpx.Client | None = None
 ANALYTICS_PIPELINE_VERSION = '2026.03.v2'
+STANDARD_GESTION_CALENDAR_START = '01/2021'
+STANDARD_CONTRACT_CALENDAR_START = '01/2014'
 
 
 def _legacy_http_client() -> httpx.Client:
@@ -105,6 +112,70 @@ def _month_serial(mm_yyyy: str) -> int:
     if m < 1 or m > 12:
         return 0
     return y * 12 + m
+
+
+def _latest_month(values: list[str]) -> str:
+    months = sorted(
+        {str(v or '').strip() for v in (values or []) if _month_serial(str(v or '').strip()) > 0},
+        key=_month_serial,
+    )
+    return months[-1] if months else ''
+
+
+def _month_from_serial(serial: int) -> str:
+    if serial <= 0:
+        return ''
+    year = serial // 12
+    month = serial % 12
+    if month == 0:
+        month = 12
+        year -= 1
+    if year <= 0:
+        return ''
+    return f'{month:02d}/{year}'
+
+
+def _standard_calendar_months(start_mm_yyyy: str, end_mm_yyyy: str | None = None) -> list[str]:
+    start_serial = _month_serial(start_mm_yyyy)
+    if start_serial <= 0:
+        return []
+    if end_mm_yyyy and _month_serial(end_mm_yyyy) > 0:
+        end_serial = _month_serial(end_mm_yyyy)
+    else:
+        now = datetime.utcnow()
+        end_serial = (now.year * 12) + now.month
+    if end_serial < start_serial:
+        return []
+    out: list[str] = []
+    for serial in range(start_serial, end_serial + 1):
+        mm = _month_from_serial(serial)
+        if mm:
+            out.append(mm)
+    return out
+
+
+def _cap_paid_to_debt(paid: float | int | None, debt: float | int | None) -> float:
+    paid_num = float(paid or 0.0)
+    debt_num = float(debt or 0.0)
+    if paid_num <= 0.0 or debt_num <= 0.0:
+        return 0.0
+    return paid_num if paid_num <= debt_num else debt_num
+
+
+def _effective_cartera_month_for_cutoff(db: Session, cutoff_month: str) -> str:
+    cutoff_serial = _month_serial(cutoff_month)
+    if cutoff_serial <= 0:
+        return ''
+    months = [
+        str(v[0]).strip()
+        for v in db.query(CarteraCorteAgg.gestion_month).distinct().all()
+        if _month_serial(str(v[0] or '').strip()) > 0
+    ]
+    effective = ''
+    for mm in sorted(set(months), key=_month_serial):
+        if _month_serial(mm) <= cutoff_serial:
+            effective = mm
+    return effective
 
 
 def _month_from_date(value: object) -> str:
@@ -326,37 +397,100 @@ class AnalyticsService:
         return res.json()
 
     @staticmethod
+    def _latest_timestamp_for_source(db: Session, source_table: str) -> datetime | None:
+        source = str(source_table or '').strip().lower()
+        try:
+            if source == 'cartera_fact':
+                return db.query(CarteraFact.updated_at).order_by(CarteraFact.updated_at.desc()).limit(1).scalar()
+            if source == 'cobranzas_fact':
+                return db.query(CobranzasFact.updated_at).order_by(CobranzasFact.updated_at.desc()).limit(1).scalar()
+            if source == 'cartera_corte_agg':
+                return db.query(CarteraCorteAgg.updated_at).order_by(CarteraCorteAgg.updated_at.desc()).limit(1).scalar()
+            if source == 'cobranzas_cohorte_agg':
+                return db.query(CobranzasCohorteAgg.updated_at).order_by(CobranzasCohorteAgg.updated_at.desc()).limit(1).scalar()
+            if source == 'analytics_rendimiento_agg':
+                return db.query(AnalyticsRendimientoAgg.updated_at).order_by(AnalyticsRendimientoAgg.updated_at.desc()).limit(1).scalar()
+            if source == 'analytics_anuales_agg':
+                return db.query(AnalyticsAnualesAgg.updated_at).order_by(AnalyticsAnualesAgg.updated_at.desc()).limit(1).scalar()
+            if source == 'dim_negocio_contrato':
+                return db.query(DimNegocioContrato.updated_at).order_by(DimNegocioContrato.updated_at.desc()).limit(1).scalar()
+            if source == 'analytics_contract_snapshot':
+                return db.query(AnalyticsContractSnapshot.created_at).order_by(AnalyticsContractSnapshot.created_at.desc()).limit(1).scalar()
+            if source == 'mv_options_cartera':
+                return db.query(MvOptionsCartera.updated_at).order_by(MvOptionsCartera.updated_at.desc()).limit(1).scalar()
+            if source == 'mv_options_cohorte':
+                return db.query(MvOptionsCohorte.updated_at).order_by(MvOptionsCohorte.updated_at.desc()).limit(1).scalar()
+            if source == 'mv_options_rendimiento':
+                return (
+                    db.query(MvOptionsRendimiento.updated_at)
+                    .order_by(MvOptionsRendimiento.updated_at.desc())
+                    .limit(1)
+                    .scalar()
+                )
+            if source == 'mv_options_anuales':
+                return db.query(MvOptionsAnuales.updated_at).order_by(MvOptionsAnuales.updated_at.desc()).limit(1).scalar()
+        except Exception:
+            return None
+        return None
+
+    @staticmethod
     def _source_freshness_iso(db: Session, source_table: str | None) -> str | None:
         source = str(source_table or '').strip().lower()
         if not source:
             return None
         tables = [s.strip() for s in source.replace('+', ',').split(',') if s.strip()]
+        freshness_rows = (
+            db.query(AnalyticsSourceFreshness.source_table, AnalyticsSourceFreshness.max_updated_at)
+            .filter(AnalyticsSourceFreshness.source_table.in_(tables))
+            .all()
+        )
+        freshness_map = {str(row[0] or '').strip().lower(): row[1] for row in freshness_rows}
         max_dt: datetime | None = None
         for name in tables:
-            try:
-                if name == 'cartera_fact':
-                    dt = db.query(func.max(CarteraFact.updated_at)).scalar()
-                elif name == 'cobranzas_fact':
-                    dt = db.query(func.max(CobranzasFact.updated_at)).scalar()
-                elif name == 'cartera_corte_agg':
-                    dt = db.query(func.max(CarteraCorteAgg.updated_at)).scalar()
-                elif name == 'cobranzas_cohorte_agg':
-                    dt = db.query(func.max(CobranzasCohorteAgg.updated_at)).scalar()
-                elif name == 'analytics_rendimiento_agg':
-                    dt = db.query(func.max(AnalyticsRendimientoAgg.updated_at)).scalar()
-                elif name == 'analytics_anuales_agg':
-                    dt = db.query(func.max(AnalyticsAnualesAgg.updated_at)).scalar()
-                elif name == 'dim_negocio_contrato':
-                    dt = db.query(func.max(DimNegocioContrato.updated_at)).scalar()
-                elif name == 'analytics_contract_snapshot':
-                    dt = db.query(func.max(AnalyticsContractSnapshot.created_at)).scalar()
-                else:
-                    dt = None
-            except Exception:
-                dt = None
+            dt = freshness_map.get(name)
+            if dt is None:
+                dt = AnalyticsService._latest_timestamp_for_source(db, name)
             if dt is not None and (max_dt is None or dt > max_dt):
                 max_dt = dt
         return max_dt.isoformat() if max_dt is not None else None
+
+    @staticmethod
+    def fetch_source_freshness_status(db: Session) -> dict:
+        tracked_sources = [
+            'cartera_fact',
+            'cobranzas_fact',
+            'cartera_corte_agg',
+            'cobranzas_cohorte_agg',
+            'analytics_rendimiento_agg',
+            'analytics_anuales_agg',
+            'dim_negocio_contrato',
+            'analytics_contract_snapshot',
+            'mv_options_cartera',
+            'mv_options_cohorte',
+            'mv_options_rendimiento',
+            'mv_options_anuales',
+        ]
+        rows = db.query(AnalyticsSourceFreshness).all()
+        existing = {str(row.source_table or '').strip().lower(): row for row in rows}
+        out_rows: list[dict] = []
+        for source in sorted(set(tracked_sources + list(existing.keys()))):
+            row = existing.get(source)
+            max_updated_at = row.max_updated_at if row else None
+            if max_updated_at is None:
+                max_updated_at = AnalyticsService._latest_timestamp_for_source(db, source)
+            out_rows.append(
+                {
+                    'source_table': source,
+                    'max_updated_at': max_updated_at.isoformat() if max_updated_at else None,
+                    'tracked_updated_at': row.updated_at.isoformat() if row and row.updated_at else None,
+                    'last_job_id': str(row.last_job_id or '') if row and row.last_job_id else None,
+                    'from_tracker': bool(row),
+                }
+            )
+        return {
+            'generated_at': datetime.utcnow().isoformat(),
+            'rows': out_rows,
+        }
 
     @staticmethod
     def attach_meta(db: Session, payload: dict, *, cache_hit: bool, source_table: str | None = None) -> dict:
@@ -367,6 +501,8 @@ class AnalyticsService:
         data_freshness_at = AnalyticsService._source_freshness_iso(db, meta.get('source_table'))
         if data_freshness_at:
             meta['data_freshness_at'] = data_freshness_at
+        else:
+            meta.setdefault('data_freshness_at', None)
         meta['cache_hit'] = bool(cache_hit)
         meta['pipeline_version'] = ANALYTICS_PIPELINE_VERSION
         meta.setdefault('generated_at', datetime.utcnow().isoformat())
@@ -510,33 +646,8 @@ class AnalyticsService:
         category_filter = _normalize_str_set(filters.categoria)
         tramo_filter = _normalize_str_set(filters.tramo)
         via_expr = _via_class_expr()
-
-        tramo_rules_cfg = BrokersConfigService.get_cartera_tramo_rules(db)
-        tramo_by_un_category: dict[str, dict[str, set[int]]] = {}
-        for rule in (tramo_rules_cfg.get('rules') or []):
-            if not isinstance(rule, dict):
-                continue
-            un_rule = str(rule.get('un') or '').strip().upper()
-            if not un_rule:
-                continue
-            category = str(rule.get('category') or '').strip().upper()
-            if category not in {'VIGENTE', 'MOROSO'}:
-                continue
-            tramos_raw = rule.get('tramos', [])
-            tramos_norm: set[int] = set()
-            if isinstance(tramos_raw, list):
-                for t in tramos_raw:
-                    tramos_norm.add(int(_normalize_tramo(t)))
-            tramo_by_un_category.setdefault(un_rule, {'VIGENTE': set(), 'MOROSO': set()})[category] = tramos_norm
-
+        # Regla de negocio AGENTS: VIGENTE=tramo 0..3, MOROSO=tramo > 3.
         category_expr = case((CarteraFact.tramo > 3, literal('MOROSO')), else_=literal('VIGENTE'))
-        for un, cfg in tramo_by_un_category.items():
-            vig = sorted(list(cfg.get('VIGENTE') or set()))
-            mor = sorted(list(cfg.get('MOROSO') or set()))
-            if vig:
-                category_expr = case((and_(CarteraFact.un == un, CarteraFact.tramo.in_(vig)), literal('VIGENTE')), else_=category_expr)
-            if mor:
-                category_expr = case((and_(CarteraFact.un == un, CarteraFact.tramo.in_(mor)), literal('MOROSO')), else_=category_expr)
 
         base = db.query(CarteraFact)
         if supervisor_filter:
@@ -597,32 +708,8 @@ class AnalyticsService:
         category_filter = _normalize_str_set(filters.categoria)
         tramo_filter = _normalize_str_set(filters.tramo)
         via_expr = _via_class_expr()
-        tramo_rules_cfg = BrokersConfigService.get_cartera_tramo_rules(db)
-        tramo_by_un_category: dict[str, dict[str, set[int]]] = {}
-        for rule in (tramo_rules_cfg.get('rules') or []):
-            if not isinstance(rule, dict):
-                continue
-            un_rule = str(rule.get('un') or '').strip().upper()
-            if not un_rule:
-                continue
-            category = str(rule.get('category') or '').strip().upper()
-            if category not in {'VIGENTE', 'MOROSO'}:
-                continue
-            tramos_raw = rule.get('tramos', [])
-            tramos_norm: set[int] = set()
-            if isinstance(tramos_raw, list):
-                for t in tramos_raw:
-                    tramos_norm.add(int(_normalize_tramo(t)))
-            tramo_by_un_category.setdefault(un_rule, {'VIGENTE': set(), 'MOROSO': set()})[category] = tramos_norm
-
+        # Regla de negocio AGENTS: VIGENTE=tramo 0..3, MOROSO=tramo > 3.
         category_expr = case((CarteraFact.tramo > 3, literal('MOROSO')), else_=literal('VIGENTE'))
-        for un, cfg in tramo_by_un_category.items():
-            vig = sorted(list(cfg.get('VIGENTE') or set()))
-            mor = sorted(list(cfg.get('MOROSO') or set()))
-            if vig:
-                category_expr = case((and_(CarteraFact.un == un, CarteraFact.tramo.in_(vig)), literal('VIGENTE')), else_=category_expr)
-            if mor:
-                category_expr = case((and_(CarteraFact.un == un, CarteraFact.tramo.in_(mor)), literal('MOROSO')), else_=category_expr)
 
         base = db.query(CarteraFact)
         if supervisor_filter:
@@ -815,44 +902,123 @@ class AnalyticsService:
 
     @staticmethod
     def fetch_portfolio_corte_options_v2(db: Session, filters: AnalyticsFilters) -> dict:
-        base = AnalyticsService._portfolio_corte_base(db, filters)
-        uns = [str(v[0]).strip().upper() for v in base.with_entities(CarteraCorteAgg.un).distinct().all() if str(v[0] or '').strip()]
+        q = db.query(MvOptionsCartera)
+        un_filter = _normalize_str_set(filters.un)
+        supervisor_filter = _normalize_str_set(filters.supervisor)
+        via_filter = _normalize_str_set(filters.via_cobro)
+        categoria_filter = _normalize_str_set(filters.categoria)
+        tramo_filter = _normalize_str_set(filters.tramo)
+        close_month_filter = {str(v).strip() for v in (filters.close_month or []) if str(v).strip()}
+        months_filter = AnalyticsService._portfolio_corte_month_filter(filters)
+        year_filter = {str(v).strip() for v in (filters.anio or []) if str(v).strip()}
+
+        if un_filter:
+            q = q.filter(MvOptionsCartera.un.in_(un_filter))
+        if supervisor_filter:
+            q = q.filter(MvOptionsCartera.supervisor.in_(supervisor_filter))
+        if via_filter:
+            q = q.filter(MvOptionsCartera.via_cobro.in_(via_filter))
+        if categoria_filter:
+            q = q.filter(MvOptionsCartera.categoria.in_(categoria_filter))
+        if tramo_filter:
+            tramos = [int(t) for t in tramo_filter if str(t).isdigit()]
+            if tramos:
+                q = q.filter(MvOptionsCartera.tramo.in_(tramos))
+        if close_month_filter:
+            q = q.filter(MvOptionsCartera.close_month.in_(close_month_filter))
+        if months_filter:
+            q = q.filter(MvOptionsCartera.gestion_month.in_(months_filter))
+        if year_filter:
+            years = [int(y) for y in year_filter if y.isdigit()]
+            if years:
+                q = q.filter(MvOptionsCartera.contract_year.in_(years))
+
+        uns = [str(v[0]).strip().upper() for v in q.with_entities(MvOptionsCartera.un).distinct().all() if str(v[0] or '').strip()]
         supervisors = [
             str(v[0]).strip().upper()
-            for v in base.with_entities(CarteraCorteAgg.supervisor).distinct().all()
+            for v in q.with_entities(MvOptionsCartera.supervisor).distinct().all()
             if str(v[0] or '').strip()
         ]
         vias = [
             str(v[0]).strip().upper()
-            for v in base.with_entities(CarteraCorteAgg.via_cobro).distinct().all()
+            for v in q.with_entities(MvOptionsCartera.via_cobro).distinct().all()
             if str(v[0] or '').strip()
         ]
         tramos = [
             str(v[0])
-            for v in base.with_entities(CarteraCorteAgg.tramo).distinct().order_by(CarteraCorteAgg.tramo).all()
+            for v in q.with_entities(MvOptionsCartera.tramo).distinct().order_by(MvOptionsCartera.tramo).all()
             if v[0] is not None
         ]
         categories = [
             str(v[0]).strip().upper()
-            for v in base.with_entities(CarteraCorteAgg.categoria).distinct().all()
+            for v in q.with_entities(MvOptionsCartera.categoria).distinct().all()
             if str(v[0] or '').strip()
         ]
         gestion_months = [
             str(v[0])
-            for v in base.with_entities(CarteraCorteAgg.gestion_month).distinct().all()
+            for v in q.with_entities(MvOptionsCartera.gestion_month).distinct().all()
             if str(v[0] or '').strip()
         ]
         close_months = [
             str(v[0])
-            for v in base.with_entities(CarteraCorteAgg.close_month).distinct().all()
+            for v in q.with_entities(MvOptionsCartera.close_month).distinct().all()
             if str(v[0] or '').strip()
         ]
         contract_years = [
             str(v[0])
-            for v in base.with_entities(CarteraCorteAgg.contract_year).distinct().order_by(CarteraCorteAgg.contract_year).all()
+            for v in q.with_entities(MvOptionsCartera.contract_year).distinct().order_by(MvOptionsCartera.contract_year).all()
             if v[0] is not None and int(v[0]) > 0
         ]
 
+        source_table = 'mv_options_cartera'
+        if not any([uns, supervisors, vias, tramos, categories, gestion_months, close_months, contract_years]):
+            base = AnalyticsService._portfolio_corte_base(db, filters)
+            uns = [str(v[0]).strip().upper() for v in base.with_entities(CarteraCorteAgg.un).distinct().all() if str(v[0] or '').strip()]
+            supervisors = [
+                str(v[0]).strip().upper()
+                for v in base.with_entities(CarteraCorteAgg.supervisor).distinct().all()
+                if str(v[0] or '').strip()
+            ]
+            vias = [
+                str(v[0]).strip().upper()
+                for v in base.with_entities(CarteraCorteAgg.via_cobro).distinct().all()
+                if str(v[0] or '').strip()
+            ]
+            tramos = [
+                str(v[0])
+                for v in base.with_entities(CarteraCorteAgg.tramo).distinct().order_by(CarteraCorteAgg.tramo).all()
+                if v[0] is not None
+            ]
+            categories = [
+                str(v[0]).strip().upper()
+                for v in base.with_entities(CarteraCorteAgg.categoria).distinct().all()
+                if str(v[0] or '').strip()
+            ]
+            gestion_months = [
+                str(v[0])
+                for v in base.with_entities(CarteraCorteAgg.gestion_month).distinct().all()
+                if str(v[0] or '').strip()
+            ]
+            close_months = [
+                str(v[0])
+                for v in base.with_entities(CarteraCorteAgg.close_month).distinct().all()
+                if str(v[0] or '').strip()
+            ]
+            contract_years = [
+                str(v[0])
+                for v in base.with_entities(CarteraCorteAgg.contract_year).distinct().order_by(CarteraCorteAgg.contract_year).all()
+                if v[0] is not None and int(v[0]) > 0
+            ]
+            source_table = 'cartera_corte_agg'
+
+        gestion_months_data = sorted(set(gestion_months), key=_month_serial)
+        close_months_data = sorted(set(close_months), key=_month_serial)
+        standard_gestion_months = _standard_calendar_months(STANDARD_GESTION_CALENDAR_START)
+        standard_close_months = [
+            _month_from_serial(_month_serial(mm) - 1)
+            for mm in standard_gestion_months
+            if _month_serial(mm) > 1
+        ]
         return {
             'options': {
                 'uns': sorted(set(uns)),
@@ -860,12 +1026,14 @@ class AnalyticsService:
                 'vias': sorted(set(vias)),
                 'tramos': sorted(set(tramos), key=lambda x: int(x) if str(x).isdigit() else 999),
                 'categories': sorted(set(categories)),
-                'gestion_months': sorted(set(gestion_months), key=_month_serial),
-                'close_months': sorted(set(close_months), key=_month_serial),
+                'gestion_months': standard_gestion_months,
+                'close_months': standard_close_months,
                 'contract_years': sorted(set(contract_years), key=lambda x: int(x) if x.isdigit() else 0),
             },
             'meta': {
-                'source_table': 'cartera_corte_agg',
+                'source_table': source_table,
+                'last_data_gestion_month': gestion_months_data[-1] if gestion_months_data else None,
+                'last_data_close_month': close_months_data[-1] if close_months_data else None,
                 'generated_at': datetime.utcnow().isoformat(),
             },
         }
@@ -1019,7 +1187,189 @@ class AnalyticsService:
         return orphan_cobrado, orphan_tx, orphan_pagaron
 
     @staticmethod
+    def _cohorte_by_tramo_live(
+        db: Session,
+        resolved_cutoff: str,
+        effective_cartera_month: str,
+        un_filter: set[str],
+        supervisor_filter: set[str],
+        via_filter: set[str],
+        category_filter: set[str],
+    ) -> dict[str, dict]:
+        if not resolved_cutoff or not effective_cartera_month:
+            return {}
+        cutoff_serial = _month_serial(resolved_cutoff)
+        if cutoff_serial <= 0:
+            return {}
+
+        via_expr = _via_class_expr()
+        if db.bind is not None and db.bind.dialect.name == 'postgresql':
+            monto_cuota_text = cast(CarteraFact.payload_json, JSONB).op('->>')('monto_cuota')
+            monto_cuota_expr = case(
+                (monto_cuota_text.op('~')(r'^-?\d+(\.\d+)?$'), cast(monto_cuota_text, Numeric)),
+                else_=literal(0),
+            )
+        else:
+            monto_cuota_expr = CarteraFact.cuota_amount
+
+        category_expr = case((CarteraFact.tramo > 3, literal('MOROSO')), else_=literal('VIGENTE'))
+        cartera_q = (
+            db.query(
+                CarteraFact.contract_id,
+                CarteraFact.tramo,
+                CarteraFact.payload_json,
+                CarteraFact.monto_vencido,
+                monto_cuota_expr.label('monto_cuota'),
+                CarteraFact.un.label('un'),
+                CarteraFact.supervisor.label('supervisor'),
+                via_expr.label('via'),
+                category_expr.label('category'),
+            )
+            .filter(CarteraFact.gestion_month == effective_cartera_month)
+        )
+
+        cutoff_variants = _payment_month_variants(resolved_cutoff)
+        if cutoff_variants:
+            pm_filter = func.trim(CobranzasFact.payment_month).in_(cutoff_variants)
+        else:
+            pm_filter = func.trim(CobranzasFact.payment_month) == resolved_cutoff
+        paid_rows = (
+            db.query(CobranzasFact.contract_id, func.coalesce(func.sum(CobranzasFact.payment_amount), 0.0))
+            .filter(pm_filter)
+            .group_by(CobranzasFact.contract_id)
+            .all()
+        )
+        paid_by_contract: dict[str, float] = {}
+        for cid, amount in paid_rows:
+            key = _normalize_contract_id_for_lookup(cid)
+            if key:
+                paid_by_contract[key] = paid_by_contract.get(key, 0.0) + float(amount or 0.0)
+
+        by_tramo: dict[str, dict[str, float | int]] = {}
+        for row in cartera_q.yield_per(2000):
+            contract_id = str(row.contract_id or '').strip()
+            if not contract_id:
+                continue
+            payload_raw = row.payload_json or '{}'
+            try:
+                payload = json.loads(payload_raw)
+            except Exception:
+                payload = {}
+            sale_month = _month_from_any(payload.get('fecha_contrato'))
+            sale_serial = _month_serial(sale_month)
+            if sale_serial <= 0 or sale_serial > cutoff_serial:
+                continue
+            culm_month = _month_from_any(payload.get('fecha_culminacion'))
+            culm_serial = _month_serial(culm_month)
+            if culm_serial > 0 and culm_serial <= cutoff_serial:
+                continue
+            un = str(row.un or 'S/D').strip().upper()
+            supervisor = str(row.supervisor or 'S/D').strip().upper()
+            via = str(row.via or 'DEBITO').strip().upper()
+            category = str(row.category or 'VIGENTE').strip().upper()
+            if un_filter and un not in un_filter:
+                continue
+            if supervisor_filter and supervisor not in supervisor_filter:
+                continue
+            if via_filter and via not in via_filter:
+                continue
+            if category_filter and category not in category_filter:
+                continue
+            tramo_key = str(int(row.tramo or 0))
+            deberia = float(_to_float(row.monto_cuota) + _to_float(row.monto_vencido))
+            cobrado = float(paid_by_contract.get(_normalize_contract_id_for_lookup(contract_id), 0.0))
+            pagaron = 1 if cobrado > 0 else 0
+            bucket = by_tramo.setdefault(tramo_key, {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0})
+            bucket['activos'] = int(bucket['activos']) + 1
+            bucket['pagaron'] = int(bucket['pagaron']) + pagaron
+            bucket['deberia'] = float(bucket['deberia']) + deberia
+            bucket['cobrado'] = float(bucket['cobrado']) + cobrado
+
+        out: dict[str, dict] = {}
+        for tramo, values in by_tramo.items():
+            activos = int(values['activos'] or 0)
+            pagaron = int(values['pagaron'] or 0)
+            deberia = float(values['deberia'] or 0.0)
+            cobrado = float(values['cobrado'] or 0.0)
+            out[tramo] = {
+                'activos': activos,
+                'pagaron': pagaron,
+                'deberia': round(deberia, 2),
+                'cobrado': round(cobrado, 2),
+                'pct_pago_contratos': round((pagaron / activos) if activos > 0 else 0.0, 6),
+                'pct_cobertura_monto': round((cobrado / deberia) if deberia > 0 else 0.0, 6),
+            }
+        return out
+
+    @staticmethod
     def fetch_cobranzas_cohorte_options_v1(db: Session, filters: CobranzasCohorteIn) -> dict:
+        q = db.query(MvOptionsCohorte)
+        un_filter = _normalize_str_set(filters.un)
+        supervisor_filter = _normalize_str_set(filters.supervisor)
+        via_filter = _normalize_str_set(filters.via_cobro)
+        categoria_filter = _normalize_str_set(filters.categoria)
+        cutoff_filter = {str(filters.cutoff_month or '').strip()} if str(filters.cutoff_month or '').strip() else set()
+        if cutoff_filter:
+            q = q.filter(MvOptionsCohorte.cutoff_month.in_(cutoff_filter))
+        if un_filter:
+            q = q.filter(MvOptionsCohorte.un.in_(un_filter))
+        if supervisor_filter:
+            q = q.filter(MvOptionsCohorte.supervisor.in_(supervisor_filter))
+        if via_filter:
+            q = q.filter(MvOptionsCohorte.via_cobro.in_(via_filter))
+        if categoria_filter:
+            q = q.filter(MvOptionsCohorte.categoria.in_(categoria_filter))
+
+        cutoff_months_mv = sorted(
+            {
+                str(v[0]).strip()
+                for v in q.with_entities(MvOptionsCohorte.cutoff_month).distinct().all()
+                if str(v[0] or '').strip()
+            },
+            key=_month_serial,
+        )
+        standard_cutoff_months = _standard_calendar_months(STANDARD_GESTION_CALENDAR_START)
+        if cutoff_months_mv:
+            return {
+                'options': {
+                    'cutoff_months': standard_cutoff_months,
+                    'uns': sorted(
+                        {
+                            str(v[0]).strip().upper()
+                            for v in q.with_entities(MvOptionsCohorte.un).distinct().all()
+                            if str(v[0] or '').strip()
+                        }
+                    ),
+                    'supervisors': sorted(
+                        {
+                            str(v[0]).strip().upper()
+                            for v in q.with_entities(MvOptionsCohorte.supervisor).distinct().all()
+                            if str(v[0] or '').strip()
+                        }
+                    ),
+                    'vias': sorted(
+                        {
+                            str(v[0]).strip().upper()
+                            for v in q.with_entities(MvOptionsCohorte.via_cobro).distinct().all()
+                            if str(v[0] or '').strip()
+                        }
+                    ),
+                    'categories': sorted(
+                        {
+                            str(v[0]).strip().upper()
+                            for v in q.with_entities(MvOptionsCohorte.categoria).distinct().all()
+                            if str(v[0] or '').strip()
+                        }
+                    ) or ['MOROSO', 'VIGENTE'],
+                },
+                'default_cutoff': cutoff_months_mv[-1],
+                'meta': {
+                    'source': 'api-v1',
+                    'source_table': 'mv_options_cohorte',
+                    'last_data_cutoff_month': cutoff_months_mv[-1] if cutoff_months_mv else None,
+                    'generated_at': datetime.utcnow().isoformat(),
+                },
+            }
         # Unión de meses: cobranzas_fact (payment_month) y cartera (gestion_month) para que
         # el dropdown muestre todos los meses con datos de cartera o cobranzas.
         months_set = set()
@@ -1084,7 +1434,7 @@ class AnalyticsService:
 
         return {
             'options': {
-                'cutoff_months': cutoff_months,
+                'cutoff_months': standard_cutoff_months,
                 'uns': sorted(set(uns)),
                 'supervisors': sorted(set(supervisors)),
                 'vias': sorted(set(vias)),
@@ -1094,6 +1444,7 @@ class AnalyticsService:
             'meta': {
                 'source': 'api-v1',
                 'source_table': 'cobranzas_cohorte_agg',
+                'last_data_cutoff_month': default_cutoff,
                 'generated_at': datetime.utcnow().isoformat(),
             },
         }
@@ -1102,14 +1453,19 @@ class AnalyticsService:
     def fetch_cobranzas_cohorte_summary_v1(db: Session, filters: CobranzasCohorteIn) -> dict:
         resolved_cutoff = str(filters.cutoff_month or '').strip()
         if not resolved_cutoff:
-            last_cutoff = db.query(CobranzasFact.payment_month).order_by(CobranzasFact.payment_month.desc()).first()
-            resolved_cutoff = str(last_cutoff[0]).strip() if last_cutoff and last_cutoff[0] else ''
+            payment_months = [
+                str(v[0]).strip()
+                for v in db.query(CobranzasFact.payment_month).distinct().all()
+                if _month_serial(str(v[0] or '').strip()) > 0
+            ]
+            resolved_cutoff = _latest_month(payment_months)
         if not resolved_cutoff:
             return {
                 'cutoff_month': '',
                 'totals': {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0, 'transacciones': 0},
                 'by_sale_month': [],
                 'by_year': {},
+                'by_tramo': {},
                 'meta': {'source': 'api-v1', 'generated_at': datetime.utcnow().isoformat()},
             }
 
@@ -1119,15 +1475,7 @@ class AnalyticsService:
 
         # If cartera does not have rows for selected cutoff, fallback to the latest
         # available cartera month <= cutoff so the cohort report is still useful.
-        available_cartera_months = [
-            str(v[0]).strip()
-            for v in db.query(CarteraCorteAgg.gestion_month).distinct().all()
-            if str(v[0] or '').strip()
-        ]
-        effective_cartera_month = ''
-        for mm in sorted(set(available_cartera_months), key=_month_serial):
-            if _month_serial(mm) <= cutoff_serial:
-                effective_cartera_month = mm
+        effective_cartera_month = _effective_cartera_month_for_cutoff(db, resolved_cutoff)
         if not effective_cartera_month:
             return {
                 'cutoff_month': resolved_cutoff,
@@ -1135,6 +1483,7 @@ class AnalyticsService:
                 'totals': {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0, 'transacciones': 0},
                 'by_sale_month': [],
                 'by_year': {},
+                'by_tramo': {},
                 'meta': {
                     'source': 'api-v1',
                     'reason': 'no_cartera_month_for_cutoff',
@@ -1231,10 +1580,19 @@ class AnalyticsService:
                         'pct_pago_contratos': round((pagaron / activos) if activos > 0 else 0.0, 6),
                         'pct_cobertura_monto': round((cobrado / deberia) if deberia > 0 else 0.0, 6),
                     }
+                by_tramo_out = AnalyticsService._cohorte_by_tramo_live(
+                    db,
+                    resolved_cutoff,
+                    effective_cartera_month,
+                    un_filter,
+                    supervisor_filter,
+                    via_filter,
+                    category_filter,
+                )
 
                 return {
                     'cutoff_month': resolved_cutoff,
-                    'effective_cartera_month': resolved_cutoff,
+                    'effective_cartera_month': effective_cartera_month,
                     'totals': {
                         'activos': int(totals['activos']),
                         'pagaron': int(totals['pagaron']),
@@ -1246,6 +1604,7 @@ class AnalyticsService:
                     },
                     'by_sale_month': rows,
                     'by_year': by_year_out,
+                    'by_tramo': by_tramo_out,
                     'meta': {
                         'source': 'api-v1',
                         'source_table': 'cobranzas_cohorte_agg',
@@ -1253,32 +1612,8 @@ class AnalyticsService:
                     },
                 }
 
-        tramo_rules_cfg = BrokersConfigService.get_cartera_tramo_rules(db)
-        tramo_by_un_category: dict[str, dict[str, set[int]]] = {}
-        for rule in (tramo_rules_cfg.get('rules') or []):
-            if not isinstance(rule, dict):
-                continue
-            un_rule = str(rule.get('un') or '').strip().upper()
-            if not un_rule:
-                continue
-            category = str(rule.get('category') or '').strip().upper()
-            if category not in {'VIGENTE', 'MOROSO'}:
-                continue
-            tramos_raw = rule.get('tramos', [])
-            tramos_norm: set[int] = set()
-            if isinstance(tramos_raw, list):
-                for t in tramos_raw:
-                    tramos_norm.add(int(_normalize_tramo(t)))
-            tramo_by_un_category.setdefault(un_rule, {'VIGENTE': set(), 'MOROSO': set()})[category] = tramos_norm
-
+        # Regla de negocio AGENTS: VIGENTE=tramo 0..3, MOROSO=tramo > 3.
         category_expr = case((CarteraFact.tramo > 3, literal('MOROSO')), else_=literal('VIGENTE'))
-        for un, cfg in tramo_by_un_category.items():
-            vig = sorted(list(cfg.get('VIGENTE') or set()))
-            mor = sorted(list(cfg.get('MOROSO') or set()))
-            if vig:
-                category_expr = case((and_(CarteraFact.un == un, CarteraFact.tramo.in_(vig)), literal('VIGENTE')), else_=category_expr)
-            if mor:
-                category_expr = case((and_(CarteraFact.un == un, CarteraFact.tramo.in_(mor)), literal('MOROSO')), else_=category_expr)
 
         if db.bind is not None and db.bind.dialect.name == 'postgresql':
             monto_cuota_text = cast(CarteraFact.payload_json, JSONB).op('->>')('monto_cuota')
@@ -1293,6 +1628,7 @@ class AnalyticsService:
         cartera_q = (
             db.query(
                 CarteraFact.contract_id,
+                CarteraFact.tramo,
                 CarteraFact.payload_json,
                 CarteraFact.monto_vencido,
                 monto_cuota_expr.label('monto_cuota'),
@@ -1306,6 +1642,7 @@ class AnalyticsService:
 
         by_sale_month: dict[str, dict[str, float | int]] = {}
         by_year: dict[str, dict[str, float | int]] = {}
+        by_tramo: dict[str, dict[str, float | int]] = {}
         totals = {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0, 'transacciones': 0}
 
         cutoff_variants = _payment_month_variants(resolved_cutoff)
@@ -1334,8 +1671,7 @@ class AnalyticsService:
                 paid_by_contract[key] = paid_by_contract.get(key, 0.0) + float(amount or 0.0)
                 tx_by_contract[key] = tx_by_contract.get(key, 0) + int(tx_count or 0)
 
-        rules_signature = str(hash(json.dumps(tramo_rules_cfg.get('rules') or [], sort_keys=True, ensure_ascii=False)))
-        base_cache_key = f'{resolved_cutoff}|{effective_cartera_month}|{rules_signature}'
+        base_cache_key = f'{resolved_cutoff}|{effective_cartera_month}'
         # No usar caché: recalcular siempre para que paid_by_contract esté al día
         base_rows = None
         if base_rows is None:
@@ -1364,6 +1700,7 @@ class AnalyticsService:
                 base_rows.append(
                     {
                         'contract_id': contract_id,
+                        'tramo': int(row.tramo or 0),
                         'sale_month': sale_month,
                         'un': str(row.un or 'S/D').strip().upper(),
                         'supervisor': str(row.supervisor or 'S/D').strip().upper(),
@@ -1397,6 +1734,7 @@ class AnalyticsService:
                 transacciones = int(row.get('transacciones', 0) or 0)
             pagaron = 1 if cobrado > 0 else 0
             sale_month = row['sale_month']
+            tramo = str(int(row.get('tramo') or 0))
             deberia = float(row['deberia'])
             bucket = by_sale_month.setdefault(sale_month, {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0})
             bucket['activos'] = int(bucket['activos']) + 1
@@ -1409,6 +1747,11 @@ class AnalyticsService:
             yb['pagaron'] = int(yb['pagaron']) + pagaron
             yb['deberia'] = float(yb['deberia']) + deberia
             yb['cobrado'] = float(yb['cobrado']) + cobrado
+            tb = by_tramo.setdefault(tramo, {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0})
+            tb['activos'] = int(tb['activos']) + 1
+            tb['pagaron'] = int(tb['pagaron']) + pagaron
+            tb['deberia'] = float(tb['deberia']) + deberia
+            tb['cobrado'] = float(tb['cobrado']) + cobrado
             totals['activos'] += 1
             totals['pagaron'] += pagaron
             totals['deberia'] += deberia
@@ -1455,6 +1798,20 @@ class AnalyticsService:
                 'pct_pago_contratos': round((pagaron / activos) if activos > 0 else 0.0, 6),
                 'pct_cobertura_monto': round((cobrado / deberia) if deberia > 0 else 0.0, 6),
             }
+        by_tramo_out: dict[str, dict] = {}
+        for tramo, values in by_tramo.items():
+            activos = int(values['activos'] or 0)
+            pagaron = int(values['pagaron'] or 0)
+            deberia = float(values['deberia'] or 0.0)
+            cobrado = float(values['cobrado'] or 0.0)
+            by_tramo_out[tramo] = {
+                'activos': activos,
+                'pagaron': pagaron,
+                'deberia': round(deberia, 2),
+                'cobrado': round(cobrado, 2),
+                'pct_pago_contratos': round((pagaron / activos) if activos > 0 else 0.0, 6),
+                'pct_cobertura_monto': round((cobrado / deberia) if deberia > 0 else 0.0, 6),
+            }
 
         cobranzas_fact_contracts = len(paid_by_contract)
         cobranzas_fact_sum = sum(paid_by_contract.values())
@@ -1472,6 +1829,7 @@ class AnalyticsService:
             },
             'by_sale_month': rows,
             'by_year': by_year_out,
+            'by_tramo': by_tramo_out,
             'meta': {
                 'source': 'api-v1',
                 'source_table': 'cartera_fact + cobranzas_fact',
@@ -1570,14 +1928,19 @@ class AnalyticsService:
     def fetch_cobranzas_cohorte_first_paint_v2(db: Session, filters: CobranzasCohorteFirstPaintIn) -> dict:
         resolved_cutoff = str(filters.cutoff_month or '').strip()
         if not resolved_cutoff:
-            latest = db.query(CobranzasCohorteAgg.cutoff_month).order_by(CobranzasCohorteAgg.cutoff_month.desc()).first()
-            resolved_cutoff = str(latest[0]).strip() if latest and latest[0] else ''
+            cutoff_months = [
+                str(v[0]).strip()
+                for v in db.query(CobranzasCohorteAgg.cutoff_month).distinct().all()
+                if _month_serial(str(v[0] or '').strip()) > 0
+            ]
+            resolved_cutoff = _latest_month(cutoff_months)
         if not resolved_cutoff:
             return {
                 'cutoff_month': '',
                 'effective_cartera_month': '',
                 'totals': {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0, 'transacciones': 0},
                 'by_year': {},
+                'by_tramo': {},
                 'top_sale_months': [],
                 'meta': {'source': 'api-v1', 'source_table': 'cobranzas_cohorte_agg', 'payload_mode': 'first_paint'},
             }
@@ -1605,6 +1968,7 @@ class AnalyticsService:
                 'effective_cartera_month': fallback.get('effective_cartera_month') or resolved_cutoff,
                 'totals': fallback.get('totals') or totals,
                 'by_year': fallback.get('by_year') or {},
+                'by_tramo': fallback.get('by_tramo') or {},
                 'top_sale_months': top_rows,
                 'meta': {
                     'source': 'api-v1',
@@ -1615,11 +1979,21 @@ class AnalyticsService:
                 },
             }
 
+        effective_cartera_month = _effective_cartera_month_for_cutoff(db, resolved_cutoff)
+        by_tramo_out = AnalyticsService._cohorte_by_tramo_live(
+            db,
+            resolved_cutoff,
+            effective_cartera_month or resolved_cutoff,
+            un_filter,
+            supervisor_filter,
+            via_filter,
+            category_filter,
+        )
         top_n = min(max(int(filters.top_n_sale_months or 12), 1), 36)
         top_rows = sorted(by_sale_month_rows, key=lambda r: float(r.get('cobrado') or 0.0), reverse=True)[:top_n]
         return {
             'cutoff_month': resolved_cutoff,
-            'effective_cartera_month': resolved_cutoff,
+            'effective_cartera_month': effective_cartera_month or resolved_cutoff,
             'totals': {
                 'activos': int(totals['activos']),
                 'pagaron': int(totals['pagaron']),
@@ -1630,6 +2004,7 @@ class AnalyticsService:
                 'pct_cobertura_monto': round((totals['cobrado'] / totals['deberia']) if totals['deberia'] > 0 else 0.0, 6),
             },
             'by_year': by_year_out,
+            'by_tramo': by_tramo_out,
             'top_sale_months': top_rows,
             'meta': {
                 'source': 'api-v1',
@@ -1776,6 +2151,11 @@ class AnalyticsService:
             q = q.filter(via_expr.in_(list(via_cobro_filter)))
         if categoria_filter:
             q = q.filter(categoria_expr.in_(list(categoria_filter)))
+            # Regla de negocio fija: VIGENTE=tramo 0..3, MOROSO=tramo > 3.
+            if categoria_filter == {'VIGENTE'}:
+                q = q.filter(CarteraFact.tramo <= 3)
+            elif categoria_filter == {'MOROSO'}:
+                q = q.filter(CarteraFact.tramo > 3)
         if supervisor_filter:
             q = q.filter(func.upper(func.coalesce(CarteraFact.supervisor, '')).in_(list(supervisor_filter)))
         return q, via_expr, categoria_expr
@@ -1956,12 +2336,18 @@ class AnalyticsService:
         for key, info in portfolio_map.items():
             month = key.split('_', 1)[1] if '_' in key else ''
             debt = float(info.get('debt', 0.0) or 0.0)
-            paid = float(info.get('paid', 0.0) or 0.0)
+            paid_raw = float(info.get('paid', 0.0) or 0.0)
+            paid = _cap_paid_to_debt(paid_raw, debt)
             tramo = str(info.get('tramo', '0'))
             un = str(info.get('un', 'S/D'))
             via_c = str(info.get('viaC', 'DEBITO'))
             gestor = str(info.get('gestor', 'S/D'))
-            paid_details = info.get('paidDetails', {})
+            paid_details_raw = info.get('paidDetails', {}) or {}
+            if paid_raw > 0.0 and paid < paid_raw:
+                ratio = paid / paid_raw
+                paid_details = {k: float(v or 0.0) * ratio for k, v in paid_details_raw.items()}
+            else:
+                paid_details = {k: float(v or 0.0) for k, v in paid_details_raw.items()}
 
             stats['totalDebt'] += debt
             stats['totalPaid'] += paid
@@ -2013,64 +2399,134 @@ class AnalyticsService:
         categoria_filter = _normalize_str_set(filters.categoria)
         supervisor_filter = _normalize_str_set(filters.supervisor)
 
-        q = db.query(AnalyticsRendimientoAgg)
+        q = db.query(MvOptionsRendimiento)
         if un_filter:
-            q = q.filter(AnalyticsRendimientoAgg.un.in_(list(un_filter)))
+            q = q.filter(MvOptionsRendimiento.un.in_(list(un_filter)))
         if tramo_filter:
             tramo_int = [int(t) for t in tramo_filter if str(t).isdigit()]
             if tramo_int:
-                q = q.filter(AnalyticsRendimientoAgg.tramo.in_(tramo_int))
+                q = q.filter(MvOptionsRendimiento.tramo.in_(tramo_int))
         if gestion_filter:
-            q = q.filter(AnalyticsRendimientoAgg.gestion_month.in_(gestion_filter))
+            q = q.filter(MvOptionsRendimiento.gestion_month.in_(gestion_filter))
         if via_cobro_filter:
-            q = q.filter(AnalyticsRendimientoAgg.via_cobro.in_(list(via_cobro_filter)))
+            q = q.filter(MvOptionsRendimiento.via_cobro.in_(list(via_cobro_filter)))
         if categoria_filter:
-            q = q.filter(AnalyticsRendimientoAgg.categoria.in_(list(categoria_filter)))
+            q = q.filter(MvOptionsRendimiento.categoria.in_(list(categoria_filter)))
+            # Blindaje por consistencia en históricos.
+            if categoria_filter == {'VIGENTE'}:
+                q = q.filter(MvOptionsRendimiento.tramo <= 3)
+            elif categoria_filter == {'MOROSO'}:
+                q = q.filter(MvOptionsRendimiento.tramo > 3)
         if supervisor_filter:
-            q = q.filter(AnalyticsRendimientoAgg.supervisor.in_(list(supervisor_filter)))
+            q = q.filter(MvOptionsRendimiento.supervisor.in_(list(supervisor_filter)))
 
-        uns = [str(v[0]).strip().upper() for v in q.with_entities(AnalyticsRendimientoAgg.un).distinct().all() if str(v[0] or '').strip()]
+        uns = [str(v[0]).strip().upper() for v in q.with_entities(MvOptionsRendimiento.un).distinct().all() if str(v[0] or '').strip()]
         tramos = [
             str(v[0])
-            for v in q.with_entities(AnalyticsRendimientoAgg.tramo).distinct().order_by(AnalyticsRendimientoAgg.tramo).all()
+            for v in q.with_entities(MvOptionsRendimiento.tramo).distinct().order_by(MvOptionsRendimiento.tramo).all()
             if v[0] is not None
         ]
         gestion_months = [
             str(v[0]).strip()
-            for v in q.with_entities(AnalyticsRendimientoAgg.gestion_month).distinct().all()
+            for v in q.with_entities(MvOptionsRendimiento.gestion_month).distinct().all()
             if str(v[0] or '').strip()
         ]
         vias_cobro = [
             str(v[0]).strip().upper()
-            for v in q.with_entities(AnalyticsRendimientoAgg.via_cobro).distinct().all()
+            for v in q.with_entities(MvOptionsRendimiento.via_cobro).distinct().all()
             if str(v[0] or '').strip()
         ]
         categorias = [
             str(v[0]).strip().upper()
-            for v in q.with_entities(AnalyticsRendimientoAgg.categoria).distinct().all()
+            for v in q.with_entities(MvOptionsRendimiento.categoria).distinct().all()
             if str(v[0] or '').strip()
         ]
         supervisors = [
             str(v[0]).strip().upper()
-            for v in q.with_entities(AnalyticsRendimientoAgg.supervisor).distinct().all()
+            for v in q.with_entities(MvOptionsRendimiento.supervisor).distinct().all()
             if str(v[0] or '').strip()
         ]
+        source_table = 'mv_options_rendimiento'
+        should_fallback_to_agg = not any([uns, tramos, gestion_months, vias_cobro, categorias, supervisors])
+        # Si la MV quedó parcial (ej. solo último mes por carga incremental), usar agg completa
+        # para no recortar opciones en el filtro de Mes de Gestión.
+        if not should_fallback_to_agg and not gestion_filter:
+            q_agg_count = db.query(func.count(func.distinct(AnalyticsRendimientoAgg.gestion_month)))
+            if un_filter:
+                q_agg_count = q_agg_count.filter(AnalyticsRendimientoAgg.un.in_(list(un_filter)))
+            if tramo_filter:
+                tramo_int = [int(t) for t in tramo_filter if str(t).isdigit()]
+                if tramo_int:
+                    q_agg_count = q_agg_count.filter(AnalyticsRendimientoAgg.tramo.in_(tramo_int))
+            if via_cobro_filter:
+                q_agg_count = q_agg_count.filter(AnalyticsRendimientoAgg.via_cobro.in_(list(via_cobro_filter)))
+            if categoria_filter:
+                q_agg_count = q_agg_count.filter(AnalyticsRendimientoAgg.categoria.in_(list(categoria_filter)))
+            if supervisor_filter:
+                q_agg_count = q_agg_count.filter(AnalyticsRendimientoAgg.supervisor.in_(list(supervisor_filter)))
+            agg_months_count = q_agg_count.scalar() or 0
+            should_fallback_to_agg = agg_months_count > len(set(gestion_months))
+        if should_fallback_to_agg:
+            q_agg = db.query(AnalyticsRendimientoAgg)
+            if un_filter:
+                q_agg = q_agg.filter(AnalyticsRendimientoAgg.un.in_(list(un_filter)))
+            if tramo_filter:
+                tramo_int = [int(t) for t in tramo_filter if str(t).isdigit()]
+                if tramo_int:
+                    q_agg = q_agg.filter(AnalyticsRendimientoAgg.tramo.in_(tramo_int))
+            if gestion_filter:
+                q_agg = q_agg.filter(AnalyticsRendimientoAgg.gestion_month.in_(gestion_filter))
+            if via_cobro_filter:
+                q_agg = q_agg.filter(AnalyticsRendimientoAgg.via_cobro.in_(list(via_cobro_filter)))
+            if categoria_filter:
+                q_agg = q_agg.filter(AnalyticsRendimientoAgg.categoria.in_(list(categoria_filter)))
+            if supervisor_filter:
+                q_agg = q_agg.filter(AnalyticsRendimientoAgg.supervisor.in_(list(supervisor_filter)))
+            uns = [str(v[0]).strip().upper() for v in q_agg.with_entities(AnalyticsRendimientoAgg.un).distinct().all() if str(v[0] or '').strip()]
+            tramos = [
+                str(v[0])
+                for v in q_agg.with_entities(AnalyticsRendimientoAgg.tramo).distinct().order_by(AnalyticsRendimientoAgg.tramo).all()
+                if v[0] is not None
+            ]
+            gestion_months = [
+                str(v[0]).strip()
+                for v in q_agg.with_entities(AnalyticsRendimientoAgg.gestion_month).distinct().all()
+                if str(v[0] or '').strip()
+            ]
+            vias_cobro = [
+                str(v[0]).strip().upper()
+                for v in q_agg.with_entities(AnalyticsRendimientoAgg.via_cobro).distinct().all()
+                if str(v[0] or '').strip()
+            ]
+            categorias = [
+                str(v[0]).strip().upper()
+                for v in q_agg.with_entities(AnalyticsRendimientoAgg.categoria).distinct().all()
+                if str(v[0] or '').strip()
+            ]
+            supervisors = [
+                str(v[0]).strip().upper()
+                for v in q_agg.with_entities(AnalyticsRendimientoAgg.supervisor).distinct().all()
+                if str(v[0] or '').strip()
+            ]
+            source_table = 'analytics_rendimiento_agg'
         vias_pago = ['COBRADOR', 'DEBITO']
-        sorted_months = sorted(set(gestion_months), key=_month_serial)
+        data_months = sorted(set(gestion_months), key=_month_serial)
+        calendar_months = _standard_calendar_months(STANDARD_GESTION_CALENDAR_START)
         return {
             'options': {
                 'uns': sorted(set(uns)),
                 'tramos': sorted(set(tramos), key=lambda x: int(x) if str(x).isdigit() else 999),
-                'gestion_months': sorted_months,
+                'gestion_months': calendar_months,
                 'vias_cobro': sorted(set(vias_cobro)),
                 'vias_pago': sorted(set(vias_pago)),
                 'categorias': sorted(set(categorias)),
                 'supervisors': sorted(set(supervisors)),
             },
-            'default_gestion_month': sorted_months[-1] if sorted_months else None,
+            'default_gestion_month': data_months[-1] if data_months else (calendar_months[-1] if calendar_months else None),
             'meta': {
                 'source': 'api-v2',
-                'source_table': 'analytics_rendimiento_agg',
+                'source_table': source_table,
+                'last_data_gestion_month': data_months[-1] if data_months else None,
                 'generated_at': datetime.utcnow().isoformat(),
             },
         }
@@ -2102,15 +2558,96 @@ class AnalyticsService:
             q = q.filter(AnalyticsRendimientoAgg.via_cobro.in_(list(via_cobro_filter)))
         if categoria_filter:
             q = q.filter(AnalyticsRendimientoAgg.categoria.in_(list(categoria_filter)))
+            if categoria_filter == {'VIGENTE'}:
+                q = q.filter(AnalyticsRendimientoAgg.tramo <= 3)
+            elif categoria_filter == {'MOROSO'}:
+                q = q.filter(AnalyticsRendimientoAgg.tramo > 3)
         if supervisor_filter:
             q = q.filter(AnalyticsRendimientoAgg.supervisor.in_(list(supervisor_filter)))
-        rows = q.all()
+        # Aggregate in SQL to avoid transferring full grain rows to Python on cache misses.
+        base = q.with_entities(
+            AnalyticsRendimientoAgg.gestion_month.label('gestion_month'),
+            AnalyticsRendimientoAgg.tramo.label('tramo'),
+            AnalyticsRendimientoAgg.un.label('un'),
+            AnalyticsRendimientoAgg.via_cobro.label('via_cobro'),
+            AnalyticsRendimientoAgg.supervisor.label('supervisor'),
+            AnalyticsRendimientoAgg.debt_total.label('debt_total'),
+            AnalyticsRendimientoAgg.paid_total.label('paid_total'),
+            AnalyticsRendimientoAgg.contracts_total.label('contracts_total'),
+            AnalyticsRendimientoAgg.contracts_paid.label('contracts_paid'),
+            AnalyticsRendimientoAgg.paid_via_cobrador.label('paid_via_cobrador'),
+            AnalyticsRendimientoAgg.paid_via_debito.label('paid_via_debito'),
+        ).subquery()
+        paid_capped_expr = base.c.paid_total
+        paid_cobrador_capped_expr = base.c.paid_via_cobrador
+        paid_debito_capped_expr = base.c.paid_via_debito
+
+        totals_row = (
+            db.query(
+                func.coalesce(func.sum(base.c.debt_total), 0.0).label('debt'),
+                func.coalesce(func.sum(paid_capped_expr), 0.0).label('paid'),
+                func.coalesce(func.sum(base.c.contracts_total), 0).label('contracts'),
+                func.coalesce(func.sum(base.c.contracts_paid), 0).label('contracts_paid'),
+                func.count().label('rows_count'),
+            )
+            .one()
+        )
+
+        trend_rows = (
+            db.query(
+                base.c.gestion_month,
+                func.coalesce(func.sum(base.c.debt_total), 0.0).label('d'),
+                func.coalesce(func.sum(paid_capped_expr), 0.0).label('p'),
+                func.coalesce(func.sum(base.c.contracts_total), 0).label('c'),
+                func.coalesce(func.sum(base.c.contracts_paid), 0).label('cp'),
+            )
+            .group_by(base.c.gestion_month)
+            .all()
+        )
+        tramo_rows = (
+            db.query(
+                base.c.tramo,
+                func.coalesce(func.sum(base.c.debt_total), 0.0).label('d'),
+                func.coalesce(func.sum(paid_capped_expr), 0.0).label('p'),
+            )
+            .group_by(base.c.tramo)
+            .all()
+        )
+        un_rows = (
+            db.query(
+                base.c.un,
+                func.coalesce(func.sum(base.c.debt_total), 0.0).label('d'),
+                func.coalesce(func.sum(paid_capped_expr), 0.0).label('p'),
+            )
+            .group_by(base.c.un)
+            .all()
+        )
+        via_rows = (
+            db.query(
+                base.c.via_cobro,
+                func.coalesce(func.sum(base.c.debt_total), 0.0).label('d'),
+                func.coalesce(func.sum(paid_capped_expr), 0.0).label('p'),
+                func.coalesce(func.sum(paid_cobrador_capped_expr), 0.0).label('paid_cobrador'),
+                func.coalesce(func.sum(paid_debito_capped_expr), 0.0).label('paid_debito'),
+            )
+            .group_by(base.c.via_cobro)
+            .all()
+        )
+        gestor_rows = (
+            db.query(
+                base.c.supervisor,
+                func.coalesce(func.sum(base.c.debt_total), 0.0).label('d'),
+                func.coalesce(func.sum(paid_capped_expr), 0.0).label('p'),
+            )
+            .group_by(base.c.supervisor)
+            .all()
+        )
 
         stats = {
-            'totalDebt': 0.0,
-            'totalPaid': 0.0,
-            'totalContracts': 0,
-            'totalContractsPaid': 0,
+            'totalDebt': float(totals_row.debt or 0.0),
+            'totalPaid': float(totals_row.paid or 0.0),
+            'totalContracts': int(totals_row.contracts or 0),
+            'totalContractsPaid': int(totals_row.contracts_paid or 0),
             'tramoStats': {},
             'unStats': {},
             'viaCStats': {},
@@ -2118,55 +2655,42 @@ class AnalyticsService:
             'matrixStats': {},
             'trendStats': {},
         }
-        for row in rows:
+        for row in trend_rows:
             month = str(row.gestion_month or '').strip()
+            if not month:
+                continue
+            stats['trendStats'][month] = {
+                'd': float(row.d or 0.0),
+                'p': float(row.p or 0.0),
+                'c': int(row.c or 0),
+                'cp': int(row.cp or 0),
+            }
+
+        for row in tramo_rows:
             tramo = str(row.tramo if row.tramo is not None else 0)
+            stats['tramoStats'][tramo] = {'d': float(row.d or 0.0), 'p': float(row.p or 0.0)}
+
+        for row in un_rows:
             un = str(row.un or 'S/D').strip().upper() or 'S/D'
+            stats['unStats'][un] = {'d': float(row.d or 0.0), 'p': float(row.p or 0.0)}
+
+        for row in via_rows:
             via_c = str(row.via_cobro or 'DEBITO').strip().upper() or 'DEBITO'
+            stats['viaCStats'][via_c] = {'d': float(row.d or 0.0), 'p': float(row.p or 0.0)}
+            stats['matrixStats'][via_c] = {
+                'COBRADOR': float(row.paid_cobrador or 0.0),
+                'DEBITO': float(row.paid_debito or 0.0),
+            }
+
+        for row in gestor_rows:
             gestor = str(row.supervisor or 'S/D').strip().upper() or 'S/D'
-            debt = float(row.debt_total or 0.0)
-            paid = float(row.paid_total or 0.0)
-            contracts = int(row.contracts_total or 0)
-            contracts_paid = int(row.contracts_paid or 0)
-            paid_cobrador = float(row.paid_via_cobrador or 0.0)
-            paid_debito = float(row.paid_via_debito or 0.0)
-
-            stats['totalDebt'] += debt
-            stats['totalPaid'] += paid
-            stats['totalContracts'] += contracts
-            stats['totalContractsPaid'] += contracts_paid
-
-            stats['trendStats'].setdefault(month, {'d': 0.0, 'p': 0.0, 'c': 0, 'cp': 0})
-            stats['trendStats'][month]['d'] += debt
-            stats['trendStats'][month]['p'] += paid
-            stats['trendStats'][month]['c'] += contracts
-            stats['trendStats'][month]['cp'] += contracts_paid
-
-            stats['tramoStats'].setdefault(tramo, {'d': 0.0, 'p': 0.0})
-            stats['tramoStats'][tramo]['d'] += debt
-            stats['tramoStats'][tramo]['p'] += paid
-
-            stats['unStats'].setdefault(un, {'d': 0.0, 'p': 0.0})
-            stats['unStats'][un]['d'] += debt
-            stats['unStats'][un]['p'] += paid
-
-            stats['viaCStats'].setdefault(via_c, {'d': 0.0, 'p': 0.0})
-            stats['viaCStats'][via_c]['d'] += debt
-            stats['viaCStats'][via_c]['p'] += paid
-
-            stats['gestorStats'].setdefault(gestor, {'d': 0.0, 'p': 0.0})
-            stats['gestorStats'][gestor]['d'] += debt
-            stats['gestorStats'][gestor]['p'] += paid
-
-            stats['matrixStats'].setdefault(via_c, {})
-            stats['matrixStats'][via_c]['COBRADOR'] = float(stats['matrixStats'][via_c].get('COBRADOR', 0.0)) + paid_cobrador
-            stats['matrixStats'][via_c]['DEBITO'] = float(stats['matrixStats'][via_c].get('DEBITO', 0.0)) + paid_debito
+            stats['gestorStats'][gestor] = {'d': float(row.d or 0.0), 'p': float(row.p or 0.0)}
 
         stats['meta'] = {
             'source': 'api-v2',
             'source_table': 'analytics_rendimiento_agg',
             'generated_at': datetime.utcnow().isoformat(),
-            'portfolio_keys': len(rows),
+            'portfolio_keys': int(totals_row.rows_count or 0),
         }
         return stats
 
@@ -2363,7 +2887,6 @@ class AnalyticsService:
             paid_by_contract_month_cul_count_vigente = 0
             total_cobrado_cul_vigente = 0.0
             total_deberia_cul_vigente = 0.0
-            months_weighted_numerator_cul_vigente = 0.0
 
             for c in year_contracts:
                 c_id = str(c.get('contract_id') or '').strip()
@@ -2415,7 +2938,6 @@ class AnalyticsService:
                                 cobrado += float(_to_float(amount))
                         total_cobrado_cul_vigente += cobrado
                         total_deberia_cul_vigente += deberia
-                        months_weighted_numerator_cul_vigente += (months * deberia)
 
             contracts = len(contract_ids)
             contracts_vigentes = len(contract_ids_vigentes)
@@ -2436,8 +2958,7 @@ class AnalyticsService:
                         paid_by_contract_month_cul_total_vigente / paid_by_contract_month_cul_count_vigente
                     ) if paid_by_contract_month_cul_count_vigente > 0 else 0.0,
                     'ltvCulminadoVigente': (
-                        (total_cobrado_cul_vigente / total_deberia_cul_vigente)
-                        * (months_weighted_numerator_cul_vigente / total_deberia_cul_vigente)
+                        total_cobrado_cul_vigente / total_deberia_cul_vigente
                     ) if total_deberia_cul_vigente > 0 else 0.0,
                 }
             )
@@ -2583,7 +3104,15 @@ class AnalyticsService:
                 current['un'] = un
 
         sorted_cutoff = sorted(gestion_months, key=_month_serial)
-        cutoff_month = sorted_cutoff[-1] if sorted_cutoff else ''
+        requested_cutoff_months = sorted(
+            {
+                str(v).strip()
+                for v in (filters.gestion_month or [])
+                if _month_serial(str(v).strip()) > 0
+            },
+            key=_month_serial,
+        )
+        cutoff_month = requested_cutoff_months[-1] if requested_cutoff_months else (sorted_cutoff[-1] if sorted_cutoff else '')
         if not cutoff_month:
             return {
                 'rows': [],
@@ -2671,51 +3200,125 @@ class AnalyticsService:
         un_filter = _normalize_str_set(filters.un)
         year_filter = {str(v).strip() for v in (filters.anio or []) if str(v).strip()}
         contract_month_filter = {str(v).strip() for v in (filters.contract_month or []) if str(v).strip()}
+        gestion_filter = {str(v).strip() for v in (filters.gestion_month or []) if _month_serial(str(v).strip()) > 0}
 
-        q = db.query(DimNegocioContrato).filter(
-            DimNegocioContrato.sale_month != '',
-            DimNegocioContrato.sale_year > 0,
+        q = db.query(MvOptionsAnuales).filter(
+            MvOptionsAnuales.sale_month != '',
+            MvOptionsAnuales.sale_year > 0,
         )
         if un_filter:
-            q = q.filter(DimNegocioContrato.un_canonica.in_(list(un_filter)))
+            q = q.filter(MvOptionsAnuales.un.in_(list(un_filter)))
         if year_filter:
             year_int = [int(y) for y in year_filter if str(y).isdigit()]
             if year_int:
-                q = q.filter(DimNegocioContrato.sale_year.in_(year_int))
+                q = q.filter(MvOptionsAnuales.sale_year.in_(year_int))
         if contract_month_filter:
-            q = q.filter(DimNegocioContrato.sale_month.in_(contract_month_filter))
+            q = q.filter(MvOptionsAnuales.sale_month.in_(contract_month_filter))
+        if gestion_filter:
+            q = q.filter(MvOptionsAnuales.cutoff_month.in_(gestion_filter))
 
         uns = [
             str(v[0]).strip().upper()
-            for v in q.with_entities(DimNegocioContrato.un_canonica).distinct().all()
+            for v in q.with_entities(MvOptionsAnuales.un).distinct().all()
             if str(v[0] or '').strip()
         ]
         years = [
             str(int(v[0]))
-            for v in q.with_entities(DimNegocioContrato.sale_year).distinct().all()
+            for v in q.with_entities(MvOptionsAnuales.sale_year).distinct().all()
             if int(v[0] or 0) > 0
         ]
         contract_months = [
             str(v[0]).strip()
-            for v in q.with_entities(DimNegocioContrato.sale_month).distinct().all()
+            for v in q.with_entities(MvOptionsAnuales.sale_month).distinct().all()
             if _month_serial(str(v[0] or '').strip()) > 0
         ]
         cutoff_months = [
             str(v[0]).strip()
-            for v in db.query(AnalyticsAnualesAgg.cutoff_month).distinct().all()
+            for v in q.with_entities(MvOptionsAnuales.cutoff_month).distinct().all()
             if _month_serial(str(v[0] or '').strip()) > 0
         ]
+        source_table = 'mv_options_anuales'
+        needs_dim_fallback = not any([uns, years, contract_months, cutoff_months]) or not contract_months
+        if needs_dim_fallback:
+            q_dim = db.query(DimNegocioContrato).filter(
+                DimNegocioContrato.sale_month != '',
+                DimNegocioContrato.sale_year > 0,
+            )
+            if un_filter:
+                q_dim = q_dim.filter(DimNegocioContrato.un_canonica.in_(list(un_filter)))
+            if year_filter:
+                year_int = [int(y) for y in year_filter if str(y).isdigit()]
+                if year_int:
+                    q_dim = q_dim.filter(DimNegocioContrato.sale_year.in_(year_int))
+            if contract_month_filter:
+                q_dim = q_dim.filter(DimNegocioContrato.sale_month.in_(contract_month_filter))
+            dim_uns = [
+                str(v[0]).strip().upper()
+                for v in q_dim.with_entities(DimNegocioContrato.un_canonica).distinct().all()
+                if str(v[0] or '').strip()
+            ]
+            dim_years = [
+                str(int(v[0]))
+                for v in q_dim.with_entities(DimNegocioContrato.sale_year).distinct().all()
+                if int(v[0] or 0) > 0
+            ]
+            dim_contract_months = [
+                str(v[0]).strip()
+                for v in q_dim.with_entities(DimNegocioContrato.sale_month).distinct().all()
+                if _month_serial(str(v[0] or '').strip()) > 0
+            ]
+            if not uns:
+                uns = dim_uns
+            if not years:
+                years = dim_years
+            if not contract_months:
+                contract_months = dim_contract_months
+            if not cutoff_months:
+                cutoff_months = [
+                    str(v[0]).strip()
+                    for v in db.query(AnalyticsAnualesAgg.cutoff_month).distinct().all()
+                    if _month_serial(str(v[0] or '').strip()) > 0
+                ]
+            if gestion_filter:
+                cutoff_months = [mm for mm in cutoff_months if mm in gestion_filter]
+            source_table = 'mv_options_anuales + dim_negocio_contrato'
+
+        clean_uns = sorted({u for u in uns if str(u).strip() and str(u).strip() != '*'})
+        if not clean_uns:
+            map_q = db.query(DimNegocioUnMap.canonical_un).filter(DimNegocioUnMap.is_active.is_(True))
+            if un_filter:
+                map_q = map_q.filter(DimNegocioUnMap.canonical_un.in_(list(un_filter)))
+            clean_uns = sorted(
+                {
+                    str(v[0]).strip().upper()
+                    for v in map_q.distinct().all()
+                    if str(v[0] or '').strip()
+                }
+            )
+            if clean_uns:
+                source_table = f'{source_table} + dim_negocio_un_map'
         cutoff_months = sorted(set(cutoff_months), key=_month_serial)
+        standard_contract_months = _standard_calendar_months(STANDARD_CONTRACT_CALENDAR_START)
+        if year_filter:
+            standard_contract_months = [
+                mm for mm in standard_contract_months
+                if '/' in mm and mm.split('/')[1] in year_filter
+            ]
+        standard_years = sorted({mm.split('/')[1] for mm in _standard_calendar_months(STANDARD_CONTRACT_CALENDAR_START) if '/' in mm}, key=lambda x: int(x))
+        default_cutoff = cutoff_months[-1] if cutoff_months else None
         return {
             'options': {
-                'uns': sorted(set(uns)),
-                'years': sorted(set(years), key=lambda x: int(x)),
-                'contract_months': sorted(set(contract_months), key=_month_serial),
+                'uns': clean_uns,
+                'years': standard_years,
+                'contract_months': standard_contract_months,
+                'gestion_months': cutoff_months,
             },
-            'default_cutoff': cutoff_months[-1] if cutoff_months else None,
+            'default_cutoff': default_cutoff,
+            'default_gestion_month': default_cutoff,
             'meta': {
                 'source': 'api-v2',
-                'source_table': 'dim_negocio_contrato',
+                'source_table': source_table,
+                'last_data_contract_month': (sorted(set(contract_months), key=_month_serial)[-1] if contract_months else None),
                 'generated_at': datetime.utcnow().isoformat(),
             },
         }
@@ -2731,8 +3334,20 @@ class AnalyticsService:
             data['meta'] = meta
             return data
 
-        cutoff_row = db.query(AnalyticsAnualesAgg.cutoff_month).order_by(AnalyticsAnualesAgg.cutoff_month.desc()).first()
-        cutoff = str(cutoff_row[0]).strip() if cutoff_row and cutoff_row[0] else ''
+        cutoff_months = [
+            str(v[0]).strip()
+            for v in db.query(AnalyticsAnualesAgg.cutoff_month).distinct().all()
+            if _month_serial(str(v[0] or '').strip()) > 0
+        ]
+        requested_cutoff_months = sorted(
+            {
+                str(v).strip()
+                for v in (filters.gestion_month or [])
+                if _month_serial(str(v).strip()) > 0
+            },
+            key=_month_serial,
+        )
+        cutoff = requested_cutoff_months[-1] if requested_cutoff_months else _latest_month(cutoff_months)
         if not cutoff:
             data = AnalyticsService.fetch_anuales_summary_v1(db, filters)
             meta = dict(data.get('meta') or {})
@@ -2774,7 +3389,6 @@ class AnalyticsService:
             paid_by_contract_month_cul_count_vigente = int(row.paid_by_contract_month_cul_count_vigente or 0)
             total_cobrado_cul_vigente = float(row.total_cobrado_cul_vigente or 0.0)
             total_deberia_cul_vigente = float(row.total_deberia_cul_vigente or 0.0)
-            months_weighted = float(row.months_weighted_numerator_cul_vigente or 0.0)
             rows.append(
                 {
                     'year': str(int(row.sale_year or 0)),
@@ -2792,8 +3406,7 @@ class AnalyticsService:
                         paid_by_contract_month_cul_total_vigente / paid_by_contract_month_cul_count_vigente
                     ) if paid_by_contract_month_cul_count_vigente > 0 else 0.0,
                     'ltvCulminadoVigente': (
-                        (total_cobrado_cul_vigente / total_deberia_cul_vigente)
-                        * (months_weighted / total_deberia_cul_vigente)
+                        total_cobrado_cul_vigente / total_deberia_cul_vigente
                     ) if total_deberia_cul_vigente > 0 else 0.0,
                 }
             )

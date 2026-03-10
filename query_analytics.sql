@@ -17,7 +17,10 @@ FROM (
     SELECT
         ccd.contract_id,
         DATE_FORMAT(DATE_ADD(ccd.closed_date, INTERVAL 1 MONTH), '%m/%Y') AS gestion_month,
-        e.name AS un,
+        CASE
+            WHEN c.request_financing_number IS NOT NULL THEN 'ODONTOLOGIA TTO'
+            ELSE e.name
+        END AS un,
         CASE
             WHEN ccd.quotas_expirations >= 7 THEN 7
             WHEN ccd.quotas_expirations < 0 THEN 0
@@ -113,7 +116,7 @@ LEFT JOIN (
     WHERE p.status = 1
       AND p.type < 2
       AND YEAR(p.date) > 2020
-      AND IF(e.id < 3 OR e.id = 5, 1, 0) = 1
+      AND c.enterprise_id IN (1, 2, 5)
       AND p.contract_id NOT IN (55411, 55414, 59127, 59532, 60402)
     GROUP BY p.contract_id, DATE_FORMAT(p.date, '%m/%Y')
 ) pb

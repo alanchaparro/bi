@@ -1,0 +1,120 @@
+# AGENTS.md
+
+## Proposito
+Fuente unica de verdad para reglas de negocio y criterios operativos del proyecto **EPEM - Cartera de Cobranzas**.
+Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
+
+## Reglas de negocio obligatorias
+1. **Fecha de cierre != fecha de gestion**.
+   - En cartera, `gestion_month` se calcula como **cierre + 1 mes**.
+   - Ejemplo: cierre `02/2026` -> gestion `03/2026`.
+2. **Reportes operativos trabajan por `gestion_month`**.
+   - Cobranzas por corte, rendimiento y anuales deben alinear filtros por gestion.
+3. **Categoria por tramo**:
+   - `VIGENTE`: tramos `0..3`
+   - `MOROSO`: tramos `>3`
+4. **Definicion de tramo**:
+   - Regla general: `tramo = cuotas_vencidas`.
+   - Excepcion (tope operativo): si `cuotas_vencidas >= 7`, entonces `tramo = 7`.
+   - Si `cuotas_vencidas = 0` entonces `tramo = 0`.
+   - Si `cuotas_vencidas = 1` entonces `tramo = 1`.
+5. **Monto vencido != monto a cobrar**:
+   - `monto_vencido` representa solo deuda vencida.
+   - `monto_a_cobrar = monto_vencido + monto_cuota`.
+6. **LTV (Lifetime Value) abreviado**:
+   - Se usará siempre la sigla **LTV** para esta métrica.
+   - Definición operativa: en una ventana `X`, compara lo que **se debería cobrar** vs lo que **se cobró**.
+   - Fórmula de seguimiento:
+     - `LTV % = cobrado / deberia_cobrar`.
+     - Equivalente por cuotas: `cuotas_pagadas / cuotas_deberian_pagarse`.
+   - Ejemplo: contrato que entra en enero; para agosto debería pagar 8 cuotas y pagó 4:
+     - `LTV = 50%` (4/8).
+7. **UN canonicas**:
+   - `ODONTOLOGIA TTO` se mantiene separada de `ODONTOLOGIA`.
+   - No consolidar por hardcode en sync; usar tabla de mapeo.
+8. **Scope de extraccion MySQL**:
+   - Empresas permitidas: `enterprise_id IN (1,2,5)`.
+9. **Rendimiento de cartera (dos metricas obligatorias)**:
+   - `rendimiento_monto_% = cobrado / monto_a_cobrar`.
+   - `monto_a_cobrar = monto_vencido + monto_cuota`.
+   - Ejemplo monto: si `monto_a_cobrar = 1000` y `cobrado = 500`, entonces `rendimiento_monto_% = 50%`.
+   - `rendimiento_cantidad_% = contratos_con_cobro / contratos_por_cobrar`.
+   - Ejemplo cantidad: si `contratos_por_cobrar = 2000` y `contratos_con_cobro = 1000`, entonces `rendimiento_cantidad_% = 50%`.
+   - Debe poder calcularse por:
+     - UN (unidad de negocio)
+     - categoria (`VIGENTE`/`MOROSO`)
+     - tramo
+     - via de pago/cobro
+
+## Reglas tecnicas de sync y agregados
+1. Si hay filas upsert en facts, no puede quedar agg en cero.
+2. Meses para refresh se definen por prioridad:
+   - `detected_target_months` (manifest)
+   - `applied_months` (si hubo upsert)
+   - `source_months` (bootstrap: fact vacia + datos normalizados)
+3. Guardrail obligatorio:
+   - Si `rows_upserted > 0` y `agg_rows_written == 0`, ejecutar fallback de refresh.
+4. `cartera` usa estrategia estable de upsert compatible con particionado (sin depender de UNIQUE runtime en parent con expresiones).
+
+## Contratos y UX
+1. Frontend analytics consume rutas v2 por defecto.
+2. Metadata minima por respuesta analytics:
+   - `source_table`
+   - `data_freshness_at`
+   - `cache_hit`
+   - `pipeline_version`
+3. Filtros deben mostrar todas las UN disponibles segun politica canonica vigente.
+
+## Politicas de seguridad Git (obligatorias)
+1. **Secretos prohibidos en repositorio**:
+   - Nunca subir: API keys, tokens JWT, passwords, DSN reales, credenciales MySQL/Postgres, certificados privados, llaves SSH, secretos de terceros.
+   - Nunca subir archivos de secretos: `.env`, `.env.*`, `secrets.*`, `*.pem`, `*.key`, `id_rsa`, `credentials.json` con valores reales.
+2. **Configuracion segura por defecto**:
+   - Solo se versiona `.env.example` con valores ficticios/placeholders.
+   - Toda credencial real se inyecta por variables de entorno o secret manager fuera de Git.
+3. **Codigo y SQL sin hardcode sensible**:
+   - Prohibido hardcodear usuarios/passwords/hosts sensibles en codigo, scripts o `.sql`.
+   - Logs y errores no deben exponer secretos ni encabezados `Authorization`.
+4. **Control obligatorio antes de commit/push**:
+   - Ejecutar escaneo de secretos (ej: `gitleaks` o equivalente) antes de push.
+   - Si el escaneo detecta secretos: bloquear push hasta corregir.
+5. **Control en CI/CD**:
+   - Todo PR debe pasar escaneo de secretos y dependencias vulnerables.
+   - Si falla seguridad, no se mergea.
+6. **Respuesta a incidente (si se filtro un secreto)**:
+   - Rotar/revocar inmediatamente el secreto comprometido.
+   - Eliminarlo del historial del repo y reescribir historial segun procedimiento del equipo.
+   - Registrar incidente, alcance, fecha/hora y acciones de mitigacion.
+7. **Revision de terceros y datos**:
+   - No commitear dumps de BD ni exports con datos sensibles sin anonimizar.
+   - Revisar archivos nuevos/grandes antes de push para evitar exposicion accidental.
+
+## Checklist obligatorio por cambio
+1. Validar que no se rompa la semantica de `gestion_month`.
+2. Validar que `options` no queden vacias tras sync exitoso.
+3. Validar paridad de KPIs clave en muestra controlada.
+   - Incluir rendimiento por monto y rendimiento por cantidad.
+   - Incluir corte por UN, categoria, tramo y via de pago/cobro.
+4. Ejecutar smoke API:
+   - `portfolio-corte-v2/options`
+   - `portfolio-corte-v2/summary`
+   - `rendimiento-v2/options`
+   - `rendimiento-v2/summary`
+5. Verificar logs de sync:
+   - meses detectados
+   - meses aplicados
+   - meses usados para refresh
+   - fallback (si aplico)
+6. Ejecutar control de seguridad previo a push:
+   - escaneo de secretos sin hallazgos
+   - confirmacion de que no hay credenciales reales en diffs
+   - confirmacion de que `.env`/llaves no forman parte del commit
+
+## Cuando actualizar este archivo
+Actualizar inmediatamente si cambia:
+1. Definicion de categorias por tramo.
+2. Politica canonica de UN.
+3. Reglas de calendario (cierre/gestion/corte).
+4. Contratos de endpoints v2 o criterios de performance/SLA.
+5. Definicion de rendimiento de cartera (monto/cantidad) o sus dimensiones de corte.
+6. Politicas de seguridad de repositorio, CI/CD o manejo de secretos.

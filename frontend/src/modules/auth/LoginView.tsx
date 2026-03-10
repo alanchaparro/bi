@@ -27,10 +27,10 @@ export function LoginView({ onSubmit, error, loading = false }: Props) {
 
   return (
     <div className="login-page">
-      <div className="login-card">
+      <div className="card login-card">
         <h1>Cartera Cobranzas</h1>
-        <p className="subtitle">Inicia sesion con tu usuario y contrasena.</p>
-        <form onSubmit={handleSubmit}>
+        <p className="section-subtitle">Inicia sesión con tu usuario y contraseña.</p>
+        <form onSubmit={handleSubmit} className="form-stack">
           <div className="form-group">
             <label htmlFor="login-username" className="input-label">
               Usuario
@@ -48,7 +48,7 @@ export function LoginView({ onSubmit, error, loading = false }: Props) {
           </div>
           <div className="form-group">
             <label htmlFor="login-password" className="input-label">
-              Contrasena
+              Contraseña
             </label>
             <input
               id="login-password"
@@ -61,12 +61,11 @@ export function LoginView({ onSubmit, error, loading = false }: Props) {
               placeholder="********"
             />
           </div>
-          {error ? <p className="error-msg">{error}</p> : null}
+          {error ? <p className="alert-error">{error}</p> : null}
           <button
             type="submit"
-            className="btn btn-primary"
+            className="btn btn-primary btn-full-width"
             disabled={loading || submitting || !username.trim() || !password}
-            style={{ width: "100%", padding: "0.625rem 1rem" }}
           >
             {submitting ? "Entrando..." : "Entrar"}
           </button>

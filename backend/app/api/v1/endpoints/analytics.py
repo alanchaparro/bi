@@ -32,9 +32,9 @@ MORA_SUMMARY_CACHE_TTL = 120
 ANUALES_OPTIONS_CACHE_TTL = 600
 ANUALES_SUMMARY_CACHE_TTL = 120
 RENDIMIENTO_V2_OPTIONS_CACHE_TTL = 120
-RENDIMIENTO_V2_SUMMARY_CACHE_TTL = 180
+RENDIMIENTO_V2_SUMMARY_CACHE_TTL = 300
 ANUALES_V2_OPTIONS_CACHE_TTL = 120
-ANUALES_V2_SUMMARY_CACHE_TTL = 180
+ANUALES_V2_SUMMARY_CACHE_TTL = 300
 COHORTE_V2_FIRST_PAINT_CACHE_TTL = 300
 COHORTE_V2_DETAIL_CACHE_TTL = 300
 PORTFOLIO_CORTE_V2_FIRST_PAINT_CACHE_TTL = 180
@@ -133,6 +133,20 @@ def portfolio_corte_options(
     return _decorate_meta(db, result, cache_hit=False)
 
 
+@router.post('/portfolio-corte-v2/options', response_model=PortfolioCorteOptionsOut)
+def portfolio_corte_options_v2(
+    filters: AnalyticsFilters,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('analytics:read')),
+):
+    cached = cache_get('portfolio-corte-v2/options', filters)
+    if cached is not None:
+        return _decorate_meta(db, cached, cache_hit=True, source_table='mv_options_cartera')
+    result = AnalyticsService.fetch_portfolio_corte_options_v2(db, filters)
+    cache_set('portfolio-corte-v2/options', filters, result, ttl_seconds=PORTFOLIO_CORTE_OPTIONS_CACHE_TTL)
+    return _decorate_meta(db, result, cache_hit=False, source_table='mv_options_cartera')
+
+
 @router.post('/portfolio/corte/summary', response_model=PortfolioCorteSummaryOut)
 def portfolio_corte_summary(
     filters: PortfolioSummaryIn,
@@ -147,6 +161,27 @@ def portfolio_corte_summary(
         cache_set('portfolio/corte/summary', filters, result, ttl_seconds=PORTFOLIO_CORTE_SUMMARY_CACHE_TTL)
         return _decorate_meta(db, result, cache_hit=False)
     return _decorate_meta(db, AnalyticsService.fetch_portfolio_corte_summary_v2(db, filters), cache_hit=False)
+
+
+@router.post('/portfolio-corte-v2/summary', response_model=PortfolioCorteSummaryOut)
+def portfolio_corte_summary_v2(
+    filters: PortfolioSummaryIn,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('analytics:read')),
+):
+    if not bool(filters.include_rows):
+        cached = cache_get('portfolio-corte-v2/summary', filters)
+        if cached is not None:
+            return _decorate_meta(db, cached, cache_hit=True, source_table='cartera_corte_agg')
+        result = AnalyticsService.fetch_portfolio_corte_summary_v2(db, filters)
+        cache_set('portfolio-corte-v2/summary', filters, result, ttl_seconds=PORTFOLIO_CORTE_SUMMARY_CACHE_TTL)
+        return _decorate_meta(db, result, cache_hit=False, source_table='cartera_corte_agg')
+    return _decorate_meta(
+        db,
+        AnalyticsService.fetch_portfolio_corte_summary_v2(db, filters),
+        cache_hit=False,
+        source_table='cartera_corte_agg',
+    )
 
 
 @router.post('/portfolio-corte-v2/first-paint')
@@ -346,6 +381,20 @@ def cobranzas_cohorte_options(
     result = AnalyticsService.fetch_cobranzas_cohorte_options_v1(db, filters)
     cache_set('cobranzas-cohorte/options', filters, result, ttl_seconds=COHORTE_OPTIONS_CACHE_TTL)
     return _decorate_meta(db, result, cache_hit=False)
+
+
+@router.post('/cobranzas-cohorte-v2/options', response_model=CobranzasCohorteOptionsOut)
+def cobranzas_cohorte_options_v2(
+    filters: CobranzasCohorteIn,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('analytics:read')),
+):
+    cached = cache_get('cobranzas-cohorte-v2/options', filters)
+    if cached is not None:
+        return _decorate_meta(db, cached, cache_hit=True, source_table='mv_options_cohorte')
+    result = AnalyticsService.fetch_cobranzas_cohorte_options_v1(db, filters)
+    cache_set('cobranzas-cohorte-v2/options', filters, result, ttl_seconds=COHORTE_OPTIONS_CACHE_TTL)
+    return _decorate_meta(db, result, cache_hit=False, source_table='mv_options_cohorte')
 
 
 @router.post('/cobranzas-cohorte/summary')

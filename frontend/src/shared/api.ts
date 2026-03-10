@@ -15,10 +15,15 @@ import { clearSession, getStoredRefreshToken, setStoredRefreshToken } from "./se
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1",
 });
-const USE_ANALYTICS_V2 = String(import.meta.env.VITE_USE_ANALYTICS_V2 || "1").trim() !== "0";
-const USE_COHORTE_V2_FIRST_PAINT = String(import.meta.env.VITE_USE_COHORTE_V2_FIRST_PAINT || "1").trim() !== "0";
-const USE_FIRST_PAINT_ALL_SECTIONS = String(import.meta.env.VITE_USE_FIRST_PAINT_ALL_SECTIONS || "1").trim() !== "0";
+const USE_ANALYTICS_V2 = true;
+const USE_COHORTE_V2_FIRST_PAINT = true;
+const USE_FIRST_PAINT_ALL_SECTIONS = true;
 const USE_FRONTEND_PERF_TELEMETRY = String(import.meta.env.VITE_USE_FRONTEND_PERF_TELEMETRY || "1").trim() !== "0";
+export const USE_STRICT_UI_TOKENS = String(import.meta.env.VITE_USE_STRICT_UI_TOKENS || "1").trim() !== "0";
+export const USE_UI_IOS_REFINEMENT = String(import.meta.env.VITE_USE_UI_IOS_REFINEMENT || "0").trim() === "1";
+export const UI_IOS_REFINEMENT_MODULES = String(import.meta.env.VITE_USE_UI_IOS_REFINEMENT_MODULES || "all")
+  .trim()
+  .toLowerCase();
 
 /** Callback when session is invalid (e.g. refresh failed). App should clear auth state and show login. */
 let onUnauthorized: (() => void) | null = null;
@@ -124,6 +129,13 @@ let perfSessionId = "";
 let perfFcpMs: number | null = null;
 const perfApiCalls: PerfApiCall[] = [];
 let perfRouteStart = 0;
+let perfReadySent = false;
+
+function trackPerfApiCall(call: PerfApiCall): void {
+  if (!USE_FRONTEND_PERF_TELEMETRY) return;
+  perfApiCalls.push(call);
+  while (perfApiCalls.length > 120) perfApiCalls.shift();
+}
 
 function ensurePerfSessionId(): string {
   if (perfSessionId) return perfSessionId;
@@ -178,14 +190,13 @@ api.interceptors.response.use(
     const cacheHit = Boolean((response.data as { meta?: { cache_hit?: boolean } } | undefined)?.meta?.cache_hit);
     const bytesRaw = response.headers?.["content-length"];
     const bytes = Number.isFinite(Number(bytesRaw)) ? Number(bytesRaw) : undefined;
-    perfApiCalls.push({
+    trackPerfApiCall({
       endpoint,
       ms: Math.round(ms * 100) / 100,
       cache_hit: cacheHit,
       bytes,
       ts: Date.now(),
     });
-    while (perfApiCalls.length > 120) perfApiCalls.shift();
     return response;
   },
   (error) => Promise.reject(error)
@@ -194,10 +205,12 @@ api.interceptors.response.use(
 export function markPerfRoute(route: FrontendPerfRoute): void {
   perfRoute = route;
   perfRouteStart = performance.now();
+  perfReadySent = false;
 }
 
 export async function markPerfReady(route: FrontendPerfRoute): Promise<void> {
   if (!USE_FRONTEND_PERF_TELEMETRY) return;
+  if (perfReadySent && perfRoute === route) return;
   const readyMs = perfRouteStart > 0 ? Math.max(0, performance.now() - perfRouteStart) : 0;
   const now = Date.now();
   const routeCalls = perfApiCalls.filter((c) => now - c.ts <= 120000);
@@ -219,9 +232,179 @@ export async function markPerfReady(route: FrontendPerfRoute): Promise<void> {
   };
   try {
     await sendFrontendPerf(payload);
+    perfReadySent = true;
   } catch {
     // no-op: telemetry must not break UX
   }
+}
+
+type AnalyticsCachePolicy = "options" | "first_paint" | "summary" | "detail";
+const ANALYTICS_CACHE_TTL_MS: Record<AnalyticsCachePolicy, number> = {
+  options: 120_000,
+  first_paint: 300_000,
+  summary: 300_000,
+  detail: 300_000,
+};
+type CachedEntry<T> = {
+  expiresAt: number;
+  value: T;
+};
+const analyticsCacheMemory = new Map<string, CachedEntry<unknown>>();
+const ANALYTICS_CACHE_PREFIX = "analytics_api_cache:";
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    const next = value.map((item) => canonicalize(item));
+    const scalar = next.every((item) => ["string", "number", "boolean"].includes(typeof item));
+    return scalar ? [...next].sort((a, b) => String(a).localeCompare(String(b))) : next;
+  }
+  if (isPlainObject(value)) {
+    const out: Record<string, unknown> = {};
+    const keys = Object.keys(value).sort((a, b) => a.localeCompare(b));
+    for (const key of keys) out[key] = canonicalize(value[key]);
+    return out;
+  }
+  return value ?? null;
+}
+
+function buildAnalyticsCacheKey(path: string, payload: unknown): string {
+  const normalized = canonicalize(payload);
+  return `${path}|${JSON.stringify(normalized)}`;
+}
+
+function getFromSessionCache<T>(cacheKey: string): CachedEntry<T> | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(`${ANALYTICS_CACHE_PREFIX}${cacheKey}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedEntry<T>;
+    if (!parsed || typeof parsed.expiresAt !== "number") return null;
+    if (parsed.expiresAt <= Date.now()) {
+      window.sessionStorage.removeItem(`${ANALYTICS_CACHE_PREFIX}${cacheKey}`);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function setSessionCache<T>(cacheKey: string, entry: CachedEntry<T>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(`${ANALYTICS_CACHE_PREFIX}${cacheKey}`, JSON.stringify(entry));
+  } catch {
+    // ignore quota/storage issues
+  }
+}
+
+function markCacheHitMeta<T>(value: T): T {
+  if (!isPlainObject(value)) return value;
+  const existingMeta = isPlainObject(value.meta) ? value.meta : {};
+  return { ...value, meta: { ...existingMeta, cache_hit: true } } as T;
+}
+
+async function cachedAnalyticsPost<T>(path: string, payload: unknown, policy: AnalyticsCachePolicy): Promise<T> {
+  const key = buildAnalyticsCacheKey(path, payload);
+  const now = Date.now();
+  const hitMem = analyticsCacheMemory.get(key);
+  if (hitMem && hitMem.expiresAt > now) {
+    trackPerfApiCall({
+      endpoint: `${path}#cache`,
+      ms: 0.1,
+      cache_hit: true,
+      bytes: undefined,
+      ts: now,
+    });
+    return markCacheHitMeta(hitMem.value as T);
+  }
+  const hitSession = getFromSessionCache<T>(key);
+  if (hitSession) {
+    analyticsCacheMemory.set(key, hitSession as CachedEntry<unknown>);
+    trackPerfApiCall({
+      endpoint: `${path}#cache`,
+      ms: 0.2,
+      cache_hit: true,
+      bytes: undefined,
+      ts: now,
+    });
+    return markCacheHitMeta(hitSession.value);
+  }
+  const response = await api.post<T>(path, payload);
+  const ttl = ANALYTICS_CACHE_TTL_MS[policy];
+  const entry: CachedEntry<T> = { value: response.data, expiresAt: now + ttl };
+  analyticsCacheMemory.set(key, entry as CachedEntry<unknown>);
+  setSessionCache(key, entry);
+  return response.data;
+}
+
+export function clearAnalyticsApiCache(pathPrefix?: string): void {
+  for (const key of Array.from(analyticsCacheMemory.keys())) {
+    if (!pathPrefix || key.startsWith(pathPrefix)) analyticsCacheMemory.delete(key);
+  }
+  if (typeof window === "undefined") return;
+  try {
+    const keysToDelete: string[] = [];
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      const key = window.sessionStorage.key(i);
+      if (!key || !key.startsWith(ANALYTICS_CACHE_PREFIX)) continue;
+      const rawKey = key.slice(ANALYTICS_CACHE_PREFIX.length);
+      if (!pathPrefix || rawKey.startsWith(pathPrefix)) keysToDelete.push(key);
+    }
+    for (const key of keysToDelete) window.sessionStorage.removeItem(key);
+  } catch {
+    // ignore storage iteration issues
+  }
+}
+
+function getApiBaseUrl(): string {
+  const base = String(api.defaults.baseURL || "");
+  if (base.startsWith("http://") || base.startsWith("https://")) return base;
+  if (typeof window !== "undefined") return `${window.location.origin}${base.startsWith("/") ? "" : "/"}${base}`;
+  return base;
+}
+
+async function sendFrontendPerfKeepAlive(payload: FrontendPerfIn): Promise<boolean> {
+  const endpoint = `${getApiBaseUrl()}/telemetry/frontend-perf`;
+  const token = String(api.defaults.headers.common.Authorization || "");
+  if (typeof fetch !== "function") return false;
+  try {
+    const resp = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: token } : {}),
+      },
+      body: JSON.stringify(payload),
+      keepalive: true,
+      credentials: "include",
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+function sendFrontendPerfBeacon(payload: FrontendPerfIn): boolean {
+  if (typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") return false;
+  const endpoint = `${getApiBaseUrl()}/telemetry/frontend-perf`;
+  try {
+    const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+    return navigator.sendBeacon(endpoint, blob);
+  } catch {
+    return false;
+  }
+}
+
+if (typeof window !== "undefined" && USE_FRONTEND_PERF_TELEMETRY) {
+  window.addEventListener("pagehide", () => {
+    if (!perfRoute || perfReadySent) return;
+    void markPerfReady(perfRoute);
+  });
 }
 
 export async function getSupervisorsScope(): Promise<SupervisorsScopeResponse> {
@@ -357,6 +540,17 @@ export async function updateUser(
 }
 
 export type SyncDomain = "analytics" | "cartera" | "cobranzas" | "contratos" | "gestores";
+export type AnalyticsMeta = {
+  generated_at?: string;
+  source?: string;
+  source_table?: string;
+  cache_hit?: boolean;
+  payload_mode?: "first_paint" | "summary" | "detail";
+  data_freshness_at?: string;
+  pipeline_version?: string;
+  signature?: string;
+  portfolio_keys?: number;
+};
 
 export type PortfolioOptionsResponse = {
   options: {
@@ -367,10 +561,7 @@ export type PortfolioOptionsResponse = {
     months?: string[];
     close_months?: string[];
   };
-  meta?: {
-    generated_at?: string;
-    source_table?: string;
-  };
+  meta?: AnalyticsMeta;
 };
 
 export type PortfolioCorteOptionsResponse = {
@@ -384,10 +575,7 @@ export type PortfolioCorteOptionsResponse = {
     close_months?: string[];
     contract_years?: string[];
   };
-  meta?: {
-    generated_at?: string;
-    source_table?: string;
-  };
+  meta?: AnalyticsMeta;
 };
 
 export type PortfolioCorteSummaryResponse = {
@@ -409,11 +597,7 @@ export type PortfolioCorteSummaryResponse = {
     series_vigente_moroso_by_month?: Record<string, { vigente?: number; moroso?: number }>;
     series_cobrador_debito_by_month?: Record<string, { cobrador?: number; debito?: number }>;
   };
-  meta?: {
-    source?: string;
-    source_table?: string;
-    generated_at?: string;
-  };
+  meta?: AnalyticsMeta;
 };
 
 export type CobranzasCohorteOptionsResponse = {
@@ -425,11 +609,7 @@ export type CobranzasCohorteOptionsResponse = {
     categories?: string[];
   };
   default_cutoff?: string | null;
-  meta?: {
-    source?: string;
-    source_table?: string;
-    generated_at?: string;
-  };
+  meta?: AnalyticsMeta;
 };
 
 export type CobranzasCohorteSummaryResponse = {
@@ -461,11 +641,15 @@ export type CobranzasCohorteSummaryResponse = {
     pct_pago_contratos: number;
     pct_cobertura_monto: number;
   }>;
-  meta?: {
-    source?: string;
-    source_table?: string;
-    generated_at?: string;
-  };
+  by_tramo?: Record<string, {
+    activos: number;
+    pagaron: number;
+    deberia: number;
+    cobrado: number;
+    pct_pago_contratos: number;
+    pct_cobertura_monto: number;
+  }>;
+  meta?: AnalyticsMeta;
 };
 
 export type CobranzasCohorteFirstPaintResponse = {
@@ -473,16 +657,9 @@ export type CobranzasCohorteFirstPaintResponse = {
   effective_cartera_month?: string;
   totals: CobranzasCohorteSummaryResponse["totals"];
   by_year: CobranzasCohorteSummaryResponse["by_year"];
+  by_tramo?: CobranzasCohorteSummaryResponse["by_tramo"];
   top_sale_months: CobranzasCohorteSummaryResponse["by_sale_month"];
-  meta?: {
-    source?: string;
-    source_table?: string;
-    generated_at?: string;
-    cache_hit?: boolean;
-    data_freshness_at?: string;
-    pipeline_version?: string;
-    payload_mode?: string;
-  };
+  meta?: AnalyticsMeta;
 };
 
 export type CobranzasCohorteDetailResponse = {
@@ -493,15 +670,7 @@ export type CobranzasCohorteDetailResponse = {
   page: number;
   page_size: number;
   has_next: boolean;
-  meta?: {
-    source?: string;
-    source_table?: string;
-    generated_at?: string;
-    cache_hit?: boolean;
-    data_freshness_at?: string;
-    pipeline_version?: string;
-    payload_mode?: string;
-  };
+  meta?: AnalyticsMeta;
 };
 
 export type RendimientoOptionsResponse = {
@@ -515,11 +684,7 @@ export type RendimientoOptionsResponse = {
     supervisors?: string[];
   };
   default_gestion_month?: string | null;
-  meta?: {
-    source?: string;
-    source_table?: string;
-    generated_at?: string;
-  };
+  meta?: AnalyticsMeta;
 };
 
 export type RendimientoSummaryResponse = {
@@ -533,12 +698,7 @@ export type RendimientoSummaryResponse = {
   gestorStats: Record<string, { d: number; p: number }>;
   matrixStats: Record<string, Record<string, number>>;
   trendStats: Record<string, { d: number; p: number; c: number; cp: number }>;
-  meta?: {
-    source?: string;
-    source_table?: string;
-    generated_at?: string;
-    portfolio_keys?: number;
-  };
+  meta?: AnalyticsMeta;
 };
 
 export type AnualesOptionsResponse = {
@@ -548,11 +708,7 @@ export type AnualesOptionsResponse = {
     contract_months?: string[];
   };
   default_cutoff?: string | null;
-  meta?: {
-    source?: string;
-    source_table?: string;
-    generated_at?: string;
-  };
+  meta?: AnalyticsMeta;
 };
 
 export type AnualesSummaryRow = {
@@ -574,12 +730,7 @@ export type AnualesSummaryRow = {
 export type AnualesSummaryResponse = {
   rows: AnualesSummaryRow[];
   cutoff: string;
-  meta?: {
-    source?: string;
-    source_table?: string;
-    generated_at?: string;
-    signature?: string;
-  };
+  meta?: AnalyticsMeta;
 };
 
 export type PortfolioCorteFirstPaintResponse = {
@@ -588,43 +739,19 @@ export type PortfolioCorteFirstPaintResponse = {
     by_un_top5?: Record<string, number>;
     by_tramo?: Record<string, number>;
   };
-  meta?: {
-    source?: string;
-    source_table?: string;
-    generated_at?: string;
-    cache_hit?: boolean;
-    data_freshness_at?: string;
-    pipeline_version?: string;
-    payload_mode?: string;
-  };
+  meta?: AnalyticsMeta;
 };
 
 export type RendimientoFirstPaintResponse = {
   totals: Pick<RendimientoSummaryResponse, "totalDebt" | "totalPaid" | "totalContracts" | "totalContractsPaid">;
   mini_trend?: Record<string, { d: number; p: number; c: number; cp: number }>;
-  meta?: {
-    source?: string;
-    source_table?: string;
-    generated_at?: string;
-    cache_hit?: boolean;
-    data_freshness_at?: string;
-    pipeline_version?: string;
-    payload_mode?: string;
-  };
+  meta?: AnalyticsMeta;
 };
 
 export type AnualesFirstPaintResponse = {
   cutoff: string;
   rows_top: AnualesSummaryRow[];
-  meta?: {
-    source?: string;
-    source_table?: string;
-    generated_at?: string;
-    cache_hit?: boolean;
-    data_freshness_at?: string;
-    pipeline_version?: string;
-    payload_mode?: string;
-  };
+  meta?: AnalyticsMeta;
 };
 
 export type FrontendPerfRoute = "cartera" | "cohorte" | "rendimiento" | "anuales" | "brokers";
@@ -757,6 +884,45 @@ export type SyncChunkLogsResponse = {
   chunks: SyncChunkLogResponse[];
 };
 
+export type AnalyticsOptionsConsistencyCheck = {
+  ok: boolean;
+  expected_months: number;
+  actual_months: number;
+  missing_months: string[];
+  stale_months: string[];
+};
+
+export type AnalyticsOptionsConsistencyResponse = {
+  ok: boolean;
+  checks: Record<string, AnalyticsOptionsConsistencyCheck>;
+  last_checked_at: string;
+};
+
+export type AnalyticsFreshnessRow = {
+  source_table: string;
+  max_updated_at?: string | null;
+  tracked_updated_at?: string | null;
+  last_job_id?: string | null;
+  from_tracker: boolean;
+};
+
+export type AnalyticsFreshnessResponse = {
+  generated_at: string;
+  rows: AnalyticsFreshnessRow[];
+};
+
+export type AnalyticsOptionsRebuildResponse = {
+  scope: "full" | "months";
+  months: string[];
+  rebuilt_rows: Record<string, number>;
+  auto_rebuilt: boolean;
+  auto_rebuilt_rows: Record<string, number>;
+  consistency: AnalyticsOptionsConsistencyResponse;
+  cache_invalidated: Record<string, number>;
+  rebuilt_at: string;
+  actor: string;
+};
+
 export type SyncPreviewResponse = {
   domain: SyncDomain;
   mode: "full_all" | "full_year" | "full_month" | "range_months";
@@ -783,6 +949,7 @@ export async function runSync(payload: {
   close_month_to?: string;
 }): Promise<SyncRunResponse> {
   const response = await api.post<SyncRunResponse>("/sync/run", payload, { timeout: 60000 });
+  clearAnalyticsApiCache("/analytics/");
   return response.data;
 }
 
@@ -830,11 +997,33 @@ export async function resetSyncWatermarks(payload: {
   partition_key?: string;
 }): Promise<SyncWatermarkResetResponse> {
   const response = await api.post<SyncWatermarkResetResponse>("/sync/watermarks/reset", payload, { timeout: 60000 });
+  clearAnalyticsApiCache("/analytics/");
   return response.data;
 }
 
 export async function getSyncChunks(jobId: string): Promise<SyncChunkLogsResponse> {
   const response = await api.get<SyncChunkLogsResponse>(`/sync/chunks/${encodeURIComponent(jobId)}`);
+  return response.data;
+}
+
+export async function getAnalyticsOptionsConsistency(): Promise<AnalyticsOptionsConsistencyResponse> {
+  const response = await api.get<AnalyticsOptionsConsistencyResponse>("/admin/analytics/options/consistency");
+  return response.data;
+}
+
+export async function rebuildAnalyticsOptions(payload: {
+  scope: "full" | "months";
+  months?: string[];
+}): Promise<AnalyticsOptionsRebuildResponse> {
+  const response = await api.post<AnalyticsOptionsRebuildResponse>("/admin/analytics/options/rebuild", payload, {
+    timeout: 120000,
+  });
+  clearAnalyticsApiCache("/analytics/");
+  return response.data;
+}
+
+export async function getAnalyticsFreshness(): Promise<AnalyticsFreshnessResponse> {
+  const response = await api.get<AnalyticsFreshnessResponse>("/admin/analytics/freshness");
   return response.data;
 }
 
@@ -880,6 +1069,7 @@ export async function createSyncSchedule(payload: {
   domains: SyncDomain[];
 }): Promise<SyncScheduleOut> {
   const response = await api.post<SyncScheduleOut>("/sync/schedules", payload);
+  clearAnalyticsApiCache("/analytics/");
   return response.data;
 }
 
@@ -900,34 +1090,41 @@ export async function updateSyncSchedule(
   }>
 ): Promise<SyncScheduleOut> {
   const response = await api.patch<SyncScheduleOut>(`/sync/schedules/${scheduleId}`, payload);
+  clearAnalyticsApiCache("/analytics/");
   return response.data;
 }
 
 export async function deleteSyncSchedule(scheduleId: number): Promise<void> {
   await api.delete(`/sync/schedules/${scheduleId}`);
+  clearAnalyticsApiCache("/analytics/");
 }
 
 export async function runSyncScheduleNow(scheduleId: number): Promise<{ schedule_id: number; job_ids: string[] }> {
   const response = await api.post<{ schedule_id: number; job_ids: string[] }>(
     `/sync/schedules/${scheduleId}/run-now`
   );
+  clearAnalyticsApiCache("/analytics/");
   return response.data;
 }
 
 export async function pauseSyncSchedule(scheduleId: number): Promise<void> {
   await api.post(`/sync/schedules/${scheduleId}/pause`);
+  clearAnalyticsApiCache("/analytics/");
 }
 
 export async function resumeSyncSchedule(scheduleId: number): Promise<void> {
   await api.post(`/sync/schedules/${scheduleId}/resume`);
+  clearAnalyticsApiCache("/analytics/");
 }
 
 export async function emergencyStopSchedules(): Promise<void> {
   await api.post("/sync/schedules/emergency-stop");
+  clearAnalyticsApiCache("/analytics/");
 }
 
 export async function emergencyResumeSchedules(): Promise<void> {
   await api.post("/sync/schedules/emergency-resume");
+  clearAnalyticsApiCache("/analytics/");
 }
 
 export async function getPortfolioOptions(payload: {
@@ -942,8 +1139,7 @@ export async function getPortfolioOptions(payload: {
   categoria?: string[];
   tramo?: string[];
 }): Promise<PortfolioOptionsResponse> {
-  const response = await api.post<PortfolioOptionsResponse>("/analytics/portfolio/options", payload);
-  return response.data;
+  return cachedAnalyticsPost<PortfolioOptionsResponse>("/analytics/portfolio/options", payload, "options");
 }
 
 export async function getPortfolioCorteOptions(payload: {
@@ -958,8 +1154,7 @@ export async function getPortfolioCorteOptions(payload: {
   categoria?: string[];
   tramo?: string[];
 }): Promise<PortfolioCorteOptionsResponse> {
-  const response = await api.post<PortfolioCorteOptionsResponse>("/analytics/portfolio/corte/options", payload);
-  return response.data;
+  return cachedAnalyticsPost<PortfolioCorteOptionsResponse>("/analytics/portfolio-corte-v2/options", payload, "options");
 }
 
 export async function getPortfolioCorteSummary(payload: {
@@ -975,8 +1170,7 @@ export async function getPortfolioCorteSummary(payload: {
   tramo?: string[];
   include_rows?: boolean;
 }): Promise<PortfolioCorteSummaryResponse> {
-  const response = await api.post<PortfolioCorteSummaryResponse>("/analytics/portfolio/corte/summary", payload);
-  return response.data;
+  return cachedAnalyticsPost<PortfolioCorteSummaryResponse>("/analytics/portfolio-corte-v2/summary", payload, "summary");
 }
 
 export async function getCobranzasCohorteOptions(payload: {
@@ -986,8 +1180,7 @@ export async function getCobranzasCohorteOptions(payload: {
   categoria?: string[];
   supervisor?: string[];
 }): Promise<CobranzasCohorteOptionsResponse> {
-  const response = await api.post<CobranzasCohorteOptionsResponse>("/analytics/cobranzas-cohorte/options", payload);
-  return response.data;
+  return cachedAnalyticsPost<CobranzasCohorteOptionsResponse>("/analytics/cobranzas-cohorte-v2/options", payload, "options");
 }
 
 export async function getCobranzasCohorteSummary(payload: {
@@ -997,8 +1190,17 @@ export async function getCobranzasCohorteSummary(payload: {
   categoria?: string[];
   supervisor?: string[];
 }): Promise<CobranzasCohorteSummaryResponse> {
-  const response = await api.post<CobranzasCohorteSummaryResponse>("/analytics/cobranzas-cohorte/summary", payload);
-  return response.data;
+  const firstPaint = await getCobranzasCohorteFirstPaint(payload);
+  const detail = await getCobranzasCohorteDetail({ ...payload, page: 1, page_size: 120, sort_by: "sale_month", sort_dir: "asc" });
+  return {
+    cutoff_month: firstPaint.cutoff_month,
+    effective_cartera_month: firstPaint.effective_cartera_month,
+    totals: firstPaint.totals,
+    by_year: firstPaint.by_year || {},
+    by_tramo: firstPaint.by_tramo || {},
+    by_sale_month: detail.items || [],
+    meta: detail.meta || firstPaint.meta,
+  };
 }
 
 export async function getCobranzasCohorteFirstPaint(payload: {
@@ -1009,11 +1211,11 @@ export async function getCobranzasCohorteFirstPaint(payload: {
   supervisor?: string[];
   top_n_sale_months?: number;
 }): Promise<CobranzasCohorteFirstPaintResponse> {
-  const path = USE_COHORTE_V2_FIRST_PAINT
-    ? "/analytics/cobranzas-cohorte-v2/first-paint"
-    : "/analytics/cobranzas-cohorte/summary";
-  const response = await api.post<CobranzasCohorteFirstPaintResponse>(path, payload);
-  return response.data;
+  return cachedAnalyticsPost<CobranzasCohorteFirstPaintResponse>(
+    "/analytics/cobranzas-cohorte-v2/first-paint",
+    payload,
+    "first_paint"
+  );
 }
 
 export async function getCobranzasCohorteDetail(payload: {
@@ -1027,21 +1229,7 @@ export async function getCobranzasCohorteDetail(payload: {
   sort_by?: "sale_month" | "cobrado" | "deberia" | "pagaron";
   sort_dir?: "asc" | "desc";
 }): Promise<CobranzasCohorteDetailResponse> {
-  if (!USE_COHORTE_V2_FIRST_PAINT) {
-    const fallback = await getCobranzasCohorteSummary(payload);
-    return {
-      cutoff_month: fallback.cutoff_month,
-      effective_cartera_month: fallback.effective_cartera_month,
-      items: fallback.by_sale_month || [],
-      total_items: (fallback.by_sale_month || []).length,
-      page: 1,
-      page_size: (fallback.by_sale_month || []).length || 24,
-      has_next: false,
-      meta: fallback.meta,
-    };
-  }
-  const response = await api.post<CobranzasCohorteDetailResponse>("/analytics/cobranzas-cohorte-v2/detail", payload);
-  return response.data;
+  return cachedAnalyticsPost<CobranzasCohorteDetailResponse>("/analytics/cobranzas-cohorte-v2/detail", payload, "detail");
 }
 
 export async function getRendimientoOptions(payload: {
@@ -1056,9 +1244,7 @@ export async function getRendimientoOptions(payload: {
   categoria?: string[];
   tramo?: string[];
 }): Promise<RendimientoOptionsResponse> {
-  const path = USE_ANALYTICS_V2 ? "/analytics/rendimiento-v2/options" : "/analytics/rendimiento/options";
-  const response = await api.post<RendimientoOptionsResponse>(path, payload);
-  return response.data;
+  return cachedAnalyticsPost<RendimientoOptionsResponse>("/analytics/rendimiento-v2/options", payload, "options");
 }
 
 export async function getRendimientoSummary(payload: {
@@ -1073,9 +1259,7 @@ export async function getRendimientoSummary(payload: {
   categoria?: string[];
   tramo?: string[];
 }): Promise<RendimientoSummaryResponse> {
-  const path = USE_ANALYTICS_V2 ? "/analytics/rendimiento-v2/summary" : "/analytics/rendimiento/summary";
-  const response = await api.post<RendimientoSummaryResponse>(path, payload);
-  return response.data;
+  return cachedAnalyticsPost<RendimientoSummaryResponse>("/analytics/rendimiento-v2/summary", payload, "summary");
 }
 
 export async function getRendimientoFirstPaint(payload: {
@@ -1090,21 +1274,7 @@ export async function getRendimientoFirstPaint(payload: {
   categoria?: string[];
   tramo?: string[];
 }): Promise<RendimientoFirstPaintResponse> {
-  if (!USE_FIRST_PAINT_ALL_SECTIONS || !USE_ANALYTICS_V2) {
-    const full = await getRendimientoSummary(payload);
-    return {
-      totals: {
-        totalDebt: full.totalDebt,
-        totalPaid: full.totalPaid,
-        totalContracts: full.totalContracts,
-        totalContractsPaid: full.totalContractsPaid,
-      },
-      mini_trend: full.trendStats,
-      meta: full.meta,
-    };
-  }
-  const response = await api.post<RendimientoFirstPaintResponse>("/analytics/rendimiento-v2/first-paint", payload);
-  return response.data;
+  return cachedAnalyticsPost<RendimientoFirstPaintResponse>("/analytics/rendimiento-v2/first-paint", payload, "first_paint");
 }
 
 export async function getAnualesOptions(payload: {
@@ -1119,9 +1289,7 @@ export async function getAnualesOptions(payload: {
   categoria?: string[];
   tramo?: string[];
 }): Promise<AnualesOptionsResponse> {
-  const path = USE_ANALYTICS_V2 ? "/analytics/anuales-v2/options" : "/analytics/anuales/options";
-  const response = await api.post<AnualesOptionsResponse>(path, payload);
-  return response.data;
+  return cachedAnalyticsPost<AnualesOptionsResponse>("/analytics/anuales-v2/options", payload, "options");
 }
 
 export async function getAnualesSummary(payload: {
@@ -1136,9 +1304,7 @@ export async function getAnualesSummary(payload: {
   categoria?: string[];
   tramo?: string[];
 }): Promise<AnualesSummaryResponse> {
-  const path = USE_ANALYTICS_V2 ? "/analytics/anuales-v2/summary" : "/analytics/anuales/summary";
-  const response = await api.post<AnualesSummaryResponse>(path, payload);
-  return response.data;
+  return cachedAnalyticsPost<AnualesSummaryResponse>("/analytics/anuales-v2/summary", payload, "summary");
 }
 
 export async function getAnualesFirstPaint(payload: {
@@ -1153,16 +1319,7 @@ export async function getAnualesFirstPaint(payload: {
   categoria?: string[];
   tramo?: string[];
 }): Promise<AnualesFirstPaintResponse> {
-  if (!USE_FIRST_PAINT_ALL_SECTIONS || !USE_ANALYTICS_V2) {
-    const full = await getAnualesSummary(payload);
-    return {
-      cutoff: full.cutoff,
-      rows_top: full.rows || [],
-      meta: full.meta,
-    };
-  }
-  const response = await api.post<AnualesFirstPaintResponse>("/analytics/anuales-v2/first-paint", payload);
-  return response.data;
+  return cachedAnalyticsPost<AnualesFirstPaintResponse>("/analytics/anuales-v2/first-paint", payload, "first_paint");
 }
 
 export async function getPortfolioCorteFirstPaint(payload: {
@@ -1178,16 +1335,14 @@ export async function getPortfolioCorteFirstPaint(payload: {
   tramo?: string[];
   include_rows?: boolean;
 }): Promise<PortfolioCorteFirstPaintResponse> {
-  if (!USE_FIRST_PAINT_ALL_SECTIONS) {
-    const full = await getPortfolioCorteSummary(payload);
-    return { kpis: full.kpis || {}, mini_charts: { by_tramo: full.charts?.by_tramo || {} }, meta: full.meta };
-  }
-  const response = await api.post<PortfolioCorteFirstPaintResponse>("/analytics/portfolio-corte-v2/first-paint", payload);
-  return response.data;
+  return cachedAnalyticsPost<PortfolioCorteFirstPaintResponse>("/analytics/portfolio-corte-v2/first-paint", payload, "first_paint");
 }
 
 export async function sendFrontendPerf(payload: FrontendPerfIn): Promise<void> {
   if (!USE_FRONTEND_PERF_TELEMETRY) return;
+  const hidden = typeof document !== "undefined" && document.visibilityState === "hidden";
+  if (hidden && sendFrontendPerfBeacon(payload)) return;
+  if (await sendFrontendPerfKeepAlive(payload)) return;
   await api.post("/telemetry/frontend-perf", payload);
 }
 

@@ -1,5 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter";
+import { ActiveFilterChips, type FilterChip } from "../../components/filters/ActiveFilterChips";
+import { AnalyticsPageHeader } from "../../components/analytics/AnalyticsPageHeader";
+import { AnalysisSelectionSummary } from "../../components/analytics/AnalysisSelectionSummary";
+import { EmptyState } from "../../components/feedback/EmptyState";
+import { ErrorState } from "../../components/feedback/ErrorState";
+import { LoadingState } from "../../components/feedback/LoadingState";
 import { getApiErrorMessage } from "../../shared/apiErrors";
 import { formatCount, formatGsFull } from "../../shared/formatters";
 import {
@@ -42,6 +48,7 @@ function selectionLabel(selected: string[], fallback: string) {
 
 export function AnalisisAnualesView() {
   const [loadingOptions, setLoadingOptions] = useState(true);
+  const [loadingSummary, setLoadingSummary] = useState(false);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [options, setOptions] = useState<Options>(EMPTY_OPTIONS);
@@ -50,12 +57,17 @@ export function AnalisisAnualesView() {
   const [summary, setSummary] = useState<AnualesSummaryResponse | null>(null);
 
   const loadSummary = useCallback(async (next: Filters) => {
-    const data = await getAnualesSummary({
-      un: next.uns,
-      anio: next.years,
-      contract_month: next.contractMonths,
-    });
-    setSummary(data);
+    setLoadingSummary(true);
+    try {
+      const data = await getAnualesSummary({
+        un: next.uns,
+        anio: next.years,
+        contract_month: next.contractMonths,
+      });
+      setSummary(data);
+    } finally {
+      setLoadingSummary(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -75,10 +87,11 @@ export function AnalisisAnualesView() {
         setApplying(true);
         const fp = await getAnualesFirstPaint({});
         setSummary({ rows: fp.rows_top || [], cutoff: fp.cutoff || "-", meta: fp.meta });
-        await loadSummary(defaults);
         await markPerfReady("anuales");
+        void loadSummary(defaults).catch((e: unknown) => setError(getApiErrorMessage(e)));
       } catch (e: unknown) {
         setError(getApiErrorMessage(e));
+        setLoadingSummary(false);
       } finally {
         setApplying(false);
         setLoadingOptions(false);
@@ -92,13 +105,25 @@ export function AnalisisAnualesView() {
       setApplying(true);
       setError(null);
       setAppliedFilters(filters);
-      await loadSummary(filters);
+      const fp = await getAnualesFirstPaint({
+        un: filters.uns,
+        anio: filters.years,
+        contract_month: filters.contractMonths,
+      });
+      setSummary({ rows: fp.rows_top || [], cutoff: fp.cutoff || "-", meta: fp.meta });
+      await markPerfReady("anuales");
+      void loadSummary(filters).catch((e: unknown) => setError(getApiErrorMessage(e)));
     } catch (e: unknown) {
       setError(getApiErrorMessage(e));
+      setLoadingSummary(false);
     } finally {
       setApplying(false);
     }
   }, [filters, loadSummary]);
+
+  const clearFilters = useCallback(() => {
+    setFilters(EMPTY_FILTERS);
+  }, []);
 
   const onReset = useCallback(async () => {
     try {
@@ -107,9 +132,13 @@ export function AnalisisAnualesView() {
       setError(null);
       setFilters(reset);
       setAppliedFilters(reset);
-      await loadSummary(reset);
+      const fp = await getAnualesFirstPaint({});
+      setSummary({ rows: fp.rows_top || [], cutoff: fp.cutoff || "-", meta: fp.meta });
+      await markPerfReady("anuales");
+      void loadSummary(reset).catch((e: unknown) => setError(getApiErrorMessage(e)));
     } catch (e: unknown) {
       setError(getApiErrorMessage(e));
+      setLoadingSummary(false);
     } finally {
       setApplying(false);
     }
@@ -119,36 +148,62 @@ export function AnalisisAnualesView() {
   const hasRows = rows.length > 0;
   const cutoff = summary?.cutoff || "-";
 
+  const activeFilterChips = useMemo<FilterChip[]>(() => {
+    const blocks: Array<{ key: keyof Filters; label: string }> = [
+      { key: "uns", label: "UN" },
+      { key: "years", label: "Año" },
+      { key: "contractMonths", label: "Mes/Año Contrato" },
+    ];
+    return blocks.flatMap((b) =>
+      filters[b.key].map((value) => ({ key: b.key, label: b.label, value })),
+    );
+  }, [filters]);
+
+  const removeChip = useCallback((chip: FilterChip) => {
+    setFilters((prev) => ({
+      ...prev,
+      [chip.key]: (prev[chip.key as keyof Filters] as string[]).filter((item) => item !== chip.value),
+    }));
+  }, []);
+
   useEffect(() => {
     if (!summary || applying || loadingOptions) return;
     void markPerfReady("anuales");
   }, [applying, loadingOptions, summary]);
 
   return (
-    <section className="card analysis-card cohorte-card">
-      <div className="cohorte-header">
-        <div className="cohorte-header-row">
-          <span className="cohorte-kicker">Panel ejecutivo</span>
-          <span className="cohorte-live-pill">Anuales</span>
-        </div>
-        <h2>Análisis Anuales</h2>
-        <p className="cohorte-subtitle">Resumen anual por cierre de gestión con TKP y culminados.</p>
-      </div>
+    <section className="card analysis-card analysis-panel-card">
+      <AnalyticsPageHeader
+        kicker="Panel ejecutivo"
+        pill="Anuales"
+        title="Análisis Anuales"
+        subtitle="Resumen anual por cierre de gestión con TKP y culminados."
+      />
 
       {loadingOptions ? (
-        <div className="cohorte-skeleton-wrap" aria-live="polite" aria-busy="true">
-          <div className="cohorte-skeleton-grid">
+        <div className="analysis-skeleton-wrap" aria-live="polite" aria-busy="true">
+          <div className="analysis-skeleton-grid">
+            <div className="analysis-skeleton-input" />
+            <div className="analysis-skeleton-input" />
             <div className="analysis-skeleton-input" />
             <div className="analysis-skeleton-input" />
             <div className="analysis-skeleton-input" />
           </div>
-          <div className="cohorte-skeleton-table" />
+          <div className="analysis-skeleton-kpis">
+            <div className="analysis-skeleton-kpi" />
+            <div className="analysis-skeleton-kpi" />
+            <div className="analysis-skeleton-kpi" />
+            <div className="analysis-skeleton-kpi" />
+            <div className="analysis-skeleton-kpi" />
+            <div className="analysis-skeleton-kpi" />
+          </div>
+          <div className="analysis-skeleton-table" />
         </div>
       ) : (
         <>
-          <div className="cohorte-filters-grid">
+          <div className="analysis-filters-grid">
             <MultiSelectFilter
-              className="cohorte-filter-control"
+              className="analysis-filter-control"
               label="Unidad de Negocio"
               options={options.uns}
               selected={filters.uns}
@@ -156,7 +211,7 @@ export function AnalisisAnualesView() {
               placeholder="Todas"
             />
             <MultiSelectFilter
-              className="cohorte-filter-control"
+              className="analysis-filter-control"
               label="Año de Contrato"
               options={options.years}
               selected={filters.years}
@@ -164,7 +219,7 @@ export function AnalisisAnualesView() {
               placeholder="Todos"
             />
             <MultiSelectFilter
-              className="cohorte-filter-control"
+              className="analysis-filter-control"
               label="Mes/Año de Contrato"
               options={options.contractMonths}
               selected={filters.contractMonths}
@@ -173,27 +228,51 @@ export function AnalisisAnualesView() {
             />
           </div>
 
-          <div className="cohorte-actions-row">
+          <div className="analysis-actions-row analysis-actions">
             <button type="button" className="btn btn-primary" onClick={() => void onApply()} disabled={applying}>
-              {applying ? "Aplicando..." : "Aplicar Filtros"}
+              {applying ? "Aplicando..." : "Aplicar filtros"}
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={clearFilters} disabled={applying}>
+              Limpiar filtros
             </button>
             <button type="button" className="btn btn-secondary" onClick={() => void onReset()} disabled={applying}>
-              Resetear Filtros
+              Resetear filtros
             </button>
+            <span className="analysis-active-count">
+              {activeFilterChips.length} filtro{activeFilterChips.length === 1 ? "" : "s"} activo{activeFilterChips.length === 1 ? "" : "s"}
+            </span>
           </div>
 
-          <div className="cohorte-inline-summary">
-            <strong>Selección actual:</strong>&nbsp;
-            UN: {selectionLabel(appliedFilters.uns, "Todas")} | Año: {selectionLabel(appliedFilters.years, "Todos")} | Mes/Año Contrato: {selectionLabel(appliedFilters.contractMonths, "Todos")} | Corte: {cutoff}
+          <div className="analysis-active-filters">
+            <ActiveFilterChips chips={activeFilterChips} onRemove={removeChip} />
           </div>
+
+          <AnalysisSelectionSummary
+            items={[
+              { label: "UN", value: selectionLabel(appliedFilters.uns, "Todas") },
+              { label: "Año", value: selectionLabel(appliedFilters.years, "Todos") },
+              { label: "Mes/Año Contrato", value: selectionLabel(appliedFilters.contractMonths, "Todos") },
+              { label: "Corte", value: cutoff },
+            ]}
+          />
         </>
       )}
 
-      {error ? <div className="alert-error">{error}</div> : null}
+      {error ? (
+        <ErrorState
+          message={error}
+          onRetry={() => {
+            setError(null);
+            void loadSummary(appliedFilters);
+          }}
+          retryLabel="Reintentar"
+        />
+      ) : null}
+      {loadingSummary && !error ? <LoadingState message="Actualizando resumen anual..." className="analysis-selection-summary" /> : null}
 
       {!loadingOptions && !error ? (
-        <div className="cohorte-table-section">
-          <div className="table-wrap cohorte-table-wrap cohorte-table-wrap-annual">
+        <div className="analysis-table-section">
+          <div className="table-wrap analysis-table-wrap analysis-table-wrap-annual">
             <table>
               <thead>
                 <tr>
@@ -216,7 +295,7 @@ export function AnalisisAnualesView() {
                 {hasRows ? (
                   rows.map((row) => (
                     <tr key={row.year}>
-                      <td className="cohorte-key-cell">{row.year}</td>
+                      <td className="analysis-key-cell">{row.year}</td>
                       <td className="num">{formatCount(row.contracts)}</td>
                       <td className="num">{formatCount(row.contractsVigentes)}</td>
                       <td className="num">{formatGsFull(row.tkpContrato)}</td>
@@ -233,8 +312,8 @@ export function AnalisisAnualesView() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={13} style={{ textAlign: "center", color: "var(--color-text-muted)" }}>
-                      Sin datos para filtros seleccionados.
+                    <td colSpan={13}>
+                      <EmptyState message="Sin datos para filtros seleccionados." />
                     </td>
                   </tr>
                 )}

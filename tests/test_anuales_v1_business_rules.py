@@ -75,7 +75,7 @@ class AnualesV1BusinessRulesTests(unittest.TestCase):
         self.assertEqual(int(row.get("culminados", 0)), 2)
         self.assertEqual(int(row.get("culminadosVigentes", 0)), 1)
         self.assertAlmostEqual(float(row.get("tkpPagoCulminadoVigente", 0.0)), 100.0, places=6)
-        self.assertAlmostEqual(float(row.get("ltvCulminadoVigente", 0.0)), 2.0, places=6)
+        self.assertAlmostEqual(float(row.get("ltvCulminadoVigente", 0.0)), 1.0, places=6)
 
     def test_filter_by_contract_month_and_year(self):
         rows = AnalyticsService._compute_anuales_rows_v1(

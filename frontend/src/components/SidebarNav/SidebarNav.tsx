@@ -65,7 +65,9 @@ export function SidebarNav({
 
   const handleClick = (id: string) => {
     onSelect(id)
-    onCloseSidebar()
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1024px)').matches) {
+      onCloseSidebar()
+    }
   }
 
   return (

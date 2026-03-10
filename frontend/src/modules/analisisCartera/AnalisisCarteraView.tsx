@@ -2,6 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter";
 import { ActiveFilterChips, type FilterChip } from "../../components/filters/ActiveFilterChips";
 import { ToastStack, type ToastMessage, type ToastType } from "../../components/feedback/ToastStack";
+import { LoadingState } from "../../components/feedback/LoadingState";
+import { ErrorState } from "../../components/feedback/ErrorState";
+import { EmptyState } from "../../components/feedback/EmptyState";
+import { AnalyticsPageHeader } from "../../components/analytics/AnalyticsPageHeader";
+import { AnalysisSelectionSummary } from "../../components/analytics/AnalysisSelectionSummary";
 import {
   getPortfolioCorteFirstPaint,
   getPortfolioCorteOptions,
@@ -60,8 +65,16 @@ const DEFAULT_KPI_ORDER: KpiId[] = ["total", "monto", "vigentes", "morosos", "co
 const STORAGE_KPI_ORDER = "analisis_cartera_kpi_order_v1";
 const STORAGE_CHART_ORDER = "analisis_cartera_chart_order_v1";
 const STORAGE_AMOUNT_VIEW = "analisis_cartera_amount_view_v1";
-const CHART_COLORS = ["#42b9ee", "#8b8eff", "#9c7df2", "#4dd7a4", "#f8d34f", "#ff9b6a", "#67a4ff"];
-const CHART_COLORS_LIGHT = ["#0ea5e9", "#6366f1", "#8b5cf6", "#22c55e", "#f59e0b", "#f97316", "#3b82f6"];
+const CHART_COLORS = [
+  "var(--color-chart-1)",
+  "var(--color-chart-2)",
+  "var(--color-chart-3)",
+  "var(--color-chart-4)",
+  "var(--color-chart-5)",
+  "var(--color-chart-6)",
+  "var(--color-chart-7)",
+];
+const CHART_COLORS_LIGHT = CHART_COLORS;
 const STORAGE_KPI_MODE = "analisis_cartera_kpi_mode_v1";
 
 const formatPct = (value: number, total: number) => `${((Number(value || 0) / Math.max(1, Number(total || 0))) * 100).toFixed(1)}%`;
@@ -102,11 +115,13 @@ function readStoredOrder<T extends string>(storageKey: string, defaults: T[]): T
 
 function DonutChart({ data, isLight = false, colors = CHART_COLORS }: { data: Array<{ label: string; value: number }>; isLight?: boolean; colors?: string[] }) {
   const [hidden, setHidden] = useState<Record<string, boolean>>({});
+  const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
   const visible = data.filter((d) => !hidden[d.label]);
   const total = visible.reduce((a, b) => a + b.value, 0) || 1;
+  const hoveredItem = hoveredLabel ? visible.find((item) => item.label === hoveredLabel) : null;
   let acc = 0;
-  const legendTextColor = isLight ? "#0f172a" : "var(--color-text)";
-  const legendHiddenColor = isLight ? "#64748b" : "var(--color-text-muted)";
+  const legendTextColor = "var(--color-text)";
+  const legendHiddenColor = "var(--color-text-muted)";
 
   useEffect(() => {
     const labels = new Set(data.map((d) => d.label));
@@ -118,17 +133,30 @@ function DonutChart({ data, isLight = false, colors = CHART_COLORS }: { data: Ar
       return next;
     });
   }, [data]);
+  useEffect(() => {
+    if (hoveredLabel && !visible.some((item) => item.label === hoveredLabel)) {
+      setHoveredLabel(null);
+    }
+  }, [hoveredLabel, visible]);
 
   const toggle = (label: string) => setHidden((prev) => ({ ...prev, [label]: !prev[label] }));
 
   return (
-    <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
-      <svg width="210" height="210" viewBox="0 0 210 210" role="img" aria-label="Contratos por tramo">
+    <div className="analysis-donut-wrap">
+      <svg
+        width="210"
+        height="210"
+        viewBox="0 0 210 210"
+        role="img"
+        aria-label="Contratos por tramo"
+        onMouseLeave={() => setHoveredLabel(null)}
+      >
         <g transform="translate(105,105)">
           {visible.map((d, idx) => {
             const start = (acc / total) * Math.PI * 2;
             acc += d.value;
             const end = (acc / total) * Math.PI * 2;
+            const mid = (start + end) / 2;
             const rOuter = 86;
             const rInner = 50;
             const large = end - start > Math.PI ? 1 : 0;
@@ -141,12 +169,31 @@ function DonutChart({ data, isLight = false, colors = CHART_COLORS }: { data: Ar
             const x4 = Math.cos(start) * rInner;
             const y4 = Math.sin(start) * rInner;
             const path = `M ${x1} ${y1} A ${rOuter} ${rOuter} 0 ${large} 1 ${x2} ${y2} L ${x3} ${y3} A ${rInner} ${rInner} 0 ${large} 0 ${x4} ${y4} Z`;
-            return <path key={d.label} d={path} fill={colors[idx % colors.length]} />;
+            const isHovered = hoveredLabel === d.label;
+            const hoverOffset = isHovered ? 8 : 0;
+            const tx = Math.cos(mid) * hoverOffset;
+            const ty = Math.sin(mid) * hoverOffset;
+            return (
+              <path
+                key={d.label}
+                d={path}
+                fill={colors[idx % colors.length]}
+                className={`analysis-donut-segment ${isHovered ? "is-hovered" : ""}`}
+                style={{ transform: `translate(${tx}px, ${ty}px)` }}
+                onMouseEnter={() => setHoveredLabel(d.label)}
+              />
+            );
           })}
-          <circle r="40" fill={isLight ? "rgba(255,255,255,0.9)" : "var(--color-surface-elevated)"} />
+          <circle r="40" fill="var(--color-surface-elevated)" />
+          <text className="analysis-donut-center-label" y={hoveredItem ? -4 : 0}>
+            {hoveredItem ? hoveredItem.label : "Total"}
+          </text>
+          <text className="analysis-donut-center-value" y={hoveredItem ? 14 : 18}>
+            {hoveredItem ? formatPct(hoveredItem.value, total) : formatCount(total)}
+          </text>
         </g>
       </svg>
-      <div style={{ fontSize: "0.85rem" }}>
+      <div className="analysis-donut-legend">
         {data.map((d, idx) => {
           const isHidden = !!hidden[d.label];
           return (
@@ -167,8 +214,10 @@ function DonutChart({ data, isLight = false, colors = CHART_COLORS }: { data: Ar
                 padding: 0,
               }}
               title={isHidden ? "Mostrar serie" : "Ocultar serie"}
+              onMouseEnter={() => setHoveredLabel(isHidden ? null : d.label)}
+              onMouseLeave={() => setHoveredLabel((current) => (current === d.label ? null : current))}
             >
-              <span style={{ width: 12, height: 12, background: colors[idx % colors.length], borderRadius: 2 }} />
+              <span className="analysis-legend-swatch" style={{ background: colors[idx % colors.length] }} />
               <span>{d.label}: {formatCount(d.value)} ({formatPct(d.value, total)})</span>
             </button>
           );
@@ -183,9 +232,9 @@ function BarChart({ data, isLight = false, colors = CHART_COLORS }: { data: Arra
   const visible = data.filter((d) => !hidden[d.label]);
   const max = Math.max(1, ...visible.map((d) => d.value));
   const total = Math.max(1, visible.reduce((acc, d) => acc + Number(d.value || 0), 0));
-  const textColor = isLight ? "#0f172a" : "var(--color-text)";
-  const textMutedColor = isLight ? "#64748b" : "var(--color-text-muted)";
-  const trackBg = isLight ? "rgba(15,23,42,0.14)" : "var(--chart-grid)";
+  const textColor = "var(--color-text)";
+  const textMutedColor = "var(--color-text-muted)";
+  const trackBg = "var(--chart-grid)";
 
   useEffect(() => {
     const labels = new Set(data.map((d) => d.label));
@@ -201,7 +250,7 @@ function BarChart({ data, isLight = false, colors = CHART_COLORS }: { data: Arra
   const toggle = (label: string) => setHidden((prev) => ({ ...prev, [label]: !prev[label] }));
 
   return (
-    <div style={{ display: "grid", gap: "0.45rem" }}>
+    <div className="analysis-bars-wrap">
       {data.map((d, idx) => {
         const isHidden = !!hidden[d.label];
         const widthPct = isHidden ? 0 : Math.max(3, Math.round((d.value / max) * 100));
@@ -213,11 +262,11 @@ function BarChart({ data, isLight = false, colors = CHART_COLORS }: { data: Arra
             title={isHidden ? "Mostrar serie" : "Ocultar serie"}
             style={{ background: "transparent", border: "none", padding: 0, textAlign: "left", cursor: "pointer", color: isHidden ? textMutedColor : textColor }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", marginBottom: "0.15rem" }}>
+            <div className="analysis-bars-row-meta">
               <span style={{ textDecoration: isHidden ? "line-through" : "none" }}>{d.label}</span>
               <span>{formatCount(d.value)} ({formatPct(d.value, total)})</span>
             </div>
-            <div style={{ height: 10, borderRadius: 999, background: trackBg }}>
+            <div className="analysis-bars-track" style={{ background: trackBg }}>
               <div style={{ width: `${widthPct}%`, height: "100%", borderRadius: 999, background: colors[idx % colors.length] }} />
             </div>
           </button>
@@ -231,8 +280,8 @@ function LegacyStackedColumnChart({
   data,
   aLabel,
   bLabel,
-  aColor = "#42b9ee",
-  bColor = "#f5a623",
+  aColor = "var(--color-chart-1)",
+  bColor = "var(--color-chart-5)",
   isLight = false,
 }: {
   data: Array<{ label: string; a: number; b: number }>;
@@ -251,24 +300,24 @@ function LegacyStackedColumnChart({
   const barGap = 4;
   const minChartWidth = Math.max(620, data.length * (barWidth + barGap) + 24);
   const barTotalPct = (value: number) => Math.max(0, Math.min(100, (value / Math.max(1, maxY)) * 100));
-  const axisTextColor = isLight ? "#334155" : "var(--color-text-muted)";
-  const legendTextColor = isLight ? "#0f172a" : "var(--color-text)";
+  const axisTextColor = "var(--color-text-muted)";
+  const legendTextColor = "var(--color-text)";
   const legendWeight = isLight ? 600 : 500;
   const axisBorder = isLight ? "1.2px solid var(--chart-grid)" : "1px solid var(--chart-grid)";
 
   return (
-    <div style={{ display: "grid", gap: "0.45rem" }}>
-      <div style={{ display: "flex", gap: "0.85rem", fontSize: "0.8rem", marginBottom: "0.2rem" }}>
+    <div className="analysis-stack-wrap">
+      <div className="analysis-stack-legend">
         <button type="button" onClick={() => setHidden((s) => ({ ...s, a: !s.a }))} style={{ background: "transparent", border: "none", color: hidden.a ? axisTextColor : legendTextColor, cursor: "pointer", textDecoration: hidden.a ? "line-through" : "none", padding: 0, fontWeight: legendWeight }} title={hidden.a ? "Mostrar serie" : "Ocultar serie"}>
-          <span style={{ display: "inline-block", width: 9, height: 9, background: aColor, marginRight: 6, borderRadius: 2 }} />{aLabel}
+          <span className="analysis-legend-swatch-sm" style={{ background: aColor }} />{aLabel}
         </button>
         <button type="button" onClick={() => setHidden((s) => ({ ...s, b: !s.b }))} style={{ background: "transparent", border: "none", color: hidden.b ? axisTextColor : legendTextColor, cursor: "pointer", textDecoration: hidden.b ? "line-through" : "none", padding: 0, fontWeight: legendWeight }} title={hidden.b ? "Mostrar serie" : "Ocultar serie"}>
-          <span style={{ display: "inline-block", width: 9, height: 9, background: bColor, marginRight: 6, borderRadius: 2 }} />{bLabel}
+          <span className="analysis-legend-swatch-sm" style={{ background: bColor }} />{bLabel}
         </button>
       </div>
-      <div style={{ height: 34, display: "flex", flexWrap: "nowrap", alignItems: "center", gap: "0.55rem", fontSize: "0.78rem", color: axisTextColor, marginBottom: "0.2rem", overflow: "hidden", whiteSpace: "nowrap" }}>
+      <div className="analysis-stack-hoverline" style={{ color: axisTextColor }}>
         {(() => {
-          if (!hoveredLabel) return <span style={{ opacity: 0.75 }}>Pasa el mouse sobre una barra para ver porcentajes</span>;
+          if (!hoveredLabel) return <span className="analysis-hover-hint">Pasa el mouse sobre una barra para ver porcentajes</span>;
           const row = data.find((d) => d.label === hoveredLabel);
           const a = hidden.a ? 0 : Number(row?.a || 0);
           const b = hidden.b ? 0 : Number(row?.b || 0);
@@ -277,20 +326,20 @@ function LegacyStackedColumnChart({
           const bPct = ((b / total) * 100).toFixed(1);
           return (
             <>
-              <span style={{ color: isLight ? "#0f172a" : "var(--color-text)", flex: "0 0 auto" }}>{hoveredLabel}</span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: isLight ? "#f8fafc" : "transparent", border: isLight ? "1px solid rgba(15,23,42,0.18)" : "none", borderRadius: 999, padding: isLight ? "0.1rem 0.45rem" : 0, color: isLight ? "#0f172a" : "var(--color-text)", flex: "0 0 auto" }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: aColor }} />
+              <span className="analysis-stack-hover-label" style={{ color: "var(--color-text)" }}>{hoveredLabel}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 999, padding: "0.1rem 0.45rem", color: "var(--color-text)", flex: "0 0 auto" }}>
+                <span className="analysis-legend-swatch-xs" style={{ background: aColor }} />
                 {aLabel}: {aPct}%
               </span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: isLight ? "#f8fafc" : "transparent", border: isLight ? "1px solid rgba(15,23,42,0.18)" : "none", borderRadius: 999, padding: isLight ? "0.1rem 0.45rem" : 0, color: isLight ? "#0f172a" : "var(--color-text)", flex: "0 0 auto" }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: bColor }} />
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 999, padding: "0.1rem 0.45rem", color: "var(--color-text)", flex: "0 0 auto" }}>
+                <span className="analysis-legend-swatch-xs" style={{ background: bColor }} />
                 {bLabel}: {bPct}%
               </span>
             </>
           );
         })()}
       </div>
-      <div style={{ overflowX: "auto", paddingBottom: "0.35rem" }}>
+      <div className="analysis-chart-scroll">
         <div style={{ minWidth: minChartWidth, display: "grid", gridTemplateColumns: "56px 1fr", gap: "0.35rem" }}>
           <div style={{ position: "relative", height: chartHeight }}>
             {yTicks.map((tick, idx) => <div key={tick} style={{ position: "absolute", left: 0, right: 0, bottom: `${(idx / (yTicks.length - 1)) * 100}%`, transform: "translateY(50%)", fontSize: "0.72rem", color: axisTextColor }}>{formatCount(tick)}</div>)}
@@ -353,7 +402,7 @@ function LegacyStackedColumnChart({
             })}
           </div>
           <div />
-          <div style={{ display: "flex", alignItems: "flex-start", gap: `${barGap}px`, padding: "0", minHeight: 54 }}>
+          <div className="analysis-stack-labels" style={{ gap: `${barGap}px` }}>
             {data.map((d) => <div key={`lbl-${d.label}`} style={{ flex: "1 1 0", minWidth: `${barWidth}px`, fontSize: "0.62rem", color: axisTextColor, writingMode: "vertical-rl", transform: "rotate(180deg)", textAlign: "left" }}>{d.label}</div>)}
           </div>
         </div>
@@ -565,34 +614,34 @@ export function AnalisisCarteraView() {
   }, []);
 
   const chartCards: Record<ChartId, { title: string; content: JSX.Element }> = {
-    series_vig_mor_month: { title: "Cartera por Gestion: Vigente vs Moroso", content: <LegacyStackedColumnChart data={vigMorByMonth} aLabel="Vigente" bLabel="Moroso" aColor={isLightTheme ? "#22c55e" : "#31d17c"} bColor={isLightTheme ? "#f59e0b" : "#f5a623"} isLight={isLightTheme} /> },
-    series_via_month: { title: "Cartera por Gestion: Cobrador vs Debito", content: <LegacyStackedColumnChart data={viaByMonth} aLabel="Cobrador" bLabel="Debito" aColor={isLightTheme ? "#0ea5e9" : "#42b9ee"} bColor={isLightTheme ? "#6366f1" : "#8b8eff"} isLight={isLightTheme} /> },
+    series_vig_mor_month: { title: "Cartera por Gestión: Vigente vs Moroso", content: <LegacyStackedColumnChart data={vigMorByMonth} aLabel="Vigente" bLabel="Moroso" aColor="var(--color-state-ok)" bColor="var(--color-state-warn)" isLight={isLightTheme} /> },
+    series_via_month: { title: "Cartera por Gestión: Cobrador vs Débito", content: <LegacyStackedColumnChart data={viaByMonth} aLabel="Cobrador" bLabel="Débito" aColor="var(--color-chart-1)" bColor="var(--color-chart-2)" isLight={isLightTheme} /> },
     by_un: { title: "Contratos por Unidad de Negocio", content: <BarChart data={byUn} isLight={isLightTheme} colors={chartPalette} /> },
     by_tramo: { title: "Contratos por Tramo", content: <DonutChart data={byTramo} isLight={isLightTheme} colors={chartPalette} /> },
     by_via: { title: "Contratos por Via de Cobro", content: <BarChart data={byVia} isLight={isLightTheme} colors={chartPalette} /> },
-    by_contract_year: { title: "Contratos por Ano de Contrato", content: <BarChart data={byContractYear} isLight={isLightTheme} colors={chartPalette} /> },
+    by_contract_year: { title: "Contratos por Año de Contrato", content: <BarChart data={byContractYear} isLight={isLightTheme} colors={chartPalette} /> },
   };
 
   const kpiCards: Record<KpiId, { title: string; value: string; fullValue?: string; valueColor?: string; borderColor: string; icon: KpiIconId; isHero?: boolean; isZeroHint?: boolean }> = {
-    total: { title: "TOTAL CONTRATOS", value: formatCount(totalContracts), borderColor: "#8ca8c9", icon: "doc" },
+    total: { title: "TOTAL CONTRATOS", value: formatCount(totalContracts), borderColor: "var(--color-text-muted)", icon: "doc" },
     monto: {
       title: "MONTO TOTAL CORTE",
       value: showFullAmounts ? formatGsFull(totalAmount) : formatGsCompact(totalAmount),
       fullValue: formatGsFull(totalAmount),
-      valueColor: "#f4c84a",
-      borderColor: "#f4c84a",
+      valueColor: "var(--color-chart-5)",
+      borderColor: "var(--color-chart-5)",
       icon: "money",
       isHero: true,
     },
-    vigentes: { title: "VIGENTES", value: formatCount(vigentesTotal), valueColor: "#50d3a5", borderColor: "#50d3a5", icon: "check" },
-    morosos: { title: "MOROSOS", value: formatCount(morososTotal), valueColor: "#9b86e8", borderColor: "#9b86e8", icon: "alert", isZeroHint: true },
-    cobrador: { title: "VIA COBRADOR", value: formatCount(viaCobradorTotal), valueColor: "#49b5e9", borderColor: "#49b5e9", icon: "user" },
-    debito: { title: "VIA DEBITO", value: formatCount(viaDebitoTotal), valueColor: "#7f86ef", borderColor: "#7f86ef", icon: "card" },
+    vigentes: { title: "VIGENTES", value: formatCount(vigentesTotal), valueColor: "var(--color-state-ok)", borderColor: "var(--color-state-ok)", icon: "check" },
+    morosos: { title: "MOROSOS", value: formatCount(morososTotal), valueColor: "var(--color-state-warn)", borderColor: "var(--color-state-warn)", icon: "alert", isZeroHint: true },
+    cobrador: { title: "VÍA COBRADOR", value: formatCount(viaCobradorTotal), valueColor: "var(--color-chart-1)", borderColor: "var(--color-chart-1)", icon: "user" },
+    debito: { title: "VÍA DÉBITO", value: formatCount(viaDebitoTotal), valueColor: "var(--color-chart-2)", borderColor: "var(--color-chart-2)", icon: "card" },
   };
 
   const activeFilterChips = useMemo<FilterChip[]>(() => {
     const blocks: Array<{ key: keyof Filters; label: string }> = [
-      { key: "uns", label: "UN" }, { key: "supervisors", label: "Supervisor" }, { key: "years", label: "Ano Contrato" },
+      { key: "uns", label: "UN" }, { key: "supervisors", label: "Supervisor" }, { key: "years", label: "Año Contrato" },
       { key: "vias", label: "Via" }, { key: "tramos", label: "Tramo" }, { key: "categorias", label: "Categoria" },
       { key: "gestionMonths", label: "Gestion" }, { key: "closeMonths", label: "Cierre" },
     ];
@@ -604,23 +653,52 @@ export function AnalisisCarteraView() {
   }, []);
 
   return (
-    <section className="card analysis-card">
+    <section className="card analysis-card analysis-panel-card">
       <ToastStack items={toastQueue} onDismiss={dismissToast} />
-      <h2>Analisis de Cartera</h2>
-      <div className="filters-grid analysis-filters-grid">
-        <MultiSelectFilter label="Unidad de Negocio" options={options.uns || []} selected={filters.uns} onChange={(uns) => setFilters((f) => ({ ...f, uns }))} />
-        <MultiSelectFilter label="Supervisor" options={options.supervisors || []} selected={filters.supervisors} onChange={(supervisors) => setFilters((f) => ({ ...f, supervisors }))} />
-        <MultiSelectFilter label="Ano de Contrato" options={options.contract_years || []} selected={filters.years} onChange={(years) => setFilters((f) => ({ ...f, years }))} />
-        <MultiSelectFilter label="Via de Cobro" options={options.vias || []} selected={filters.vias} onChange={(vias) => setFilters((f) => ({ ...f, vias }))} />
-        <MultiSelectFilter label="Tramo" options={options.tramos || []} selected={filters.tramos} onChange={(tramos) => setFilters((f) => ({ ...f, tramos }))} />
-        <MultiSelectFilter label="Categoria" options={options.categories || []} selected={filters.categorias} onChange={(categorias) => setFilters((f) => ({ ...f, categorias }))} />
-        <MultiSelectFilter label="Fecha de Gestion" options={options.gestion_months || []} selected={filters.gestionMonths} onChange={(gestionMonths) => setFilters((f) => ({ ...f, gestionMonths }))} />
-        <MultiSelectFilter label="Fecha de Cierre" options={options.close_months || []} selected={filters.closeMonths} onChange={(closeMonths) => setFilters((f) => ({ ...f, closeMonths }))} />
+      <AnalyticsPageHeader
+        kicker="Panel ejecutivo"
+        pill="Cartera"
+        title="Análisis de Cartera"
+        subtitle="Corte de cartera por unidad de negocio, tramo, vía y cierre."
+      />
+      {loadingOptions ? (
+        <div className="analysis-skeleton-wrap" aria-live="polite" aria-busy="true">
+          <div className="analysis-skeleton-grid">
+            <div className="analysis-skeleton-input" />
+            <div className="analysis-skeleton-input" />
+            <div className="analysis-skeleton-input" />
+            <div className="analysis-skeleton-input" />
+            <div className="analysis-skeleton-input" />
+          </div>
+          <div className="analysis-skeleton-kpis">
+            <div className="analysis-skeleton-kpi" />
+            <div className="analysis-skeleton-kpi" />
+            <div className="analysis-skeleton-kpi" />
+            <div className="analysis-skeleton-kpi" />
+            <div className="analysis-skeleton-kpi" />
+            <div className="analysis-skeleton-kpi" />
+          </div>
+          <div className="analysis-skeleton-table" />
+        </div>
+      ) : (
+        <>
+      <div className="analysis-filters-grid">
+        <MultiSelectFilter className="analysis-filter-control" label="Unidad de Negocio" options={options.uns || []} selected={filters.uns} onChange={(uns) => setFilters((f) => ({ ...f, uns }))} />
+        <MultiSelectFilter className="analysis-filter-control" label="Supervisor" options={options.supervisors || []} selected={filters.supervisors} onChange={(supervisors) => setFilters((f) => ({ ...f, supervisors }))} />
+        <MultiSelectFilter className="analysis-filter-control" label="Año de Contrato" options={options.contract_years || []} selected={filters.years} onChange={(years) => setFilters((f) => ({ ...f, years }))} />
+        <MultiSelectFilter className="analysis-filter-control" label="Vía de Cobro" options={options.vias || []} selected={filters.vias} onChange={(vias) => setFilters((f) => ({ ...f, vias }))} />
+        <MultiSelectFilter className="analysis-filter-control" label="Tramo" options={options.tramos || []} selected={filters.tramos} onChange={(tramos) => setFilters((f) => ({ ...f, tramos }))} />
+        <MultiSelectFilter className="analysis-filter-control" label="Categoría" options={options.categories || []} selected={filters.categorias} onChange={(categorias) => setFilters((f) => ({ ...f, categorias }))} />
+        <MultiSelectFilter className="analysis-filter-control" label="Fecha de Gestión" options={options.gestion_months || []} selected={filters.gestionMonths} onChange={(gestionMonths) => setFilters((f) => ({ ...f, gestionMonths }))} />
+        <MultiSelectFilter className="analysis-filter-control" label="Fecha de Cierre" options={options.close_months || []} selected={filters.closeMonths} onChange={(closeMonths) => setFilters((f) => ({ ...f, closeMonths }))} />
       </div>
-      <div className="analysis-actions-row">
+      <div className="analysis-actions-row analysis-actions">
         <button type="button" className="btn btn-primary" onClick={() => void applyFilters()} disabled={loadingOptions || isApplyingFilters}>{isApplyingFilters ? <span className="inline-spinner" aria-hidden /> : null}{isApplyingFilters ? "Aplicando..." : "Aplicar filtros"}</button>
         <button type="button" className="btn btn-secondary" onClick={clearFilters} disabled={loadingOptions || isApplyingFilters}>Limpiar filtros</button>
-        <button type="button" className="btn btn-ghost" onClick={() => void resetDefaults()} disabled={loadingOptions || isApplyingFilters}>Resetear default</button>
+        <button type="button" className="btn btn-secondary" onClick={() => void resetDefaults()} disabled={loadingOptions || isApplyingFilters}>Resetear filtros</button>
+        <span className="analysis-active-count">
+          {activeFilterChips.length} filtro{activeFilterChips.length === 1 ? "" : "s"} activo{activeFilterChips.length === 1 ? "" : "s"}
+        </span>
         <label className="amount-toggle">
           <input
             type="checkbox"
@@ -631,25 +709,43 @@ export function AnalisisCarteraView() {
           <span>Monto detallado</span>
         </label>
       </div>
-      <ActiveFilterChips chips={activeFilterChips} onRemove={removeChip} />
-      {isInitialOptionsLoading && <div className="analysis-skeleton-wrap" aria-live="polite" aria-busy="true"><div className="analysis-skeleton-grid"><div className="analysis-skeleton-input" /><div className="analysis-skeleton-input" /><div className="analysis-skeleton-input" /><div className="analysis-skeleton-input" /><div className="analysis-skeleton-input" /><div className="analysis-skeleton-input" /></div><div className="analysis-skeleton-summary"><div className="analysis-skeleton-kpi" /><div className="analysis-skeleton-kpi" /></div></div>}
-      {loadingOptions && !isInitialOptionsLoading && <p>Cargando filtros...</p>}
-      {!loadingOptions && optionsError && <div className="alert-error">{optionsError}</div>}
+      <div className="analysis-active-filters">
+        <ActiveFilterChips chips={activeFilterChips} onRemove={removeChip} />
+      </div>
+      {optionsError && (
+        <ErrorState
+          message={optionsError}
+          onRetry={() => void loadOptions(filters)}
+          retryLabel="Reintentar"
+        />
+      )}
       {!loadingSummary && summaryError && (
-        <div className="alert-error" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.8rem", flexWrap: "wrap" }}>
-          <span>{summaryError}</span>
-          <button type="button" className="btn btn-secondary" onClick={() => void Promise.all([loadSummary(appliedFilters, "apply"), loadKpiSummary(appliedFilters)])}>
-            Reintentar
-          </button>
-        </div>
+        <ErrorState
+          message={summaryError}
+          onRetry={() => void Promise.all([loadSummary(appliedFilters, "apply"), loadKpiSummary(appliedFilters)])}
+          retryLabel="Reintentar"
+        />
       )}
 
-      {!summaryError && <>
-        <div className="selection-summary">Seleccion actual: UN: {appliedFilters.uns.join(", ") || "Todas"} | Ano contrato: {appliedFilters.years.join(", ") || "Todos"} | Gestion: {appliedFilters.gestionMonths.join(", ") || "Todos"} | Cierre: {appliedFilters.closeMonths.join(", ") || "Todos"} | Via: {appliedFilters.vias.join(", ") || "Todas"} | Supervisor: {appliedFilters.supervisors.join(", ") || "Todos"} | Categoria: {appliedFilters.categorias.join(", ") || "Todas"} | Tramo: {appliedFilters.tramos.join(", ") || "Todos"}</div>
+      {!summaryError && (
+        <>
+        <AnalysisSelectionSummary
+          items={[
+            { label: "UN", value: appliedFilters.uns.join(", ") || "Todas" },
+            { label: "Año contrato", value: appliedFilters.years.join(", ") || "Todos" },
+            { label: "Gestión", value: appliedFilters.gestionMonths.join(", ") || "Todos" },
+            { label: "Cierre", value: appliedFilters.closeMonths.join(", ") || "Todos" },
+            { label: "Vía", value: appliedFilters.vias.join(", ") || "Todas" },
+            { label: "Supervisor", value: appliedFilters.supervisors.join(", ") || "Todos" },
+            { label: "Categoría", value: appliedFilters.categorias.join(", ") || "Todas" },
+            { label: "Tramo", value: appliedFilters.tramos.join(", ") || "Todos" },
+          ]}
+        />
         {!loadingSummary && !loadingKpis && totalContracts === 0 ? (
-          <div className="analysis-empty">
-            No hay datos para la combinacion seleccionada. Ajusta filtros y vuelve a aplicar.
-          </div>
+          <EmptyState
+            message="No hay datos para la combinación seleccionada. Ajusta filtros y vuelve a aplicar."
+            className="analysis-empty"
+          />
         ) : null}
         <div className="kpi-mode-toggle">
           <button
@@ -669,13 +765,13 @@ export function AnalisisCarteraView() {
             Usar filtros (acumulado)
           </button>
         </div>
-        {loadingSummary || loadingKpis ? <div className="summary-loading-note">Cargando resumen...</div> : null}
+        {loadingSummary || loadingKpis ? <LoadingState message="Cargando resumen..." className="summary-loading-note" /> : null}
         <div className={`summary-grid ${loadingSummary || loadingKpis ? "summary-grid-loading" : ""}`}>
           {kpiOrder.map((kpiId) => {
             const k = kpiCards[kpiId];
             if (loadingSummary || loadingKpis) {
               return (
-                <article key={`s-${kpiId}`} className={`card kpi-card ${k.isHero ? "kpi-card-hero" : ""}`} style={{ padding: "1rem" }}>
+                <article key={`s-${kpiId}`} className={`card kpi-card analysis-card-pad ${k.isHero ? "kpi-card-hero" : ""}`}>
                   <div className="kpi-skeleton" />
                 </article>
               );
@@ -683,8 +779,8 @@ export function AnalisisCarteraView() {
             return (
               <article
                 key={kpiId}
-                className={`card kpi-card ${k.isHero ? "kpi-card-hero" : ""} ${dragOverKpi === kpiId ? "chart-drop-target" : ""} ${draggingKpi === kpiId ? "dragging-card" : ""}`}
-                style={{ padding: "1rem", borderLeft: `4px solid ${k.borderColor}` }}
+                className={`card kpi-card analysis-card-pad ${k.isHero ? "kpi-card-hero" : ""} ${dragOverKpi === kpiId ? "chart-drop-target" : ""} ${draggingKpi === kpiId ? "dragging-card" : ""}`}
+                style={{ borderLeft: `4px solid ${k.borderColor}` }}
                 draggable
                 onDragStart={(e) => {
                   setDraggingKpi(kpiId);
@@ -710,7 +806,7 @@ export function AnalisisCarteraView() {
                 <div className="chart-card-header">
                   <div className="kpi-card-title-wrap">
                     <span className="kpi-card-icon" aria-hidden><KpiIcon icon={k.icon} /></span>
-                    <span style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", fontWeight: 600 }}>{k.title}</span>
+                    <span className="analysis-kpi-title">{k.title}</span>
                   </div>
                   <span className="chart-drag-handle" title="Arrastrar para reordenar" aria-hidden>::</span>
                 </div>
@@ -734,11 +830,11 @@ export function AnalisisCarteraView() {
             const card = chartCards[chartId];
             const isWideStacked = chartId === "series_vig_mor_month" || chartId === "series_via_month";
             return (
-              <article key={chartId} className={`card chart-card ${isWideStacked ? "chart-card-wide" : ""} ${dragOverChart === chartId ? "chart-drop-target" : ""} ${draggingChart === chartId ? "dragging-card" : ""}`} style={{ padding: "1rem" }} draggable onDragStart={(e) => { setDraggingChart(chartId); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", chartId); }} onDragEnd={() => { setDraggingChart(null); setDragOverChart(null); }} onDragOver={(e) => { e.preventDefault(); if (draggingChart && draggingChart !== chartId) setDragOverChart(chartId); }} onDrop={(e) => { e.preventDefault(); const fromId = (e.dataTransfer.getData("text/plain") || draggingChart || "") as ChartId; if (fromId) moveChart(fromId, chartId); setDraggingChart(null); setDragOverChart(null); }}>
+              <article key={chartId} className={`card chart-card analysis-card-pad ${isWideStacked ? "chart-card-wide" : ""} ${dragOverChart === chartId ? "chart-drop-target" : ""} ${draggingChart === chartId ? "dragging-card" : ""}`} draggable onDragStart={(e) => { setDraggingChart(chartId); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", chartId); }} onDragEnd={() => { setDraggingChart(null); setDragOverChart(null); }} onDragOver={(e) => { e.preventDefault(); if (draggingChart && draggingChart !== chartId) setDragOverChart(chartId); }} onDrop={(e) => { e.preventDefault(); const fromId = (e.dataTransfer.getData("text/plain") || draggingChart || "") as ChartId; if (fromId) moveChart(fromId, chartId); setDraggingChart(null); setDragOverChart(null); }}>
                 <div className="chart-card-header">
-                  <h3 style={{ marginTop: 0, marginBottom: "0.75rem", fontSize: "1rem" }}>{card.title}</h3>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                    {chartId === "by_contract_year" && <button type="button" className="btn btn-secondary" style={{ padding: "0.2rem 0.45rem", fontSize: "0.72rem" }} onClick={() => setYearSort((prev) => (prev === "desc" ? "asc" : "desc"))} title="Ordenar por cantidad">{yearSort === "desc" ? "Mayor->Menor" : "Menor->Mayor"}</button>}
+                  <h3 className="analysis-chart-title">{card.title}</h3>
+                  <div className="analysis-chart-actions">
+                    {chartId === "by_contract_year" && <button type="button" className="btn btn-secondary analysis-sort-btn" onClick={() => setYearSort((prev) => (prev === "desc" ? "asc" : "desc"))} title="Ordenar por cantidad">{yearSort === "desc" ? "Mayor->Menor" : "Menor->Mayor"}</button>}
                     <span className="chart-drag-handle" title="Arrastrar para reordenar" aria-hidden>::</span>
                   </div>
                 </div>
@@ -747,7 +843,10 @@ export function AnalisisCarteraView() {
             );
           })}
         </div>
-      </>}
+        </>
+      )}
+        </>
+      )}
     </section>
   );
 }

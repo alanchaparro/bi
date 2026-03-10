@@ -37,10 +37,17 @@ Para levantar el proyecto con la menor intervencion posible (ideal para quien no
 4. Revisar checklist manual para cron/systemd externos en `docs/prod-from-zero-checklist.md`.
 
 ## 3) Bootstrap from zero
-Ejecutar:
+Ejecutar (Windows):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\prod_bootstrap_from_zero.ps1
+```
+
+Ejecutar (Linux/Mac):
+
+```bash
+chmod +x scripts/prod_bootstrap_from_zero.sh
+./scripts/prod_bootstrap_from_zero.sh
 ```
 
 Este script realiza:

@@ -1,40 +1,44 @@
--- Solo alias ASCII (anio, mes, dia) para que el driver y el sync lean siempre la fecha del pago
+-- Solo alias ASCII (anio, mes, dia) para que el driver y el sync lean siempre la fecha del pago.
+-- Version optimizada para usar indices por rango de fecha y joins explicitos.
 SELECT
-    YEAR(payments.date) AS anio,
-    MONTH(payments.date) AS mes,
-    DAY(payments.date) AS dia,
-    payments.id,
-    account_payment_ways.id AS payment_way_id,
+    YEAR(p.date) AS anio,
+    MONTH(p.date) AS mes,
+    DAY(p.date) AS dia,
+    p.id,
+    apw.id AS payment_way_id,
     CASE
-        WHEN contracts.request_financing_number IS NOT NULL THEN 'ODONTOLOGIA TTO'
-        ELSE enterprises.name
+        WHEN c.request_financing_number IS NOT NULL THEN 'ODONTOLOGIA TTO'
+        ELSE e.name
     END AS UN,
-    branches.name AS Suc,
-    payments.contract_id,
-    contracts.number,
-    contracts.enterprise_id,
-    payment_methods.name,
+    b.name AS Suc,
+    p.contract_id,
+    c.number,
+    c.enterprise_id,
+    pm.name,
     CASE
-        WHEN payment_methods.name RLIKE 'TC|TD|VIRTUAL|PAGOPAR'
-             OR payment_methods.name LIKE '%PAY%'
-             OR payment_methods.name LIKE '%MASFAZZIL%'
+        WHEN pm.name RLIKE 'TC|TD|VIRTUAL|PAGOPAR'
+             OR pm.name LIKE '%PAY%'
+             OR pm.name LIKE '%MASFAZZIL%'
         THEN 'DEBITO'
         ELSE 'COBRADOR'
     END AS VP,
-    payment_methods.id,
-    account_payment_ways.amount AS monto,
-    payments.created_at,
-    payments.updated_at AS Actualizado_al
-FROM account_payment_ways
-LEFT JOIN (
-    payments
-    LEFT JOIN branches ON payments.branch_id = branches.id
-    LEFT JOIN contracts ON payments.contract_id = contracts.id
-    LEFT JOIN enterprises ON contracts.enterprise_id = enterprises.id
-) ON account_payment_ways.payment_id = payments.id
-LEFT JOIN payment_methods ON account_payment_ways.payment_method_id = payment_methods.id
-WHERE payments.status = 1 
-  AND payments.type < 2 
-  AND YEAR(payments.date) > 2020
-  AND (enterprises.id < 3 OR enterprises.id = 5)
-  AND payments.contract_id NOT IN (55411,55414,59127,59532,60402);
+    pm.id,
+    apw.amount AS monto,
+    p.created_at,
+    p.updated_at AS Actualizado_al
+FROM payments p
+INNER JOIN account_payment_ways apw
+    ON apw.payment_id = p.id
+INNER JOIN contracts c
+    ON p.contract_id = c.id
+INNER JOIN enterprises e
+    ON c.enterprise_id = e.id
+LEFT JOIN branches b
+    ON p.branch_id = b.id
+LEFT JOIN payment_methods pm
+    ON apw.payment_method_id = pm.id
+WHERE p.status = 1
+  AND p.type < 2
+  AND p.date >= '2021-01-01'
+  AND c.enterprise_id IN (1, 2, 5)
+  AND p.contract_id NOT IN (55411, 55414, 59127, 59532, 60402);

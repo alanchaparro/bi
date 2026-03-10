@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
 import { api } from '../../shared/api'
 import { getApiErrorMessage } from '../../shared/apiErrors'
@@ -115,26 +115,26 @@ export function CarteraView() {
   return (
     <section className="card">
       <h2>Cartera</h2>
-      <p style={{ color: 'var(--color-text-muted)', marginTop: 0 }}>Resumen operativo de cartera (fuente: sync_records).</p>
+      <p className="text-muted mt-0">Resumen operativo de cartera (fuente: sync_records).</p>
 
-      <div className="filters-grid" style={{ marginBottom: '1rem' }}>
+      <div className="filters-grid mb-1">
         <MultiSelectFilter label="Supervisor" options={options.supervisors} selected={filters.supervisors} onChange={(values) => void handleFilters({ ...filters, supervisors: values })} />
         <MultiSelectFilter label="UN" options={options.uns} selected={filters.uns} onChange={(values) => void handleFilters({ ...filters, uns: values })} />
-        <MultiSelectFilter label="Via" options={options.vias} selected={filters.vias} onChange={(values) => void handleFilters({ ...filters, vias: values })} />
-        <MultiSelectFilter label="Ano" options={options.years} selected={filters.years} onChange={(values) => void handleFilters({ ...filters, years: values })} />
+        <MultiSelectFilter label="Vía" options={options.vias} selected={filters.vias} onChange={(values) => void handleFilters({ ...filters, vias: values })} />
+        <MultiSelectFilter label="Año" options={options.years} selected={filters.years} onChange={(values) => void handleFilters({ ...filters, years: values })} />
         <MultiSelectFilter label="Mes" options={options.months} selected={filters.months} onChange={(values) => void handleFilters({ ...filters, months: values })} />
       </div>
 
       {loading && <p>Cargando...</p>}
       {!loading && error && <div className="alert-error">{error}</div>}
-      {!loading && !error && rows.length === 0 && <p style={{ color: 'var(--color-text-muted)' }}>Sin datos para los filtros seleccionados.</p>}
+      {!loading && !error && rows.length === 0 && <p className="text-muted">Sin datos para los filtros seleccionados.</p>}
 
       {!loading && !error && summaryCards.length > 0 && (
-        <div style={{ display: 'grid', gap: '0.5rem', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', marginBottom: '1rem' }}>
+        <div className="summary-cards-grid">
           {summaryCards.map((item) => (
-            <article key={item.label} className="card" style={{ padding: '0.6rem' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{item.label}</div>
-              <div style={{ fontWeight: 700 }}>{item.value}</div>
+            <article key={item.label} className="card summary-card">
+              <div className="summary-card-label">{item.label}</div>
+              <div className="summary-card-value">{item.value}</div>
             </article>
           ))}
         </div>
@@ -148,7 +148,7 @@ export function CarteraView() {
                 <th>Contrato</th>
                 <th>Supervisor</th>
                 <th>UN</th>
-                <th>Via</th>
+                <th>Vía</th>
                 <th>Mes</th>
                 <th>Saldo</th>
                 <th>Vencido</th>
@@ -169,7 +169,7 @@ export function CarteraView() {
             </tbody>
           </table>
           {(Boolean(summary.rows_limited) || Number(summary.total_rows || 0) > 300) && (
-            <p style={{ marginTop: '0.5rem', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+            <p className="text-muted-sm">
               Mostrando 300 de {Number(summary.total_rows || rows.length).toLocaleString('es-PY')} filas.
             </p>
           )}

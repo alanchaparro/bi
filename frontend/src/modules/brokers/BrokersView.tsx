@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react'
+import { SectionHeader } from '../../components/layout/SectionHeader'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
 
 type Row = {
@@ -78,7 +79,7 @@ export function BrokersView(props: Props) {
 
   return (
     <section className="card">
-      <h2>Resumen Brokers</h2>
+      <SectionHeader title="Resumen Brokers" subtitle="Filtros y resumen de brokers por supervisor, UN, vía y período." />
       <div className="kpi-row">
         <span>Contratos: <strong>{totals.contracts}</strong></span>
         <span>Mora 3M: <strong>{totals.mora3m}</strong></span>
@@ -86,7 +87,7 @@ export function BrokersView(props: Props) {
         <span>Comisiones: <strong>{totals.commission.toFixed(2)}</strong></span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+      <div className="grid-cards">
         <MultiSelectFilter
           label="Supervisor"
           options={props.options.supervisors}
@@ -118,7 +119,7 @@ export function BrokersView(props: Props) {
           onChange={(v) => setFilter('months', v)}
         />
       </div>
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="flex-actions">
         <button type="button" className="btn btn-primary" onClick={applyFilters} disabled={props.loading}>
           {props.loading ? 'Aplicando…' : 'Aplicar filtros'}
         </button>
@@ -127,7 +128,7 @@ export function BrokersView(props: Props) {
         </button>
       </div>
 
-      {props.loading ? <p style={{ color: 'var(--color-text-muted)' }}>Cargando…</p> : null}
+      {props.loading ? <p className="text-muted">Cargando…</p> : null}
       {props.error ? <div className="alert-error">{props.error}</div> : null}
 
       <div className="table-wrap">

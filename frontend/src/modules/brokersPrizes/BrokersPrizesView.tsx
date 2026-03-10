@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { SectionHeader } from '../../components/layout/SectionHeader'
 import { getApiErrorMessage } from '../../shared/apiErrors'
 
 type PrizeScale = {
@@ -73,9 +74,8 @@ export function BrokersPrizesView({ rules, canEdit, loading, error, onSave }: Pr
 
   return (
     <section className="card">
-      <h2>Configuración de Premios</h2>
-      <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>Escalas formato: <code>meta:premio, meta:premio</code>. Se unifica FVBROKERS en backend legacy.</p>
-      {loading ? <p style={{ color: 'var(--color-text-muted)' }}>Cargando…</p> : null}
+      <SectionHeader title="Configuración de Premios" subtitle="Escalas formato: meta:premio, meta:premio. Se unifica FVBROKERS en backend legacy." />
+      {loading ? <p className="text-muted">Cargando…</p> : null}
       {error ? <div className="alert-error">{error}</div> : null}
       {localError ? <div className="alert-error">{localError}</div> : null}
       <div className="table-wrap">
@@ -85,7 +85,7 @@ export function BrokersPrizesView({ rules, canEdit, loading, error, onSave }: Pr
             <th>Supervisores (csv)</th>
             <th>UNs (csv)</th>
             <th>Escalas</th>
-            <th>Accion</th>
+            <th>Acción</th>
           </tr>
         </thead>
         <tbody>
@@ -129,7 +129,7 @@ export function BrokersPrizesView({ rules, canEdit, loading, error, onSave }: Pr
         </tbody>
       </table>
       </div>
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+      <div className="flex-actions flex-actions--top">
         <button type="button" className="btn btn-secondary" onClick={addRule} disabled={!canEdit}>Agregar regla</button>
         <button type="button" className="btn btn-primary" onClick={save} disabled={!canEdit || saving}>{saving ? 'Guardando…' : 'Guardar premios'}</button>
       </div>

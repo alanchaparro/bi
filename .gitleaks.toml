@@ -1,0 +1,11 @@
+title = "bi-clone-nuevo gitleaks config"
+
+[allowlist]
+description = "Allow known placeholders in templates"
+paths = [
+  '''^\.env\.example$''',
+]
+regexes = [
+  '''(?i)change_me_[a-z0-9_]+''',
+  '''(?i)demo_(admin|analyst)_(user|password)''',
+]

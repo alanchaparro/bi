@@ -1,6 +1,11 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
+import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
+import { AnalysisSelectionSummary } from '../../components/analytics/AnalysisSelectionSummary'
+import { EmptyState } from '../../components/feedback/EmptyState'
+import { ErrorState } from '../../components/feedback/ErrorState'
+import { LoadingState } from '../../components/feedback/LoadingState'
 import { getApiErrorMessage } from '../../shared/apiErrors'
 import { formatCount, formatGsFull } from '../../shared/formatters'
 import {
@@ -23,6 +28,7 @@ type Filters = {
 
 type Options = {
   gestionMonths: string[]
+  defaultGestionMonth: string
   uns: string[]
   tramos: string[]
   viasCobro: string[]
@@ -52,6 +58,7 @@ const EMPTY_FILTERS: Filters = {
 
 const EMPTY_OPTIONS: Options = {
   gestionMonths: [],
+  defaultGestionMonth: '',
   uns: [],
   tramos: [],
   viasCobro: [],
@@ -309,6 +316,7 @@ export function AnalisisRendimientoView() {
         const opts = await getRendimientoOptions({})
         const nextOptions: Options = {
           gestionMonths: opts.options.gestion_months || [],
+          defaultGestionMonth: opts.default_gestion_month || '',
           uns: opts.options.uns || [],
           tramos: opts.options.tramos || [],
           viasCobro: opts.options.vias_cobro || [],
@@ -316,7 +324,7 @@ export function AnalisisRendimientoView() {
           categorias: opts.options.categorias || [],
           supervisors: opts.options.supervisors || [],
         }
-        const defaultMonth = opts.default_gestion_month || nextOptions.gestionMonths[nextOptions.gestionMonths.length - 1] || ''
+        const defaultMonth = nextOptions.defaultGestionMonth || nextOptions.gestionMonths[nextOptions.gestionMonths.length - 1] || ''
         const nextFilters: Filters = { ...EMPTY_FILTERS, gestionMonths: defaultMonth ? [defaultMonth] : [] }
         setOptions(nextOptions)
         setFilters(nextFilters)
@@ -332,8 +340,8 @@ export function AnalisisRendimientoView() {
         }
         const fp = await getRendimientoFirstPaint(payload)
         setSummary(toSummaryFromFirstPaint(fp))
-        await loadSummary(nextFilters, true)
         await markPerfReady('rendimiento')
+        void loadSummary(nextFilters, true).catch((e: unknown) => setError(getApiErrorMessage(e)))
       } catch (e: unknown) {
         setError(getApiErrorMessage(e))
       } finally {
@@ -348,7 +356,18 @@ export function AnalisisRendimientoView() {
       setApplying(true)
       setError(null)
       setAppliedFilters(filters)
-      await loadSummary(filters)
+      const fp = await getRendimientoFirstPaint({
+        gestion_month: filters.gestionMonths,
+        un: filters.uns,
+        tramo: filters.tramos,
+        via_cobro: filters.viasCobro,
+        via_pago: filters.viasPago,
+        categoria: filters.categorias,
+        supervisor: filters.supervisors,
+      })
+      setSummary(toSummaryFromFirstPaint(fp))
+      await markPerfReady('rendimiento')
+      void loadSummary(filters, true).catch((e: unknown) => setError(getApiErrorMessage(e)))
     } catch (e: unknown) {
       setError(getApiErrorMessage(e))
     } finally {
@@ -356,21 +375,31 @@ export function AnalisisRendimientoView() {
     }
   }, [filters, loadSummary])
 
+  const clearFilters = useCallback(() => {
+    const defaultMonth = options.defaultGestionMonth || options.gestionMonths?.[options.gestionMonths.length - 1] || ''
+    setFilters({ ...EMPTY_FILTERS, gestionMonths: defaultMonth ? [defaultMonth] : [] })
+  }, [options.defaultGestionMonth, options.gestionMonths])
+
   const onReset = useCallback(async () => {
     try {
       setApplying(true)
       setError(null)
-      const defaultMonth = options.gestionMonths[options.gestionMonths.length - 1] || ''
+      const defaultMonth = options.defaultGestionMonth || options.gestionMonths[options.gestionMonths.length - 1] || ''
       const resetFilters: Filters = { ...EMPTY_FILTERS, gestionMonths: defaultMonth ? [defaultMonth] : [] }
       setFilters(resetFilters)
       setAppliedFilters(resetFilters)
-      await loadSummary(resetFilters)
+      const fp = await getRendimientoFirstPaint({
+        gestion_month: resetFilters.gestionMonths,
+      })
+      setSummary(toSummaryFromFirstPaint(fp))
+      await markPerfReady('rendimiento')
+      void loadSummary(resetFilters, true).catch((e: unknown) => setError(getApiErrorMessage(e)))
     } catch (e: unknown) {
       setError(getApiErrorMessage(e))
     } finally {
       setApplying(false)
     }
-  }, [loadSummary, options.gestionMonths])
+  }, [loadSummary, options.defaultGestionMonth, options.gestionMonths])
 
   useEffect(() => {
     if (!summary || loadingSummary || applying) return
@@ -497,31 +526,38 @@ export function AnalisisRendimientoView() {
   }, [])
 
   return (
-    <section className="card analysis-card rendimiento-card">
-      <div className="cohorte-header">
-        <div className="cohorte-header-row">
-          <span className="cohorte-kicker">Panel ejecutivo</span>
-          <span className="cohorte-live-pill">Rendimiento</span>
-        </div>
-        <h2>Rendimiento de Cartera (Eficacia)</h2>
-        <p className="cohorte-subtitle">Cruce de cartera con cobranzas por contrato y mes de gestión.</p>
-      </div>
+    <section className="card analysis-card analysis-panel-card">
+      <AnalyticsPageHeader
+        kicker="Panel ejecutivo"
+        pill="Rendimiento"
+        title="Rendimiento de Cartera (Eficacia)"
+        subtitle="Cruce de cartera con cobranzas por contrato y mes de gestión."
+      />
 
       {loadingOptions ? (
-        <div className="cohorte-skeleton-wrap" aria-live="polite" aria-busy="true">
-          <div className="cohorte-skeleton-grid">
+        <div className="analysis-skeleton-wrap" aria-live="polite" aria-busy="true">
+          <div className="analysis-skeleton-grid">
             <div className="analysis-skeleton-input" />
             <div className="analysis-skeleton-input" />
             <div className="analysis-skeleton-input" />
             <div className="analysis-skeleton-input" />
             <div className="analysis-skeleton-input" />
           </div>
+          <div className="analysis-skeleton-kpis">
+            <div className="analysis-skeleton-kpi" />
+            <div className="analysis-skeleton-kpi" />
+            <div className="analysis-skeleton-kpi" />
+            <div className="analysis-skeleton-kpi" />
+            <div className="analysis-skeleton-kpi" />
+            <div className="analysis-skeleton-kpi" />
+          </div>
+          <div className="analysis-skeleton-table" />
         </div>
       ) : (
         <>
-          <div className="cohorte-filters-grid">
+          <div className="analysis-filters-grid">
             <MultiSelectFilter
-              className="cohorte-filter-control"
+              className="analysis-filter-control"
               label="Mes de Gestión"
               options={options.gestionMonths}
               selected={filters.gestionMonths}
@@ -530,7 +566,7 @@ export function AnalisisRendimientoView() {
             />
 
             <MultiSelectFilter
-              className="cohorte-filter-control"
+              className="analysis-filter-control"
               label="Unidad de Negocio"
               options={options.uns}
               selected={filters.uns}
@@ -538,7 +574,7 @@ export function AnalisisRendimientoView() {
               placeholder="Todas"
             />
             <MultiSelectFilter
-              className="cohorte-filter-control"
+              className="analysis-filter-control"
               label="Tramo"
               options={options.tramos}
               selected={filters.tramos}
@@ -546,7 +582,7 @@ export function AnalisisRendimientoView() {
               placeholder="Todos"
             />
             <MultiSelectFilter
-              className="cohorte-filter-control"
+              className="analysis-filter-control"
               label="Vía Cobro (Intención)"
               options={options.viasCobro}
               selected={filters.viasCobro}
@@ -554,7 +590,7 @@ export function AnalisisRendimientoView() {
               placeholder="Todas"
             />
             <MultiSelectFilter
-              className="cohorte-filter-control"
+              className="analysis-filter-control"
               label="Vía Pago (Real)"
               options={options.viasPago}
               selected={filters.viasPago}
@@ -562,7 +598,7 @@ export function AnalisisRendimientoView() {
               placeholder="Todas"
             />
             <MultiSelectFilter
-              className="cohorte-filter-control"
+              className="analysis-filter-control"
               label="Categoría"
               options={options.categorias}
               selected={filters.categorias}
@@ -570,7 +606,7 @@ export function AnalisisRendimientoView() {
               placeholder="Todas"
             />
             <MultiSelectFilter
-              className="cohorte-filter-control"
+              className="analysis-filter-control"
               label="Supervisor"
               options={options.supervisors}
               selected={filters.supervisors}
@@ -579,13 +615,20 @@ export function AnalisisRendimientoView() {
             />
           </div>
 
-          <div className="cohorte-actions-row">
+          <div className="analysis-actions-row analysis-actions">
             <button type="button" className="btn btn-primary" onClick={() => void onApply()} disabled={applying || loadingSummary}>
+              {applying ? <span className="inline-spinner" aria-hidden /> : null}
               {applying ? 'Aplicando...' : 'Aplicar filtros'}
             </button>
-            <button type="button" className="btn btn-secondary" onClick={() => void onReset()} disabled={applying || loadingSummary}>
-              Resetear
+            <button type="button" className="btn btn-secondary" onClick={clearFilters} disabled={applying || loadingSummary}>
+              Limpiar filtros
             </button>
+            <button type="button" className="btn btn-secondary" onClick={() => void onReset()} disabled={applying || loadingSummary}>
+              Resetear filtros
+            </button>
+            <span className="analysis-active-count">
+              {activeFilterChips.length} filtro{activeFilterChips.length === 1 ? '' : 's'} activo{activeFilterChips.length === 1 ? '' : 's'}
+            </span>
             <label className="rendimiento-label-toggle">
               <input
                 type="checkbox"
@@ -594,22 +637,39 @@ export function AnalisisRendimientoView() {
               />
               Mostrar números en gráficos
             </label>
-            <span className="cohorte-actions-hint">
-              Gestión aplicada: <strong>{appliedFilters.gestionMonths.length ? `${appliedFilters.gestionMonths.length} mes(es)` : 'Historia'}</strong>
-            </span>
           </div>
 
-          <div className="cohorte-active-filters">
+          <div className="analysis-active-filters">
             <ActiveFilterChips chips={activeFilterChips} onRemove={removeChip} />
           </div>
+
+          <AnalysisSelectionSummary
+            items={[
+              { label: "Mes Gestión", value: appliedFilters.gestionMonths.length ? appliedFilters.gestionMonths.join(", ") : "Historia" },
+              { label: "UN", value: appliedFilters.uns.length ? appliedFilters.uns.join(", ") : "Todas" },
+              { label: "Tramo", value: appliedFilters.tramos.length ? appliedFilters.tramos.join(", ") : "Todos" },
+              { label: "Vía Cobro", value: appliedFilters.viasCobro.length ? appliedFilters.viasCobro.join(", ") : "Todas" },
+              { label: "Vía Pago", value: appliedFilters.viasPago.length ? appliedFilters.viasPago.join(", ") : "Todas" },
+              { label: "Categoría", value: appliedFilters.categorias.length ? appliedFilters.categorias.join(", ") : "Todas" },
+              { label: "Supervisor", value: appliedFilters.supervisors.length ? appliedFilters.supervisors.join(", ") : "Todos" },
+            ]}
+          />
         </>
       )}
 
-      {error ? <div className="alert-error rendimiento-alert">{error}</div> : null}
+      {error ? (
+        <ErrorState
+          message={error}
+          className="rendimiento-alert"
+          onRetry={() => void onApply()}
+          retryLabel="Reintentar"
+        />
+      ) : null}
+      {loadingSummary && !error ? <LoadingState message="Actualizando rendimiento..." /> : null}
 
       {!loadingOptions && !error ? (
         <>
-          <div className="cohorte-kpis rendimiento-kpis-auto">
+          <div className="analysis-kpis rendimiento-kpis-auto">
             {kpiOrder.map((kpiId) => {
               const card = kpiCards[kpiId]
               const isDragging = draggingKpi === kpiId
@@ -617,7 +677,7 @@ export function AnalisisRendimientoView() {
               return (
                 <article
                   key={kpiId}
-                  className={`cohorte-kpi-card ${card.className} ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''}`}
+                  className={`analysis-kpi-card ${card.className} ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''}`}
                   draggable
                   onDragStart={(event) => {
                     setDraggingKpi(kpiId)
@@ -653,27 +713,27 @@ export function AnalisisRendimientoView() {
           <div className="charts-grid rendimiento-charts-grid">
             <article className="card chart-card chart-card-wide rend-chart-card">
               <h3 className="rend-chart-title">Evolución de Rendimiento (Tendencia)</h3>
-              {trendAmountSeries.length ? <PercentLineChart data={trendAmountSeries} color="#38bdf8" showLabels={showChartLabels} ariaLabel="Evolución de rendimiento por mes en porcentaje de eficacia" /> : <div className="rend-no-data">Sin datos.</div>}
+              {trendAmountSeries.length ? <PercentLineChart data={trendAmountSeries} color="var(--color-chart-1)" showLabels={showChartLabels} ariaLabel="Evolución de rendimiento por mes en porcentaje de eficacia" /> : <EmptyState message="Sin datos." className="rend-no-data" />}
             </article>
 
             <article className="card chart-card chart-card-wide rend-chart-card">
               <h3 className="rend-chart-title">% Eficacia por Cantidad (Tendencia)</h3>
-              {trendCountSeries.length ? <PercentLineChart data={trendCountSeries} color="#f59e0b" showLabels={showChartLabels} ariaLabel="Eficacia por cantidad por mes en porcentaje" /> : <div className="rend-no-data">Sin datos.</div>}
+              {trendCountSeries.length ? <PercentLineChart data={trendCountSeries} color="var(--color-chart-5)" showLabels={showChartLabels} ariaLabel="Eficacia por cantidad por mes en porcentaje" /> : <EmptyState message="Sin datos." className="rend-no-data" />}
             </article>
 
             <article className="card chart-card chart-card-wide rend-chart-card">
               <h3 className="rend-chart-title">% Eficacia por Tramo</h3>
-              {tramoSeries.length ? <PercentBarChart data={tramoSeries} color="#818cf8" showLabels={showChartLabels} ariaLabel="Eficacia por tramo en porcentaje" /> : <div className="rend-no-data">Sin datos.</div>}
+              {tramoSeries.length ? <PercentBarChart data={tramoSeries} color="var(--color-chart-2)" showLabels={showChartLabels} ariaLabel="Eficacia por tramo en porcentaje" /> : <EmptyState message="Sin datos." className="rend-no-data" />}
             </article>
 
             <article className="card chart-card chart-card-wide rend-chart-card">
               <h3 className="rend-chart-title">% Eficacia por UN</h3>
-              {unSeries.length ? <PercentBarChart data={unSeries} color="#6366f1" showLabels={showChartLabels} ariaLabel="Eficacia por unidad de negocio en porcentaje" /> : <div className="rend-no-data">Sin datos.</div>}
+              {unSeries.length ? <PercentBarChart data={unSeries} color="var(--color-chart-3)" showLabels={showChartLabels} ariaLabel="Eficacia por unidad de negocio en porcentaje" /> : <EmptyState message="Sin datos." className="rend-no-data" />}
             </article>
 
             <article className="card chart-card chart-card-wide rend-chart-card">
               <h3 className="rend-chart-title">% Eficacia por Vía de Cobro (Intención)</h3>
-              {viaCobroSeries.length ? <PercentBarChart data={viaCobroSeries} color="#10b981" showLabels={showChartLabels} ariaLabel="Eficacia por vía de cobro intención en porcentaje" /> : <div className="rend-no-data">Sin datos.</div>}
+              {viaCobroSeries.length ? <PercentBarChart data={viaCobroSeries} color="var(--color-chart-4)" showLabels={showChartLabels} ariaLabel="Eficacia por vía de cobro intención en porcentaje" /> : <EmptyState message="Sin datos." className="rend-no-data" />}
             </article>
           </div>
         </>
@@ -681,4 +741,3 @@ export function AnalisisRendimientoView() {
     </section>
   )
 }
-

@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+set -eu
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+if command -v pwsh >/dev/null 2>&1; then
+  exec pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-security-check.ps1 -Phase pre-push
+fi
+
+exec sh scripts/git-security-check.sh pre-push
