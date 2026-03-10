@@ -17,7 +17,7 @@ from app.main import app  # noqa: E402
 from app.core.rate_limit import rate_limiter  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
-from app.models.brokers import AuthUser, AuthUserState  # noqa: E402
+from app.models.brokers import AuthSession, AuthUser, AuthUserState  # noqa: E402
 
 TEST_ADMIN_USER = os.environ.get('TEST_SYNC_ADMIN_USER', 'sync_admin')
 TEST_ADMIN_PASSWORD = os.environ.get('TEST_SYNC_ADMIN_PASSWORD', 'sync_admin_123')
@@ -28,6 +28,7 @@ class ApiV1SyncTests(unittest.TestCase):
     def setUpClass(cls):
         AuthUser.__table__.create(bind=engine, checkfirst=True)
         AuthUserState.__table__.create(bind=engine, checkfirst=True)
+        AuthSession.__table__.create(bind=engine, checkfirst=True)
         db = SessionLocal()
         try:
             db.query(AuthUserState).delete()

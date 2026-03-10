@@ -18,7 +18,7 @@ from app.core.rate_limit import rate_limiter  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 from app.db.session import engine  # noqa: E402
-from app.models.brokers import AnalyticsContractSnapshot, AuthUser, AuthUserState, FrontendPerfMetric  # noqa: E402
+from app.models.brokers import AnalyticsContractSnapshot, AuthSession, AuthUser, AuthUserState, FrontendPerfMetric  # noqa: E402
 
 TEST_ADMIN_USER = os.environ.get('TEST_ADMIN_USER', os.environ.get('DEMO_ADMIN_USER', 'admin'))
 TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', os.environ.get('DEMO_ADMIN_PASSWORD', 'change_me_demo_admin_password'))
@@ -31,6 +31,7 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
     def setUpClass(cls):
         AuthUser.__table__.create(bind=engine, checkfirst=True)
         AuthUserState.__table__.create(bind=engine, checkfirst=True)
+        AuthSession.__table__.create(bind=engine, checkfirst=True)
         # Some test DB bootstraps can miss this table; create it defensively.
         FrontendPerfMetric.__table__.create(bind=engine, checkfirst=True)
         db = SessionLocal()

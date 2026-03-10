@@ -14,7 +14,7 @@ os.environ.setdefault('JWT_SECRET_KEY', 'test_secret_key')
 from app.main import app  # noqa: E402
 from app.core.rate_limit import rate_limiter  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
-from app.models.brokers import AuthUser, AuthUserState  # noqa: E402
+from app.models.brokers import AuthSession, AuthUser, AuthUserState  # noqa: E402
 
 # Credenciales de test: por defecto usuarios demo (dev). Para DB-only usar TEST_* con usuario creado en DB.
 TEST_ADMIN_USER = os.environ.get('TEST_ADMIN_USER', os.environ.get('DEMO_ADMIN_USER', 'admin'))
@@ -28,6 +28,7 @@ class ApiV1BrokersConfigTests(unittest.TestCase):
     def setUpClass(cls):
         AuthUser.__table__.create(bind=engine, checkfirst=True)
         AuthUserState.__table__.create(bind=engine, checkfirst=True)
+        AuthSession.__table__.create(bind=engine, checkfirst=True)
         db = SessionLocal()
         try:
             db.query(AuthUserState).delete()
