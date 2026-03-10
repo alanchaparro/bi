@@ -52,10 +52,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS "http://localhost:5000/api/check-files" > /tmp/check-files.json
-          curl -fsS "http://localhost:5000/" > /tmp/index.html
+          retry_curl() {
+            local url="$1"
+            local out="$2"
+            for i in $(seq 1 15); do
+              if curl -fsS "$url" > "$out"; then
+                return 0
+              fi
+              sleep 2
+            done
+            return 1
+          }
+          retry_curl "http://localhost:5000/api/check-files" /tmp/check-files.json
+          retry_curl "http://localhost:5000/" /tmp/index.html
           grep -q "dashboard.js" /tmp/index.html
-          curl -fsS "http://localhost:8000/api/v1/health" > /tmp/v1-health.json
+          retry_curl "http://localhost:8000/api/v1/health" /tmp/v1-health.json
           grep -q "\"ok\":true" /tmp/v1-health.json
 
       - name: Export OpenAPI v1

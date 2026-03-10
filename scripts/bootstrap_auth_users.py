@@ -31,11 +31,11 @@ def main():
 
     from app.core.config import settings
     from app.core.security import hash_password
-    from app.db.base import Base
     from app.db.session import SessionLocal, engine
     from app.models.brokers import AuthUser
 
-    Base.metadata.create_all(bind=engine)
+    # Keep bootstrap idempotent and avoid recreating unrelated schema objects.
+    AuthUser.__table__.create(bind=engine, checkfirst=True)
 
     users = parse_users(os.getenv('AUTH_BOOTSTRAP_USERS'))
     if not users:
