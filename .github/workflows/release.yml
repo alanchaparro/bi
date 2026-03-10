@@ -29,7 +29,7 @@ jobs:
 
       - name: Backend Unit + Integration Tests
         run: |
-          docker compose --profile dev run --rm -v "${{ github.workspace }}:/app" -w /app dashboard sh -lc "pwd && ls -la tests && python -m unittest discover -s tests -p 'test_*.py'"
+          docker compose --profile dev run --rm -T -v "${{ github.workspace }}:/app" -w /app dashboard sh -lc "pwd && ls -la tests && python -m unittest discover -s tests -p 'test_*.py'"
 
       - name: Backend Coverage
         run: |
