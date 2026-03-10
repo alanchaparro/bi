@@ -5,11 +5,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from sqlalchemy import inspect
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
 
 os.environ['DATABASE_URL'] = 'sqlite:///./data/test_app_v1.db'
+os.environ['DB_BOOTSTRAP_ON_START'] = 'false'
+os.environ['DB_DEMO_PROBE_ON_START'] = 'false'
 os.environ.setdefault('JWT_SECRET_KEY', 'test_secret_key')
 os.environ.setdefault('JWT_REFRESH_SECRET_KEY', 'test_refresh_secret')
 
@@ -18,7 +21,18 @@ from app.core.rate_limit import rate_limiter  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 from app.db.session import engine  # noqa: E402
-from app.models.brokers import AnalyticsContractSnapshot, AuthSession, AuthUser, AuthUserState, FrontendPerfMetric  # noqa: E402
+from app.models.brokers import (  # noqa: E402
+    AuditLog,
+    AnalyticsContractSnapshot,
+    AnalyticsSourceFreshness,
+    BrokersSupervisorScope,
+    CommissionRules,
+    PrizeRules,
+    AuthSession,
+    AuthUser,
+    AuthUserState,
+    FrontendPerfMetric,
+)
 
 TEST_ADMIN_USER = os.environ.get('TEST_ADMIN_USER', os.environ.get('DEMO_ADMIN_USER', 'admin'))
 TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', os.environ.get('DEMO_ADMIN_PASSWORD', 'change_me_demo_admin_password'))
@@ -29,11 +43,21 @@ TEST_ANALYST_PASSWORD = os.environ.get('TEST_ANALYST_PASSWORD', os.environ.get('
 class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        AuthUser.__table__.create(bind=engine, checkfirst=True)
-        AuthUserState.__table__.create(bind=engine, checkfirst=True)
-        AuthSession.__table__.create(bind=engine, checkfirst=True)
+        def ensure_table(model):
+            if not inspect(engine).has_table(model.__tablename__):
+                model.__table__.create(bind=engine, checkfirst=True)
+
+        ensure_table(AuthUser)
+        ensure_table(AuthUserState)
+        ensure_table(AuthSession)
+        ensure_table(AnalyticsContractSnapshot)
+        ensure_table(AnalyticsSourceFreshness)
+        ensure_table(BrokersSupervisorScope)
+        ensure_table(CommissionRules)
+        ensure_table(PrizeRules)
+        ensure_table(AuditLog)
         # Some test DB bootstraps can miss this table; create it defensively.
-        FrontendPerfMetric.__table__.create(bind=engine, checkfirst=True)
+        ensure_table(FrontendPerfMetric)
         db = SessionLocal()
         try:
             db.query(AuthUserState).delete()

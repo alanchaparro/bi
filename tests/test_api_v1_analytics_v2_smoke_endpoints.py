@@ -5,11 +5,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from sqlalchemy import inspect
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
 
 os.environ['DATABASE_URL'] = 'sqlite:///./data/test_app_v1.db'
+os.environ['DB_BOOTSTRAP_ON_START'] = 'false'
+os.environ['DB_DEMO_PROBE_ON_START'] = 'false'
 os.environ.setdefault('JWT_SECRET_KEY', 'test_secret_key')
 os.environ.setdefault('JWT_REFRESH_SECRET_KEY', 'test_refresh_secret')
 
@@ -17,7 +20,7 @@ from app.main import app  # noqa: E402
 from app.core.rate_limit import rate_limiter  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
-from app.models.brokers import AuthSession, AuthUser, AuthUserState  # noqa: E402
+from app.models.brokers import AnalyticsSourceFreshness, AuthSession, AuthUser, AuthUserState  # noqa: E402
 
 SMOKE_ADMIN_USER = os.environ.get('TEST_SMOKE_ADMIN_USER', 'smoke_admin')
 SMOKE_ADMIN_PASSWORD = os.environ.get('TEST_SMOKE_ADMIN_PASSWORD', 'change_me_smoke_admin_password')
@@ -26,9 +29,14 @@ SMOKE_ADMIN_PASSWORD = os.environ.get('TEST_SMOKE_ADMIN_PASSWORD', 'change_me_sm
 class ApiV1AnalyticsV2SmokeEndpointsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        AuthUser.__table__.create(bind=engine, checkfirst=True)
-        AuthUserState.__table__.create(bind=engine, checkfirst=True)
-        AuthSession.__table__.create(bind=engine, checkfirst=True)
+        def ensure_table(model):
+            if not inspect(engine).has_table(model.__tablename__):
+                model.__table__.create(bind=engine, checkfirst=True)
+
+        ensure_table(AuthUser)
+        ensure_table(AuthUserState)
+        ensure_table(AuthSession)
+        ensure_table(AnalyticsSourceFreshness)
         cls.client = TestClient(app)
         db = SessionLocal()
         try:
