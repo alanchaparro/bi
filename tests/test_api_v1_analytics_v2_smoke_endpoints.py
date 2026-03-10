@@ -20,10 +20,33 @@ from app.main import app  # noqa: E402
 from app.core.rate_limit import rate_limiter  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
-from app.models.brokers import AnalyticsSourceFreshness, AuthSession, AuthUser, AuthUserState  # noqa: E402
+from app.models.brokers import AuthSession, AuthUser, AuthUserState  # noqa: E402
 
 SMOKE_ADMIN_USER = os.environ.get('TEST_SMOKE_ADMIN_USER', 'smoke_admin')
 SMOKE_ADMIN_PASSWORD = os.environ.get('TEST_SMOKE_ADMIN_PASSWORD', 'change_me_smoke_admin_password')
+
+
+def ensure_analytics_source_freshness_table():
+    # SQLite in CI can retain index names across interrupted runs; use IF NOT EXISTS DDL.
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS analytics_source_freshness (
+                source_table VARCHAR(64) PRIMARY KEY,
+                max_updated_at DATETIME NULL,
+                updated_at DATETIME NOT NULL,
+                last_job_id VARCHAR(64) NULL
+            )
+            """
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_analytics_source_freshness_updated_at "
+            "ON analytics_source_freshness (updated_at)"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_analytics_source_freshness_last_job_id "
+            "ON analytics_source_freshness (last_job_id)"
+        )
 
 
 class ApiV1AnalyticsV2SmokeEndpointsTests(unittest.TestCase):
@@ -36,7 +59,7 @@ class ApiV1AnalyticsV2SmokeEndpointsTests(unittest.TestCase):
         ensure_table(AuthUser)
         ensure_table(AuthUserState)
         ensure_table(AuthSession)
-        ensure_table(AnalyticsSourceFreshness)
+        ensure_analytics_source_freshness_table()
         cls.client = TestClient(app)
         db = SessionLocal()
         try:

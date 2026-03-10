@@ -24,7 +24,6 @@ from app.db.session import engine  # noqa: E402
 from app.models.brokers import (  # noqa: E402
     AuditLog,
     AnalyticsContractSnapshot,
-    AnalyticsSourceFreshness,
     BrokersSupervisorScope,
     CommissionRules,
     PrizeRules,
@@ -40,6 +39,29 @@ TEST_ANALYST_USER = os.environ.get('TEST_ANALYST_USER', os.environ.get('DEMO_ANA
 TEST_ANALYST_PASSWORD = os.environ.get('TEST_ANALYST_PASSWORD', os.environ.get('DEMO_ANALYST_PASSWORD', 'change_me_demo_analyst_password'))
 
 
+def ensure_analytics_source_freshness_table():
+    # SQLite in CI can retain index names across interrupted runs; use IF NOT EXISTS DDL.
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS analytics_source_freshness (
+                source_table VARCHAR(64) PRIMARY KEY,
+                max_updated_at DATETIME NULL,
+                updated_at DATETIME NOT NULL,
+                last_job_id VARCHAR(64) NULL
+            )
+            """
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_analytics_source_freshness_updated_at "
+            "ON analytics_source_freshness (updated_at)"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_analytics_source_freshness_last_job_id "
+            "ON analytics_source_freshness (last_job_id)"
+        )
+
+
 class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -51,7 +73,7 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
         ensure_table(AuthUserState)
         ensure_table(AuthSession)
         ensure_table(AnalyticsContractSnapshot)
-        ensure_table(AnalyticsSourceFreshness)
+        ensure_analytics_source_freshness_table()
         ensure_table(BrokersSupervisorScope)
         ensure_table(CommissionRules)
         ensure_table(PrizeRules)
