@@ -38,6 +38,10 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
         rate_limiter._events.clear()
         cls.client = TestClient(app)
 
+    def setUp(self):
+        # Avoid cross-test throttling on /auth/login in full-suite execution.
+        rate_limiter._events.clear()
+
     def test_login_refresh_revoke_flow(self):
         login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
         self.assertEqual(login.status_code, 200)

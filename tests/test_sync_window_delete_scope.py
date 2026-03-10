@@ -4,14 +4,19 @@ import unittest
 from datetime import date
 from pathlib import Path
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///./data/test_sync_window_delete_scope.db")
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "sqlite:///./data/test_sync_window_delete_scope.db")
 
-from app.db.session import SessionLocal, engine  # noqa: E402
 from app.models.brokers import CobranzasFact, SyncRecord  # noqa: E402
 from app.services.sync_service import _delete_target_window, _delete_target_window_fact  # noqa: E402
+
+engine = create_engine(TEST_DATABASE_URL, future=True)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
 class SyncWindowDeleteScopeTests(unittest.TestCase):

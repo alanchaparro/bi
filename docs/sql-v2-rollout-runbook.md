@@ -39,8 +39,8 @@ Example (all domains already in v2):
 
 ```powershell
 $env:ROLLOUT_API_BASE='http://localhost:8000/api/v1'
-$env:ROLLOUT_USERNAME='admin'
-$env:ROLLOUT_PASSWORD='change_me_demo_admin_password'
+$env:ROLLOUT_USERNAME=$env:DEMO_ADMIN_USER
+$env:ROLLOUT_PASSWORD=$env:DEMO_ADMIN_PASSWORD
 $env:ROLLOUT_DOMAINS='gestores,contratos,cobranzas,cartera'
 python scripts/rollout_sync_sql_v2.py
 ```

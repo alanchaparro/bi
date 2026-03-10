@@ -19,6 +19,9 @@ from app.core.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 from app.models.brokers import AuthUser, AuthUserState  # noqa: E402
 
+SMOKE_ADMIN_USER = os.environ.get('TEST_SMOKE_ADMIN_USER', 'smoke_admin')
+SMOKE_ADMIN_PASSWORD = os.environ.get('TEST_SMOKE_ADMIN_PASSWORD', 'change_me_smoke_admin_password')
+
 
 class ApiV1AnalyticsV2SmokeEndpointsTests(unittest.TestCase):
     @classmethod
@@ -27,12 +30,17 @@ class ApiV1AnalyticsV2SmokeEndpointsTests(unittest.TestCase):
         db = SessionLocal()
         try:
             db.query(AuthUserState).delete()
-            row = db.query(AuthUser).filter(AuthUser.username == 'smoke_admin').first()
+            row = db.query(AuthUser).filter(AuthUser.username == SMOKE_ADMIN_USER).first()
             if row is None:
-                row = AuthUser(username='smoke_admin', password_hash=hash_password('smoke_admin_123'), role='admin', is_active=True)
+                row = AuthUser(
+                    username=SMOKE_ADMIN_USER,
+                    password_hash=hash_password(SMOKE_ADMIN_PASSWORD),
+                    role='admin',
+                    is_active=True,
+                )
                 db.add(row)
             else:
-                row.password_hash = hash_password('smoke_admin_123')
+                row.password_hash = hash_password(SMOKE_ADMIN_PASSWORD)
                 row.role = 'admin'
                 row.is_active = True
             db.commit()
@@ -41,7 +49,10 @@ class ApiV1AnalyticsV2SmokeEndpointsTests(unittest.TestCase):
 
     def _auth_headers(self) -> dict[str, str]:
         rate_limiter._events.clear()
-        login = self.client.post('/api/v1/auth/login', json={'username': 'smoke_admin', 'password': 'smoke_admin_123'})
+        login = self.client.post(
+            '/api/v1/auth/login',
+            json={'username': SMOKE_ADMIN_USER, 'password': SMOKE_ADMIN_PASSWORD},
+        )
         self.assertEqual(login.status_code, 200, login.json())
         token = login.json().get('access_token')
         self.assertTrue(token)
