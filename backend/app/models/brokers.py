@@ -806,8 +806,6 @@ Index('ux_mv_options_cartera_key', MvOptionsCartera.gestion_month, MvOptionsCart
 Index('ux_mv_options_cohorte_key', MvOptionsCohorte.cutoff_month, MvOptionsCohorte.un, MvOptionsCohorte.supervisor, MvOptionsCohorte.via_cobro, MvOptionsCohorte.categoria, unique=True)
 Index('ux_mv_options_rendimiento_key', MvOptionsRendimiento.gestion_month, MvOptionsRendimiento.un, MvOptionsRendimiento.supervisor, MvOptionsRendimiento.via_cobro, MvOptionsRendimiento.categoria, MvOptionsRendimiento.tramo, unique=True)
 Index('ux_mv_options_anuales_key', MvOptionsAnuales.cutoff_month, MvOptionsAnuales.sale_month, MvOptionsAnuales.sale_year, MvOptionsAnuales.un, unique=True)
-Index('ix_analytics_source_freshness_updated_at', AnalyticsSourceFreshness.updated_at)
-Index('ix_analytics_source_freshness_last_job_id', AnalyticsSourceFreshness.last_job_id)
 Index('ix_cartera_fact_updated_at_desc', CarteraFact.updated_at.desc())
 Index('ix_cobranzas_fact_updated_at_desc', CobranzasFact.updated_at.desc())
 Index('ix_cartera_corte_agg_updated_at_desc', CarteraCorteAgg.updated_at.desc())
