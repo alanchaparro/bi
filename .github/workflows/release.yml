@@ -74,6 +74,19 @@ jobs:
       - name: Bootstrap Auth Users
         run: docker compose --profile dev run --rm dashboard python scripts/bootstrap_auth_users.py
 
+      - name: Bootstrap Analytics Schema (Postgres)
+        run: |
+          docker compose --profile dev run --rm dashboard python -c "
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path('/app/backend')))
+          from app.db.base import Base
+          from app.db.session import engine
+          import app.models.brokers  # register tables on Base metadata
+          Base.metadata.create_all(bind=engine)
+          print('analytics schema ensured')
+          "
+
       - name: Verify Legacy Config Migration
         run: |
           docker compose --profile dev run --rm dashboard python scripts/migrate_legacy_config_to_db.py
