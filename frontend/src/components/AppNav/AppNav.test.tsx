@@ -19,11 +19,17 @@ describe('AppNav', () => {
 
   it('marks the active section with aria-current="true" and class active', () => {
     render(<AppNav sections={[...NAV_SECTIONS]} activeId="config" />)
-    const activeLink = screen.getByRole('link', { name: 'Configuración' })
+
+    const activeSection = NAV_SECTIONS.find((s) => s.id === 'config')
+    const otherSection = NAV_SECTIONS.find((s) => s.id === 'analisisCartera')
+    expect(activeSection).toBeTruthy()
+    expect(otherSection).toBeTruthy()
+
+    const activeLink = screen.getByRole('link', { name: activeSection!.label })
     expect(activeLink.getAttribute('aria-current')).toBe('true')
     expect(activeLink.classList.contains('active')).toBe(true)
 
-    const otherLink = screen.getByRole('link', { name: 'Analisis de Cartera' })
+    const otherLink = screen.getByRole('link', { name: otherSection!.label })
     expect(otherLink.getAttribute('aria-current')).toBeNull()
     expect(otherLink.classList.contains('active')).toBe(false)
   })
