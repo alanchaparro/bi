@@ -15,6 +15,8 @@ from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
+from backend.app.domain import categoria_from_tramo, month_from_any, month_serial, monto_a_cobrar, tramo_from_cuotas_vencidas
+
 PORT = 5000
 CACHE_DIR = ".cache"
 ANALYTICS_INDEX_CACHE_FILE = os.path.join(CACHE_DIR, "analytics_index.pkl.gz")
@@ -242,27 +244,12 @@ def norm_d(value):
 
 
 def month_from_date(value):
-    val = str(value or "").strip()
-    if not val:
-        return ""
-    if re.match(r"^\d{1,2}/\d{4}$", val):
-        return norm_d(val)
-    m = re.match(r"^(\d{4})[-/](\d{1,2})[-/]\d{1,2}", val)
-    if m:
-        return f"{str(m.group(2)).zfill(2)}/{m.group(1)}"
-    m = re.match(r"^(\d{1,2})[-/](\d{1,2})[-/](\d{4})", val)
-    if m:
-        return f"{str(m.group(2)).zfill(2)}/{m.group(3)}"
-    return ""
+    return month_from_any(value)
 
 
 def month_to_serial(mm_yyyy):
-    m = re.match(r"^(\d{1,2})/(\d{4})$", str(mm_yyyy or "").strip())
-    if not m:
-        return -1
-    month = int(m.group(1))
-    year = int(m.group(2))
-    return year * 12 + month
+    serial = month_serial(mm_yyyy)
+    return serial if serial > 0 else -1
 
 
 def year_from_mm_yyyy(mm_yyyy):
@@ -860,12 +847,13 @@ def load_analytics_monthly_rows(force=False):
                 tr = "0"
             via = str(raw.get("via_cobro", "")).strip().upper()
             cat = str(raw.get("categoria", "")).strip().upper()
+            categoria = cat if cat in {"VIGENTE", "MOROSO"} else categoria_from_tramo(tr)
 
             rows.append({
                 "gestion_month": gm,
                 "un": str(raw.get("un", "S/D")).strip() or "S/D",
                 "tramo": tr,
-                "categoria": "VIGENTE" if cat.startswith("VIG") else "MOROSO",
+                "categoria": categoria,
                 "via_cobro": "COBRADOR" if via == "COBRADOR" else "DEBITO",
                 "supervisor": str(raw.get("supervisor", "S/D")).strip() or "S/D",
                 "contracts_total": to_int(raw.get("contracts_total", 0)),
@@ -1138,9 +1126,9 @@ def ensure_analytics_index():
             if not c_id or not re.match(r"^\d{2}/\d{4}$", fe):
                 continue
             tr_raw = raw.get("tramo") or 0
-            tr_num = to_int(tr_raw)
+            tr_num = tramo_from_cuotas_vencidas(tr_raw)
             via_c = normalize_via_cobro(raw.get("via_de_cobro"))
-            debt = to_float(raw.get("monto_cuota") or 0) + to_float(raw.get("monto_vencido") or 0)
+            debt = monto_a_cobrar(raw.get("monto_vencido") or 0, raw.get("monto_cuota") or 0)
             cartera_entries.append({
                 "key": f"{c_id}_{fe}",
                 "c_id": c_id,
@@ -1148,7 +1136,7 @@ def ensure_analytics_index():
                 "un": str(raw.get("UN") or "S/D"),
                 "tramo": str(tr_raw),
                 "tramo_num": tr_num,
-                "cat": "VIGENTE" if tr_num <= 3 else "MOROSO",
+                "cat": categoria_from_tramo(tr_num),
                 "via_c": via_c,
                 "sup": supervisor_by_id.get(c_id, "S/D"),
                 "debt": debt,

@@ -102,12 +102,24 @@ class ApiV1AnalyticsV2SmokeEndpointsTests(unittest.TestCase):
 
     def test_smoke_portfolio_corte_v2_options(self):
         headers = self._auth_headers()
-        fake_payload = {'options': {'un': ['ODONTOLOGIA TTO'], 'gestion_month': ['03/2026']}, 'meta': {}}
+        fake_payload = {
+            'options': {
+                'uns': ['ODONTOLOGIA TTO'],
+                'gestion_months': ['03/2026'],
+                'close_months': ['02/2026'],
+            },
+            'meta': {},
+        }
         with patch('app.services.analytics_service.AnalyticsService.fetch_portfolio_corte_options_v2', return_value=fake_payload):
             r = self.client.post('/api/v1/analytics/portfolio-corte-v2/options', json={}, headers=headers)
         self.assertEqual(r.status_code, 200, r.json())
         body = r.json()
         self.assertIn('options', body)
+        opts = body['options']
+        self.assertIn('uns', opts, 'options debe incluir lista uns')
+        self.assertIn('gestion_months', opts, 'options debe incluir lista gestion_months')
+        self.assertIsInstance(opts['uns'], list)
+        self.assertIsInstance(opts['gestion_months'], list)
         self._assert_meta_min(body)
 
     def test_smoke_portfolio_corte_v2_summary(self):
@@ -122,12 +134,24 @@ class ApiV1AnalyticsV2SmokeEndpointsTests(unittest.TestCase):
 
     def test_smoke_rendimiento_v2_options(self):
         headers = self._auth_headers()
-        fake_payload = {'options': {'un': ['ODONTOLOGIA TTO'], 'tramo': ['0']}, 'meta': {}}
+        fake_payload = {
+            'options': {
+                'uns': ['ODONTOLOGIA TTO'],
+                'gestion_months': ['03/2026'],
+                'tramos': ['0'],
+            },
+            'meta': {},
+        }
         with patch('app.services.analytics_service.AnalyticsService.fetch_rendimiento_options_v2', return_value=fake_payload):
             r = self.client.post('/api/v1/analytics/rendimiento-v2/options', json={}, headers=headers)
         self.assertEqual(r.status_code, 200, r.json())
         body = r.json()
         self.assertIn('options', body)
+        opts = body['options']
+        self.assertIn('uns', opts, 'options debe incluir lista uns')
+        self.assertIn('gestion_months', opts, 'options debe incluir lista gestion_months')
+        self.assertIsInstance(opts['uns'], list)
+        self.assertIsInstance(opts['gestion_months'], list)
         self._assert_meta_min(body)
 
     def test_smoke_rendimiento_v2_summary(self):

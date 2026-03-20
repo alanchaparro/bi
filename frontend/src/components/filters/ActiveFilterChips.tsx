@@ -1,4 +1,5 @@
 import React from "react";
+import { Button } from "@heroui/react";
 
 export type FilterChip = {
   key: string;
@@ -13,22 +14,22 @@ type Props = {
 
 export function ActiveFilterChips({ chips, onRemove }: Props) {
   if (chips.length === 0) return null;
+
   return (
     <div className="filter-chips" aria-label="Filtros activos">
       {chips.map((chip) => (
-        <button
+        <Button
           key={`${chip.key}:${chip.value}`}
-          type="button"
+          variant="outline"
+          size="sm"
+          aria-label={`Quitar ${chip.label}: ${chip.value}`}
+          onPress={() => onRemove(chip)}
           className="filter-chip"
-          onClick={() => onRemove(chip)}
-          title={`Quitar ${chip.label}: ${chip.value}`}
         >
           <span className="filter-chip-label">{chip.label}:</span>
           <span>{chip.value}</span>
-          <span className="filter-chip-x" aria-hidden>
-            x
-          </span>
-        </button>
+          <span className="filter-chip-x" aria-hidden>x</span>
+        </Button>
       ))}
     </div>
   );

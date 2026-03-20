@@ -1,28 +1,20 @@
-# Stage 1: build
+# Stage 1: build Next.js
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm ci
 COPY . .
-ARG VITE_API_BASE_URL=/api/v1
-ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 RUN npm run build
 
-# Stage 2: serve with nginx
-FROM nginx:alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
-# SPA: fallback to index.html for client-side routes
-RUN echo 'server { \
-listen 80; \
-root /usr/share/nginx/html; \
-index index.html; \
-gzip on; \
-gzip_comp_level 5; \
-gzip_min_length 1024; \
-gzip_vary on; \
-gzip_proxied any; \
-gzip_types application/json text/plain text/css application/javascript application/xml text/xml; \
-location / { try_files $uri $uri/ /index.html; } \
-}' > /etc/nginx/conf.d/default.conf
+# Stage 2: run Next.js (standalone)
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=80
+ENV HOSTNAME="0.0.0.0"
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["node", "server.js"]

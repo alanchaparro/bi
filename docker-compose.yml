@@ -154,7 +154,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000/api/v1}
+        # Next.js usa NEXT_PUBLIC_* (no VITE_*). Sin rebuild no se ven cambios de código.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
     ports:
       - "${FRONTEND_PROD_PORT:-8080}:80"
     profiles: ["prod"]
@@ -164,7 +165,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+        # Detrás del proxy, el front llama a /api/v1 (mismo origen).
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
     profiles: ["prod-lan"]
 
   reverse-proxy:

@@ -1,8 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { Button, Card } from '@heroui/react'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
+import { SegmentedControl } from '../../components/filters/SegmentedControl'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
+import { AnalyticsMetaBadges } from '../../components/analytics/AnalyticsMetaBadges'
 import { AnalysisSelectionSummary } from '../../components/analytics/AnalysisSelectionSummary'
+import { MetricExplainer } from '../../components/analytics/MetricExplainer'
+import { AnalysisFiltersSkeleton } from '../../components/feedback/AnalysisFiltersSkeleton'
 import { EmptyState } from '../../components/feedback/EmptyState'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { LoadingState } from '../../components/feedback/LoadingState'
@@ -364,62 +369,66 @@ export function AnalisisCobranzasCohorteView() {
   const gestionBase = String(summary?.effective_cartera_month || summary?.cutoff_month || '')
   const cierreBase = monthMinusOne(gestionBase)
 
-  const metaCohorte = (summary?.cutoff_month != null || summary?.effective_cartera_month != null) ? (
+  const metaCohorte = (
     <>
+      <AnalyticsMetaBadges meta={summary?.meta} />
       {summary?.cutoff_month ? (
         <span className="analysis-meta-chip">Corte de cobranza: <strong>{summary.cutoff_month}</strong></span>
       ) : null}
       {gestionBase ? (
         <span className="analysis-meta-chip">
-          Gesti&oacute;n usada: <strong>{gestionBase}</strong>
+          Gestion usada: <strong>{gestionBase}</strong>
           {cierreBase ? <> (Cierre base: <strong>{cierreBase}</strong>)</> : null}
         </span>
       ) : null}
     </>
-  ) : undefined
+  )
 
   return (
-    <section className="card analysis-card analysis-panel-card">
-      <AnalyticsPageHeader
-        kicker="Panel ejecutivo"
-        pill="Cobranzas corte"
-        title="Análisis de Cobranzas por Corte"
-        subtitle="Cobro del corte seleccionado, segmentado por mes/año de venta."
+    <section className="analysis-card-wrap">
+      <Card className="analysis-panel-card border border-[var(--color-border)] shadow-lg overflow-hidden p-6">
+        <AnalyticsPageHeader
+        kicker="COHORTE"
+        pill="Analytics v2"
+        title="Analisis de cobranzas por corte"
+        subtitle="Cobro del corte seleccionado, segmentado por mes o año de venta y alineado a la gestion operativa."
         meta={metaCohorte}
+      />
+      <MetricExplainer
+        items={[
+          {
+            label: "Corte y gestion",
+            formula: "gestion_month = cierre + 1 mes",
+            note: "La cohorte usa un corte de cobranza y una cartera efectiva alineada a gestion.",
+          },
+          {
+            label: "Cobertura de monto",
+            formula: "cobrado / deberia",
+            note: "Compara lo cobrado frente a lo que se deberia cobrar en la cohorte activa.",
+          },
+          {
+            label: "Pago por contratos",
+            formula: "pagaron / activos",
+            note: "Sigue la efectividad por cantidad de contratos dentro del corte seleccionado.",
+          },
+        ]}
       />
 
       {loadingOptions ? (
-        <div className="analysis-skeleton-wrap" aria-live="polite" aria-busy="true">
-          <div className="analysis-skeleton-grid">
-            <div className="analysis-skeleton-input" />
-            <div className="analysis-skeleton-input" />
-            <div className="analysis-skeleton-input" />
-            <div className="analysis-skeleton-input" />
-            <div className="analysis-skeleton-input" />
-          </div>
-          <div className="analysis-skeleton-kpis">
-            <div className="analysis-skeleton-kpi" />
-            <div className="analysis-skeleton-kpi" />
-            <div className="analysis-skeleton-kpi" />
-            <div className="analysis-skeleton-kpi" />
-            <div className="analysis-skeleton-kpi" />
-            <div className="analysis-skeleton-kpi" />
-          </div>
-          <div className="analysis-skeleton-table" />
-          <div className="analysis-skeleton-table" />
-        </div>
+        <AnalysisFiltersSkeleton filterCount={5} kpiCount={6} showTable />
       ) : null}
 
       {!loadingOptions ? (
         <>
-          <div className="analysis-filters-grid">
+          <div className="rendimiento-filters-panel">
+          <div className="analysis-filters-grid" data-testid="analysis-filters-grid">
             <div className="analysis-filter-control">
-              <label className="input-label">Mes/Año de Cobro</label>
+              <label className="input-label" id="cutoff-month-label">Mes de cobro</label>
               <select
-                className="input"
+                className="input input-heroui-tokens w-full min-h-10 rounded-lg border border-[var(--color-border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--color-text)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                 value={filters.cutoffMonth}
                 onChange={(e) => setFilters((prev) => ({ ...prev, cutoffMonth: e.target.value }))}
-                aria-label="Mes/Año de Cobro"
+                aria-labelledby="cutoff-month-label"
               >
                 {options.cutoffMonths.map((month) => (
                   <option key={month} value={month}>{month}</option>
@@ -429,45 +438,24 @@ export function AnalisisCobranzasCohorteView() {
 
             <MultiSelectFilter
               className="analysis-filter-control"
-              label="Unidad de Negocio"
+              label="Unidad de negocio"
               options={options.uns}
               selected={filters.uns}
               onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
               placeholder="Todos"
             />
 
-            <div className="analysis-filter-control analysis-via-control">
-              <label className="input-label">Vía de Cobro</label>
-              <div className="analysis-via-toggle" role="radiogroup" aria-label="Vía de Cobro">
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={selectedVia === ''}
-                  className={`analysis-via-btn ${selectedVia === '' ? 'is-active' : ''}`}
-                  onClick={() => setFilters((prev) => ({ ...prev, vias: [] }))}
-                >
-                  Todos
-                </button>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={selectedVia === 'DEBITO'}
-                  className={`analysis-via-btn ${selectedVia === 'DEBITO' ? 'is-active' : ''}`}
-                  onClick={() => setFilters((prev) => ({ ...prev, vias: ['DEBITO'] }))}
-                >
-                  Debito
-                </button>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={selectedVia === 'COBRADOR'}
-                  className={`analysis-via-btn ${selectedVia === 'COBRADOR' ? 'is-active' : ''}`}
-                  onClick={() => setFilters((prev) => ({ ...prev, vias: ['COBRADOR'] }))}
-                >
-                  Cobrador
-                </button>
-              </div>
-            </div>
+            <SegmentedControl
+              className="analysis-filter-control"
+              label="Vía de cobro"
+              options={[
+                { value: '', label: 'Todos' },
+                { value: 'DEBITO', label: 'Débito' },
+                { value: 'COBRADOR', label: 'Cobrador' },
+              ]}
+              value={selectedVia}
+              onChange={(v) => setFilters((prev) => ({ ...prev, vias: v === '' ? [] : [v] }))}
+            />
 
             <MultiSelectFilter
               className="analysis-filter-control"
@@ -478,51 +466,31 @@ export function AnalisisCobranzasCohorteView() {
               placeholder="Todos"
             />
 
-            <div className="analysis-filter-control analysis-category-control">
-              <label className="input-label">Categoría</label>
-              <div className="analysis-category-toggle" role="radiogroup" aria-label="Categoría">
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={selectedCategoria === ''}
-                  className={`analysis-category-btn ${selectedCategoria === '' ? 'is-active' : ''}`}
-                  onClick={() => setFilters((prev) => ({ ...prev, categorias: [] }))}
-                >
-                  Todas
-                </button>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={selectedCategoria === 'VIGENTE'}
-                  className={`analysis-category-btn ${selectedCategoria === 'VIGENTE' ? 'is-active' : ''}`}
-                  onClick={() => setFilters((prev) => ({ ...prev, categorias: ['VIGENTE'] }))}
-                >
-                  Vigente
-                </button>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={selectedCategoria === 'MOROSO'}
-                  className={`analysis-category-btn ${selectedCategoria === 'MOROSO' ? 'is-active' : ''}`}
-                  onClick={() => setFilters((prev) => ({ ...prev, categorias: ['MOROSO'] }))}
-                >
-                  Moroso
-                </button>
-              </div>
-            </div>
+            <SegmentedControl
+              className="analysis-filter-control"
+              label="Categoría"
+              options={[
+                { value: '', label: 'Todas' },
+                { value: 'VIGENTE', label: 'Vigente' },
+                { value: 'MOROSO', label: 'Moroso' },
+              ]}
+              value={selectedCategoria}
+              onChange={(v) => setFilters((prev) => ({ ...prev, categorias: v === '' ? [] : [v] }))}
+            />
+          </div>
+          <div className="rendimiento-filter-hints" role="note" aria-label="Ayuda de filtros">
+            <span className="rendimiento-filter-hint">Mes de cobro define el corte consultado.</span>
+            <span className="rendimiento-filter-hint">La cartera efectiva se alinea a gestion operativa.</span>
+            <span className="rendimiento-filter-hint">Vía de cobro y categoría segmentan la cohorte activa.</span>
           </div>
 
           <div className="analysis-actions-row analysis-actions">
-            <button type="button" className="btn btn-primary" onClick={onApply} disabled={applying}>
+            <Button variant="primary" onPress={onApply} isDisabled={applying}>
               {applying ? <span className="inline-spinner" aria-hidden /> : null}
               {applying ? 'Aplicando...' : 'Aplicar filtros'}
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={clearFilters} disabled={applying}>
-              Limpiar filtros
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={onReset} disabled={applying}>
-              Resetear filtros
-            </button>
+            </Button>
+            <Button variant="outline" onPress={clearFilters} isDisabled={applying}>Limpiar</Button>
+            <Button variant="outline" onPress={onReset} isDisabled={applying}>Restablecer</Button>
             <span className="analysis-active-count">
               {activeFilterChips.length} filtro{activeFilterChips.length === 1 ? '' : 's'} activo{activeFilterChips.length === 1 ? '' : 's'}
             </span>
@@ -531,12 +499,13 @@ export function AnalisisCobranzasCohorteView() {
           <div className="analysis-active-filters">
             <ActiveFilterChips chips={activeFilterChips} onRemove={removeChip} />
           </div>
+          </div>
 
           <AnalysisSelectionSummary
             items={[
-              { label: "Mes/Año Cobro", value: appliedFilters.cutoffMonth || "—" },
+              { label: "Mes de cobro", value: appliedFilters.cutoffMonth || "-" },
               { label: "UN", value: appliedFilters.uns.length ? appliedFilters.uns.join(", ") : "Todas" },
-              { label: "Vía", value: appliedFilters.vias.length ? appliedFilters.vias.join(", ") : "Todas" },
+              { label: "Vía de cobro", value: appliedFilters.vias.length ? appliedFilters.vias.join(", ") : "Todas" },
               { label: "Categoría", value: appliedFilters.categorias.length ? appliedFilters.categorias.join(", ") : "Todas" },
               { label: "Supervisor", value: appliedFilters.supervisors.length ? appliedFilters.supervisors.join(", ") : "Todos" },
             ]}
@@ -545,12 +514,8 @@ export function AnalisisCobranzasCohorteView() {
           {noCohorteData ? (
             <EmptyState
               className="analysis-empty"
-              message={
-                <>
-                  Sin datos de cobranzas por corte. Debe sincronizar dominios <strong>cartera</strong> y <strong>cobranzas</strong>
-                  para poblar <code>cobranzas_cohorte_agg</code>.
-                </>
-              }
+              message="No hay datos de cobranzas por corte para los criterios seleccionados."
+              suggestion="Prueba a cambiar el mes de cobro o los filtros. Si el sistema acaba de sincronizar, puede que aún no se hayan cargado los datos."
             />
           ) : null}
 
@@ -560,7 +525,7 @@ export function AnalisisCobranzasCohorteView() {
           {loadingSummary && !summary ? <LoadingState message="Cargando resumen inicial..." className="summary-loading-note" /> : null}
           {loadingDetail && summary ? <div className="summary-loading-note">Cargando detalle...</div> : null}
 
-          <div className={`analysis-results ${applying ? 'analysis-results-updating' : ''}`}>
+          <div className={`analysis-results data-transition ${applying || loadingSummary || loadingDetail ? 'data-transition--loading' : ''}`}>
             <div className="analysis-kpis">
               {kpiOrder.map((kpiId) => {
                 const card = kpiCards[kpiId]
@@ -601,7 +566,7 @@ export function AnalisisCobranzasCohorteView() {
               })}
             </div>
 
-            {!hasRows ? <EmptyState className="analysis-empty" message="Sin datos para los filtros seleccionados. Ajusta filtros y vuelve a aplicar." /> : null}
+            {!hasRows ? <EmptyState className="analysis-empty" message="Sin datos para los filtros seleccionados." suggestion="Ajusta los filtros y vuelve a aplicar para ver resultados." /> : null}
 
             <div className="analysis-table-section">
               <p className="analysis-table-caption">
@@ -669,20 +634,16 @@ export function AnalisisCobranzasCohorteView() {
               </div>
               {detailHasNext ? (
                 <div className="analysis-detail-more-wrap">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => void loadDetail(appliedFilters, detailPage + 1, true)}
-                    disabled={loadingDetail || applying}
-                  >
+                  <Button variant="outline" onPress={() => void loadDetail(appliedFilters, detailPage + 1, true)} isDisabled={loadingDetail || applying}>
                     {loadingDetail ? 'Cargando...' : 'Cargar más'}
-                  </button>
+                  </Button>
                 </div>
               ) : null}
             </div>
           </div>
         </>
       ) : null}
+      </Card>
     </section>
   )
 }

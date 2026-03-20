@@ -140,6 +140,8 @@ class SyncPerfSummaryOut(BaseModel):
     generated_at: str
     totals: dict[str, int | float]
     by_domain: dict[str, dict[str, int | float]]
+    by_step: dict[str, dict[str, int | float]] = Field(default_factory=dict)
+    last_completed_by_domain: dict[str, dict[str, str | int | float | None]] = Field(default_factory=dict)
     top_slowest_jobs: list[dict[str, str | int | float | None]] = Field(default_factory=list)
 
 

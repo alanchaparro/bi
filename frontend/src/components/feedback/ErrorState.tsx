@@ -1,4 +1,5 @@
 import React from "react";
+import { Button } from "@heroui/react";
 
 type ErrorStateProps = {
   message: string;
@@ -19,9 +20,9 @@ export function ErrorState({
     <div className={`ui-state ui-state-error ${className}`.trim()} role="alert">
       <span>{message}</span>
       {onRetry ? (
-        <button type="button" className="btn btn-secondary" onClick={onRetry} disabled={disabled}>
+        <Button variant="outline" size="sm" onPress={onRetry} isDisabled={disabled}>
           {retryLabel}
-        </button>
+        </Button>
       ) : null}
     </div>
   );

@@ -1,12 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button, Skeleton } from "@heroui/react";
 import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter";
 import { ActiveFilterChips, type FilterChip } from "../../components/filters/ActiveFilterChips";
+import { SegmentedControl } from "../../components/filters/SegmentedControl";
 import { ToastStack, type ToastMessage, type ToastType } from "../../components/feedback/ToastStack";
 import { LoadingState } from "../../components/feedback/LoadingState";
+import { AnalysisFiltersSkeleton } from "../../components/feedback/AnalysisFiltersSkeleton";
 import { ErrorState } from "../../components/feedback/ErrorState";
 import { EmptyState } from "../../components/feedback/EmptyState";
 import { AnalyticsPageHeader } from "../../components/analytics/AnalyticsPageHeader";
+import { AnalyticsMetaBadges } from "../../components/analytics/AnalyticsMetaBadges";
 import { AnalysisSelectionSummary } from "../../components/analytics/AnalysisSelectionSummary";
+import { MetricExplainer } from "../../components/analytics/MetricExplainer";
 import {
   getPortfolioCorteFirstPaint,
   getPortfolioCorteOptions,
@@ -300,22 +305,20 @@ function LegacyStackedColumnChart({
   const barGap = 4;
   const minChartWidth = Math.max(620, data.length * (barWidth + barGap) + 24);
   const barTotalPct = (value: number) => Math.max(0, Math.min(100, (value / Math.max(1, maxY)) * 100));
-  const axisTextColor = "var(--color-text-muted)";
-  const legendTextColor = "var(--color-text)";
-  const legendWeight = isLight ? 600 : 500;
   const axisBorder = isLight ? "1.2px solid var(--chart-grid)" : "1px solid var(--chart-grid)";
+  const legendBtnClass = `analysis-legend-btn min-w-0 w-auto p-0 ${isLight ? "analysis-legend-btn--light" : ""}`.trim();
 
   return (
     <div className="analysis-stack-wrap">
       <div className="analysis-stack-legend">
-        <button type="button" onClick={() => setHidden((s) => ({ ...s, a: !s.a }))} style={{ background: "transparent", border: "none", color: hidden.a ? axisTextColor : legendTextColor, cursor: "pointer", textDecoration: hidden.a ? "line-through" : "none", padding: 0, fontWeight: legendWeight }} title={hidden.a ? "Mostrar serie" : "Ocultar serie"}>
+        <Button size="sm" variant="ghost" className={legendBtnClass} data-hidden={hidden.a ? "true" : undefined} aria-label={hidden.a ? "Mostrar serie" : "Ocultar serie"} onPress={() => setHidden((s) => ({ ...s, a: !s.a }))}>
           <span className="analysis-legend-swatch-sm" style={{ background: aColor }} />{aLabel}
-        </button>
-        <button type="button" onClick={() => setHidden((s) => ({ ...s, b: !s.b }))} style={{ background: "transparent", border: "none", color: hidden.b ? axisTextColor : legendTextColor, cursor: "pointer", textDecoration: hidden.b ? "line-through" : "none", padding: 0, fontWeight: legendWeight }} title={hidden.b ? "Mostrar serie" : "Ocultar serie"}>
+        </Button>
+        <Button size="sm" variant="ghost" className={legendBtnClass} data-hidden={hidden.b ? "true" : undefined} aria-label={hidden.b ? "Mostrar serie" : "Ocultar serie"} onPress={() => setHidden((s) => ({ ...s, b: !s.b }))}>
           <span className="analysis-legend-swatch-sm" style={{ background: bColor }} />{bLabel}
-        </button>
+        </Button>
       </div>
-      <div className="analysis-stack-hoverline" style={{ color: axisTextColor }}>
+      <div className="analysis-stack-hoverline">
         {(() => {
           if (!hoveredLabel) return <span className="analysis-hover-hint">Pasa el mouse sobre una barra para ver porcentajes</span>;
           const row = data.find((d) => d.label === hoveredLabel);
@@ -326,12 +329,12 @@ function LegacyStackedColumnChart({
           const bPct = ((b / total) * 100).toFixed(1);
           return (
             <>
-              <span className="analysis-stack-hover-label" style={{ color: "var(--color-text)" }}>{hoveredLabel}</span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 999, padding: "0.1rem 0.45rem", color: "var(--color-text)", flex: "0 0 auto" }}>
+              <span className="analysis-stack-hover-label">{hoveredLabel}</span>
+              <span className="analysis-stack-hover-badge">
                 <span className="analysis-legend-swatch-xs" style={{ background: aColor }} />
                 {aLabel}: {aPct}%
               </span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 999, padding: "0.1rem 0.45rem", color: "var(--color-text)", flex: "0 0 auto" }}>
+              <span className="analysis-stack-hover-badge">
                 <span className="analysis-legend-swatch-xs" style={{ background: bColor }} />
                 {bLabel}: {bPct}%
               </span>
@@ -342,7 +345,7 @@ function LegacyStackedColumnChart({
       <div className="analysis-chart-scroll">
         <div style={{ minWidth: minChartWidth, display: "grid", gridTemplateColumns: "56px 1fr", gap: "0.35rem" }}>
           <div style={{ position: "relative", height: chartHeight }}>
-            {yTicks.map((tick, idx) => <div key={tick} style={{ position: "absolute", left: 0, right: 0, bottom: `${(idx / (yTicks.length - 1)) * 100}%`, transform: "translateY(50%)", fontSize: "0.72rem", color: axisTextColor }}>{formatCount(tick)}</div>)}
+            {yTicks.map((tick, idx) => <div key={tick} className="analysis-axis-tick" style={{ bottom: `${(idx / (yTicks.length - 1)) * 100}%` }}>{formatCount(tick)}</div>)}
           </div>
           <div style={{ position: "relative", height: chartHeight, borderLeft: axisBorder, borderBottom: axisBorder, display: "flex", alignItems: "flex-end", gap: `${barGap}px`, padding: "0", width: "100%" }}>
             {yTicks.map((tick, idx) => <div key={`grid-${tick}`} style={{ position: "absolute", left: 0, right: 0, bottom: `${(idx / (yTicks.length - 1)) * 100}%`, borderTop: "1px solid var(--chart-grid-soft)" }} />)}
@@ -403,7 +406,7 @@ function LegacyStackedColumnChart({
           </div>
           <div />
           <div className="analysis-stack-labels" style={{ gap: `${barGap}px` }}>
-            {data.map((d) => <div key={`lbl-${d.label}`} style={{ flex: "1 1 0", minWidth: `${barWidth}px`, fontSize: "0.62rem", color: axisTextColor, writingMode: "vertical-rl", transform: "rotate(180deg)", textAlign: "left" }}>{d.label}</div>)}
+            {data.map((d) => <div key={`lbl-${d.label}`} className="analysis-bar-label" style={{ minWidth: `${barWidth}px` }}>{d.label}</div>)}
           </div>
         </div>
       </div>
@@ -595,6 +598,7 @@ export function AnalisisCarteraView() {
   }, [summaryData, yearSort]);
   const vigMorByMonth = useMemo(() => Object.entries(summaryData?.charts?.series_vigente_moroso_by_month || {}).map(([label, val]) => ({ label, a: Number(val?.vigente || 0), b: Number(val?.moroso || 0) })).sort((a, b) => monthRank(a.label) - monthRank(b.label)), [summaryData]);
   const viaByMonth = useMemo(() => Object.entries(summaryData?.charts?.series_cobrador_debito_by_month || {}).map(([label, val]) => ({ label, a: Number(val?.cobrador || 0), b: Number(val?.debito || 0) })).sort((a, b) => monthRank(a.label) - monthRank(b.label)), [summaryData]);
+  const effectiveMeta = kpiSummaryData?.meta || summaryData?.meta || optionsData?.meta;
   const effectiveKpis = kpiSummaryData?.kpis || summaryData?.kpis;
   const totalContracts = Number(effectiveKpis?.total_cartera || 0);
   const totalAmount = Number(effectiveKpis?.monto_total_corte || 0);
@@ -613,7 +617,7 @@ export function AnalisisCarteraView() {
     setKpiOrder((prev) => { const fromIdx = prev.indexOf(fromId); const toIdx = prev.indexOf(toId); if (fromIdx < 0 || toIdx < 0) return prev; const next = [...prev]; next.splice(fromIdx, 1); next.splice(toIdx, 0, fromId); return next; });
   }, []);
 
-  const chartCards: Record<ChartId, { title: string; content: JSX.Element }> = {
+  const chartCards: Record<ChartId, { title: string; content: React.ReactElement }> = {
     series_vig_mor_month: { title: "Cartera por Gestión: Vigente vs Moroso", content: <LegacyStackedColumnChart data={vigMorByMonth} aLabel="Vigente" bLabel="Moroso" aColor="var(--color-state-ok)" bColor="var(--color-state-warn)" isLight={isLightTheme} /> },
     series_via_month: { title: "Cartera por Gestión: Cobrador vs Débito", content: <LegacyStackedColumnChart data={viaByMonth} aLabel="Cobrador" bLabel="Débito" aColor="var(--color-chart-1)" bColor="var(--color-chart-2)" isLight={isLightTheme} /> },
     by_un: { title: "Contratos por Unidad de Negocio", content: <BarChart data={byUn} isLight={isLightTheme} colors={chartPalette} /> },
@@ -642,8 +646,8 @@ export function AnalisisCarteraView() {
   const activeFilterChips = useMemo<FilterChip[]>(() => {
     const blocks: Array<{ key: keyof Filters; label: string }> = [
       { key: "uns", label: "UN" }, { key: "supervisors", label: "Supervisor" }, { key: "years", label: "Año Contrato" },
-      { key: "vias", label: "Via" }, { key: "tramos", label: "Tramo" }, { key: "categorias", label: "Categoria" },
-      { key: "gestionMonths", label: "Gestion" }, { key: "closeMonths", label: "Cierre" },
+      { key: "vias", label: "Vía de cobro" }, { key: "tramos", label: "Tramo" }, { key: "categorias", label: "Categoría" },
+      { key: "gestionMonths", label: "Mes de gestión" }, { key: "closeMonths", label: "Mes de cierre" },
     ];
     return blocks.flatMap((b) => filters[b.key].map((value) => ({ key: b.key, label: b.label, value })));
   }, [filters]);
@@ -653,49 +657,58 @@ export function AnalisisCarteraView() {
   }, []);
 
   return (
-    <section className="card analysis-card analysis-panel-card">
+    <section className="card analysis-card analysis-panel-card rendimiento-panel">
       <ToastStack items={toastQueue} onDismiss={dismissToast} />
       <AnalyticsPageHeader
-        kicker="Panel ejecutivo"
-        pill="Cartera"
-        title="Análisis de Cartera"
-        subtitle="Corte de cartera por unidad de negocio, tramo, vía y cierre."
+        kicker="CARTERA"
+        pill="Analytics v2"
+        title="Analisis de cartera"
+        subtitle="Corte de cartera por unidad de negocio, tramo, via de cobro, mes de gestion y mes de cierre."
+        meta={<AnalyticsMetaBadges meta={effectiveMeta} />}
+      />
+      <MetricExplainer
+        items={[
+          {
+            label: "Mes de gestion",
+            formula: "gestion_month = cierre + 1 mes",
+            note: "Los reportes operativos trabajan por gestion; no confundir con mes de cierre.",
+          },
+          {
+            label: "Categorias por tramo",
+            formula: "VIGENTE = 0..3 | MOROSO = >3",
+            note: "La clasificacion visible en cartera debe respetar esta regla en todos los cortes.",
+          },
+          {
+            label: "Monto a cobrar",
+            formula: "monto_vencido + monto_cuota",
+            note: "Monto vencido no es igual a monto a cobrar.",
+          },
+        ]}
       />
       {loadingOptions ? (
-        <div className="analysis-skeleton-wrap" aria-live="polite" aria-busy="true">
-          <div className="analysis-skeleton-grid">
-            <div className="analysis-skeleton-input" />
-            <div className="analysis-skeleton-input" />
-            <div className="analysis-skeleton-input" />
-            <div className="analysis-skeleton-input" />
-            <div className="analysis-skeleton-input" />
-          </div>
-          <div className="analysis-skeleton-kpis">
-            <div className="analysis-skeleton-kpi" />
-            <div className="analysis-skeleton-kpi" />
-            <div className="analysis-skeleton-kpi" />
-            <div className="analysis-skeleton-kpi" />
-            <div className="analysis-skeleton-kpi" />
-            <div className="analysis-skeleton-kpi" />
-          </div>
-          <div className="analysis-skeleton-table" />
-        </div>
+        <AnalysisFiltersSkeleton filterCount={8} kpiCount={6} showTable />
       ) : (
         <>
+      <div className="rendimiento-filters-panel">
       <div className="analysis-filters-grid">
-        <MultiSelectFilter className="analysis-filter-control" label="Unidad de Negocio" options={options.uns || []} selected={filters.uns} onChange={(uns) => setFilters((f) => ({ ...f, uns }))} />
+        <MultiSelectFilter className="analysis-filter-control" label="Unidad de negocio" options={options.uns || []} selected={filters.uns} onChange={(uns) => setFilters((f) => ({ ...f, uns }))} />
         <MultiSelectFilter className="analysis-filter-control" label="Supervisor" options={options.supervisors || []} selected={filters.supervisors} onChange={(supervisors) => setFilters((f) => ({ ...f, supervisors }))} />
-        <MultiSelectFilter className="analysis-filter-control" label="Año de Contrato" options={options.contract_years || []} selected={filters.years} onChange={(years) => setFilters((f) => ({ ...f, years }))} />
-        <MultiSelectFilter className="analysis-filter-control" label="Vía de Cobro" options={options.vias || []} selected={filters.vias} onChange={(vias) => setFilters((f) => ({ ...f, vias }))} />
+        <MultiSelectFilter className="analysis-filter-control" label="Año de contrato" options={options.contract_years || []} selected={filters.years} onChange={(years) => setFilters((f) => ({ ...f, years }))} />
+        <MultiSelectFilter className="analysis-filter-control" label="Vía de cobro" options={options.vias || []} selected={filters.vias} onChange={(vias) => setFilters((f) => ({ ...f, vias }))} />
         <MultiSelectFilter className="analysis-filter-control" label="Tramo" options={options.tramos || []} selected={filters.tramos} onChange={(tramos) => setFilters((f) => ({ ...f, tramos }))} />
         <MultiSelectFilter className="analysis-filter-control" label="Categoría" options={options.categories || []} selected={filters.categorias} onChange={(categorias) => setFilters((f) => ({ ...f, categorias }))} />
-        <MultiSelectFilter className="analysis-filter-control" label="Fecha de Gestión" options={options.gestion_months || []} selected={filters.gestionMonths} onChange={(gestionMonths) => setFilters((f) => ({ ...f, gestionMonths }))} />
-        <MultiSelectFilter className="analysis-filter-control" label="Fecha de Cierre" options={options.close_months || []} selected={filters.closeMonths} onChange={(closeMonths) => setFilters((f) => ({ ...f, closeMonths }))} />
+        <MultiSelectFilter className="analysis-filter-control" label="Mes de gestión" options={options.gestion_months || []} selected={filters.gestionMonths} onChange={(gestionMonths) => setFilters((f) => ({ ...f, gestionMonths }))} />
+        <MultiSelectFilter className="analysis-filter-control" label="Mes de cierre" options={options.close_months || []} selected={filters.closeMonths} onChange={(closeMonths) => setFilters((f) => ({ ...f, closeMonths }))} />
+      </div>
+      <div className="rendimiento-filter-hints" role="note" aria-label="Ayuda de filtros">
+        <span className="rendimiento-filter-hint">Mes de gestión usa `gestion_month`.</span>
+        <span className="rendimiento-filter-hint">Mes de cierre no equivale a gestión.</span>
+        <span className="rendimiento-filter-hint">ODONTOLOGIA TTO se mantiene separada de ODONTOLOGIA.</span>
       </div>
       <div className="analysis-actions-row analysis-actions">
-        <button type="button" className="btn btn-primary" onClick={() => void applyFilters()} disabled={loadingOptions || isApplyingFilters}>{isApplyingFilters ? <span className="inline-spinner" aria-hidden /> : null}{isApplyingFilters ? "Aplicando..." : "Aplicar filtros"}</button>
-        <button type="button" className="btn btn-secondary" onClick={clearFilters} disabled={loadingOptions || isApplyingFilters}>Limpiar filtros</button>
-        <button type="button" className="btn btn-secondary" onClick={() => void resetDefaults()} disabled={loadingOptions || isApplyingFilters}>Resetear filtros</button>
+        <Button variant="primary" onPress={() => void applyFilters()} isDisabled={loadingOptions || isApplyingFilters}>{isApplyingFilters ? <span className="inline-spinner" aria-hidden /> : null}{isApplyingFilters ? "Aplicando..." : "Aplicar filtros"}</Button>
+        <Button variant="outline" onPress={clearFilters} isDisabled={loadingOptions || isApplyingFilters}>Limpiar</Button>
+        <Button variant="outline" onPress={() => void resetDefaults()} isDisabled={loadingOptions || isApplyingFilters}>Restablecer</Button>
         <span className="analysis-active-count">
           {activeFilterChips.length} filtro{activeFilterChips.length === 1 ? "" : "s"} activo{activeFilterChips.length === 1 ? "" : "s"}
         </span>
@@ -711,6 +724,7 @@ export function AnalisisCarteraView() {
       </div>
       <div className="analysis-active-filters">
         <ActiveFilterChips chips={activeFilterChips} onRemove={removeChip} />
+      </div>
       </div>
       {optionsError && (
         <ErrorState
@@ -728,14 +742,14 @@ export function AnalisisCarteraView() {
       )}
 
       {!summaryError && (
-        <>
+        <div className={`data-transition ${loadingSummary || loadingKpis ? "data-transition--loading" : ""}`}>
         <AnalysisSelectionSummary
           items={[
             { label: "UN", value: appliedFilters.uns.join(", ") || "Todas" },
             { label: "Año contrato", value: appliedFilters.years.join(", ") || "Todos" },
-            { label: "Gestión", value: appliedFilters.gestionMonths.join(", ") || "Todos" },
-            { label: "Cierre", value: appliedFilters.closeMonths.join(", ") || "Todos" },
-            { label: "Vía", value: appliedFilters.vias.join(", ") || "Todas" },
+            { label: "Mes de gestión", value: appliedFilters.gestionMonths.join(", ") || "Todos" },
+            { label: "Mes de cierre", value: appliedFilters.closeMonths.join(", ") || "Todos" },
+            { label: "Vía de cobro", value: appliedFilters.vias.join(", ") || "Todas" },
             { label: "Supervisor", value: appliedFilters.supervisors.join(", ") || "Todos" },
             { label: "Categoría", value: appliedFilters.categorias.join(", ") || "Todas" },
             { label: "Tramo", value: appliedFilters.tramos.join(", ") || "Todos" },
@@ -743,28 +757,25 @@ export function AnalisisCarteraView() {
         />
         {!loadingSummary && !loadingKpis && totalContracts === 0 ? (
           <EmptyState
-            message="No hay datos para la combinación seleccionada. Ajusta filtros y vuelve a aplicar."
+            message="No hay datos para la combinación seleccionada."
+            suggestion="Ajusta mes de gestión, mes de cierre, categoría o unidad de negocio y vuelve a aplicar filtros."
             className="analysis-empty"
           />
         ) : null}
-        <div className="kpi-mode-toggle">
-          <button
-            type="button"
-            className={`btn btn-secondary ${kpiMode === "last_close" ? "active" : ""}`}
-            onClick={() => setKpiMode("last_close")}
-            disabled={isApplyingFilters}
-          >
-            Usar ultimo cierre de la seleccion
-          </button>
-          <button
-            type="button"
-            className={`btn btn-secondary ${kpiMode === "filters" ? "active" : ""}`}
-            onClick={() => setKpiMode("filters")}
-            disabled={isApplyingFilters}
-          >
-            Usar filtros (acumulado)
-          </button>
-        </div>
+        <SegmentedControl
+          className="kpi-mode-toggle"
+          label="Criterio de KPIs"
+          options={[
+            { value: "last_close", label: "Usar último cierre de la selección" },
+            { value: "filters", label: "Usar filtros (acumulado)" },
+          ]}
+          value={kpiMode}
+          onChange={(v) => setKpiMode(v as KpiMode)}
+          isDisabled={isApplyingFilters}
+          size="md"
+          fullWidth={false}
+          aria-label="Criterio de KPIs: último cierre o filtros acumulados"
+        />
         {loadingSummary || loadingKpis ? <LoadingState message="Cargando resumen..." className="summary-loading-note" /> : null}
         <div className={`summary-grid ${loadingSummary || loadingKpis ? "summary-grid-loading" : ""}`}>
           {kpiOrder.map((kpiId) => {
@@ -772,7 +783,7 @@ export function AnalisisCarteraView() {
             if (loadingSummary || loadingKpis) {
               return (
                 <article key={`s-${kpiId}`} className={`card kpi-card analysis-card-pad ${k.isHero ? "kpi-card-hero" : ""}`}>
-                  <div className="kpi-skeleton" />
+                  <Skeleton className="kpi-skeleton kpi-skeleton-heroui" animationType="shimmer" />
                 </article>
               );
             }
@@ -834,7 +845,7 @@ export function AnalisisCarteraView() {
                 <div className="chart-card-header">
                   <h3 className="analysis-chart-title">{card.title}</h3>
                   <div className="analysis-chart-actions">
-                    {chartId === "by_contract_year" && <button type="button" className="btn btn-secondary analysis-sort-btn" onClick={() => setYearSort((prev) => (prev === "desc" ? "asc" : "desc"))} title="Ordenar por cantidad">{yearSort === "desc" ? "Mayor->Menor" : "Menor->Mayor"}</button>}
+                    {chartId === "by_contract_year" && <Button size="sm" variant="outline" className="analysis-sort-btn" onPress={() => setYearSort((prev) => (prev === "desc" ? "asc" : "desc"))} aria-label="Ordenar por cantidad">{yearSort === "desc" ? "Mayor->Menor" : "Menor->Mayor"}</Button>}
                     <span className="chart-drag-handle" title="Arrastrar para reordenar" aria-hidden>::</span>
                   </div>
                 </div>
@@ -843,11 +854,10 @@ export function AnalisisCarteraView() {
             );
           })}
         </div>
-        </>
+        </div>
       )}
         </>
       )}
     </section>
   );
 }
-

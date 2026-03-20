@@ -12,39 +12,23 @@ from time import monotonic, sleep as time_sleep
 from typing import Any
 
 import mysql.connector
-from sqlalchemy import Integer, Numeric, and_, case, cast, func, literal, select, text as sa_text, tuple_ as sa_tuple
+from sqlalchemy import Integer, and_, case, cast, func, select, text as sa_text, tuple_ as sa_tuple
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from app.core.analytics_cache import invalidate_endpoint, invalidate_prefix, set as cache_set
+from app.core.analytics_cache import invalidate_endpoint, invalidate_prefix
 from app.core.config import settings
 from app.db.session import SessionLocal, engine
+from app.domain import canonical_un, canonical_via, categoria_from_tramo, category_expr_for_tramo, default_un_mappings
+from app.domain.calendar_rules import add_months, month_from_any, month_serial, normalize_month
 from app.models.brokers import (
-    AnalyticsContractSnapshot,
-    AnalyticsSourceFreshness,
     AnalyticsFact,
-    DimTime,
-    DimUn,
-    DimSupervisor,
-    DimVia,
-    DimCategoria,
-    DimContractMonth,
     CarteraFact,
-    CarteraCorteAgg,
-    CobranzasCohorteAgg,
     CobranzasFact,
     ContratosFact,
-    DimNegocioContrato,
     DimNegocioUnMap,
     GestoresFact,
-    AnalyticsRendimientoAgg,
-    AnalyticsAnualesAgg,
-    MvOptionsCartera,
-    MvOptionsCohorte,
-    MvOptionsRendimiento,
-    MvOptionsAnuales,
     SyncChunkManifest,
     SyncExtractLog,
     SyncStagingRow,
@@ -55,23 +39,48 @@ from app.models.brokers import (
     SyncSchedule,
     SyncWatermark,
 )
-from app.schemas.analytics import AnalyticsFilters, CobranzasCohorteFirstPaintIn, CobranzasCohorteIn, PortfolioSummaryIn
 from app.services.analytics_service import AnalyticsService, cohorte_base_cache_clear
 from app.services.brokers_config_service import BrokersConfigService
+from app.services.sync_cache import prewarm_analytics_cache_after_sync
+from app.services.sync_extractors import (
+    MYSQL_PRECHECK_QUERIES,
+    SYNC_DOMAIN_QUERIES,
+    load_sql_with_includes,
+    query_file_for,
+    query_filename_for,
+    query_path_for,
+)
+from app.services.sync_normalizers import (
+    dedupe_rows_in_chunk,
+    fact_row_from_normalized,
+    normalize_payment_via_class,
+    normalize_record,
+)
+from app.services.sync_refresh import (
+    bootstrap_mv_options_full,
+    refresh_analytics_snapshot,
+    mv_options_consistency_report,
+    refresh_analytics_anuales_agg,
+    refresh_analytics_rendimiento_agg,
+    refresh_cartera_corte_agg,
+    refresh_cobranzas_cohorte_agg,
+    refresh_dim_contract_month_and_catalogs,
+    refresh_dim_negocio_contrato,
+    refresh_dim_time,
+    refresh_mv_options_tables,
+    refresh_source_freshness_snapshots,
+)
+from app.services.sync_schedules import (
+    create_schedule as create_schedule_record,
+    delete_schedule as delete_schedule_record,
+    get_schedule as get_schedule_record,
+    list_schedules as list_schedules_records,
+    pause_schedule as pause_schedule_record,
+    resume_schedule as resume_schedule_record,
+    run_schedule_now as run_schedule_now_record,
+    update_schedule as update_schedule_record,
+)
 
-SYNC_DOMAIN_QUERIES = {
-    'analytics': 'query_analytics.sql',
-    'cartera': 'query.sql',
-    'cobranzas': 'query_cobranzas.sql',
-    'contratos': 'query_contratos.sql',
-    'gestores': 'query_gestores.sql',
-}
-SYNC_DOMAIN_QUERIES_V2 = {
-    'cartera': 'sql/v2/query_cartera.sql',
-    'cobranzas': 'sql/v2/query_cobranzas.sql',
-    'contratos': 'sql/v2/query_contratos.sql',
-    'gestores': 'sql/v2/query_gestores.sql',
-}
 INCLUDE_DIRECTIVE_RE = re.compile(r'^\s*--\s*@include\s+(.+?)\s*$')
 
 BUSINESS_KEY_FIELDS = ['domain', 'contract_id', 'gestion_month', 'supervisor', 'un', 'via', 'tramo']
@@ -92,46 +101,6 @@ MYSQL_INCREMENTAL_HINTS = {
     'gestores': {'updated_col': 'from_date', 'id_col': 'contract_id', 'format': '%Y-%m-%d'},
 }
 
-# Lightweight pre-check SQL per domain: returns max_updated, max_id for comparison with watermark.
-# Same logical filters as main query; on error caller should assume new data (run full sync).
-MYSQL_PRECHECK_QUERIES = {
-    'cartera': """
-        SELECT MAX(ccd.closed_date) AS max_updated, MAX(ccd.contract_id) AS max_id
-        FROM epem.contract_closed_dates ccd
-        JOIN epem.contracts c ON ccd.contract_id = c.id
-        WHERE ccd.closed_date > '2020-12-31' AND c.enterprise_id IN (1, 2, 5)
-    """,
-    'cobranzas': """
-        SELECT MAX(p.updated_at) AS max_updated, MAX(p.id) AS max_id
-        FROM account_payment_ways apw
-        JOIN payments p ON apw.payment_id = p.id
-        JOIN contracts c ON p.contract_id = c.id
-        WHERE p.status = 1
-          AND p.type < 2
-          AND p.date >= '2021-01-01'
-          AND c.enterprise_id IN (1, 2, 5)
-          AND p.contract_id NOT IN (55411, 55414, 59127, 59532, 60402)
-    """,
-    'contratos': """
-        SELECT MAX(c.updated_at) AS max_updated, MAX(c.id) AS max_id
-        FROM contracts c
-        JOIN enterprises e ON e.id = c.enterprise_id
-        WHERE c.status IN (5, 6) AND e.id IN (1, 2, 5)
-    """,
-    'gestores': """
-        SELECT MAX(cp.from_date) AS max_updated, MAX(dcp.contract_id) AS max_id
-        FROM detail_client_portfolios dcp
-        JOIN contracts c ON dcp.contract_id = c.id
-        JOIN client_portfolios cp ON dcp.clientportfolio_id = cp.id
-        JOIN users u ON cp.manager_id = u.id
-        WHERE u.id <> 696
-          AND cp.from_date >= '2024-01-01'
-          AND c.enterprise_id IN (1, 2, 5)
-          AND cp.status = 1
-    """,
-}
-
-
 def _target_table_name(domain: str) -> str:
     return FACT_TABLE_BY_DOMAIN[domain].__tablename__
 
@@ -149,76 +118,20 @@ def _path_within(path: Path, parent: Path) -> bool:
 
 
 def _query_variant_for_domain(domain: str) -> str:
-    domain_key = str(domain or '').strip().lower()
-    if domain_key not in SYNC_DOMAIN_QUERIES_V2:
-        return 'v1'
-    env_by_domain = {
-        'cartera': 'sync_query_variant_cartera',
-        'cobranzas': 'sync_query_variant_cobranzas',
-        'contratos': 'sync_query_variant_contratos',
-        'gestores': 'sync_query_variant_gestores',
-    }
-    attr = env_by_domain.get(domain_key)
-    raw = str(getattr(settings, attr, 'v1') if attr else 'v1').strip().lower()
-    if raw not in {'v1', 'v2'}:
-        logger.warning('[sync:%s] invalid query variant=%s, fallback=v1', domain_key, raw)
-        return 'v1'
-    return raw
+    filename = query_filename_for(domain)
+    return 'v2' if str(filename).startswith('sql/v2/') else 'v1'
 
 
 def _query_filename_for(domain: str) -> str:
-    domain_key = str(domain or '').strip().lower()
-    if domain_key not in SYNC_DOMAIN_QUERIES:
-        raise KeyError(f'unknown sync domain: {domain_key}')
-    variant = _query_variant_for_domain(domain_key)
-    if variant == 'v2' and domain_key in SYNC_DOMAIN_QUERIES_V2:
-        return SYNC_DOMAIN_QUERIES_V2[domain_key]
-    return SYNC_DOMAIN_QUERIES[domain_key]
+    return query_filename_for(domain)
 
 
 def _query_file_for(domain: str) -> str:
-    try:
-        return _query_filename_for(domain)
-    except Exception:
-        return SYNC_DOMAIN_QUERIES.get(str(domain or '').strip().lower(), '')
+    return query_file_for(domain)
 
 
 def _prewarm_analytics_cache_after_sync(db: Session, domain: str) -> None:
-    """Best-effort cache prewarm to improve first paint after sync."""
-    try:
-        base_filters = AnalyticsFilters()
-        if domain in {'cartera', 'cobranzas', 'analytics'}:
-            portfolio_options = AnalyticsService.fetch_portfolio_corte_options_v2(db, base_filters)
-            cache_set('portfolio/corte/options', base_filters, portfolio_options, ttl_seconds=600)
-            cache_set('portfolio-corte-v2/options', base_filters, portfolio_options, ttl_seconds=600)
-            portfolio_summary = AnalyticsService.fetch_portfolio_corte_summary_v2(db, PortfolioSummaryIn(include_rows=False))
-            cache_set('portfolio-corte-v2/summary', PortfolioSummaryIn(include_rows=False), portfolio_summary, ttl_seconds=180)
-            portfolio_fp_filters = PortfolioSummaryIn(include_rows=False)
-            portfolio_fp = AnalyticsService.fetch_portfolio_corte_first_paint_v2(db, portfolio_fp_filters)
-            cache_set('portfolio-corte-v2/first-paint', portfolio_fp_filters, portfolio_fp, ttl_seconds=180)
-            rendimiento_options = AnalyticsService.fetch_rendimiento_options_v2(db, base_filters)
-            cache_set('rendimiento-v2/options', base_filters, rendimiento_options, ttl_seconds=120)
-            rendimiento_summary = AnalyticsService.fetch_rendimiento_summary_v2(db, base_filters)
-            cache_set('rendimiento-v2/summary', base_filters, rendimiento_summary, ttl_seconds=300)
-            rendimiento_fp = AnalyticsService.fetch_rendimiento_first_paint_v2(db, base_filters)
-            cache_set('rendimiento-v2/first-paint', base_filters, rendimiento_fp, ttl_seconds=180)
-            anuales_options = AnalyticsService.fetch_anuales_options_v2(db, base_filters)
-            cache_set('anuales-v2/options', base_filters, anuales_options, ttl_seconds=120)
-            anuales_summary = AnalyticsService.fetch_anuales_summary_v2(db, base_filters)
-            cache_set('anuales-v2/summary', base_filters, anuales_summary, ttl_seconds=300)
-            anuales_fp = AnalyticsService.fetch_anuales_first_paint_v2(db, base_filters)
-            cache_set('anuales-v2/first-paint', base_filters, anuales_fp, ttl_seconds=180)
-        if domain in {'cobranzas', 'cartera'}:
-            cohorte_options_filters = CobranzasCohorteIn()
-            cohorte_options = AnalyticsService.fetch_cobranzas_cohorte_options_v1(db, cohorte_options_filters)
-            cache_set('cobranzas-cohorte/options', cohorte_options_filters, cohorte_options, ttl_seconds=1800)
-            cache_set('cobranzas-cohorte-v2/options', cohorte_options_filters, cohorte_options, ttl_seconds=1800)
-            cohorte_fp_filters = CobranzasCohorteFirstPaintIn()
-            cohorte_fp = AnalyticsService.fetch_cobranzas_cohorte_first_paint_v2(db, cohorte_fp_filters)
-            cache_set('cobranzas-cohorte-v2/first-paint', cohorte_fp_filters, cohorte_fp, ttl_seconds=300)
-        _append_log(domain, 'Cache prewarm completado (best-effort)')
-    except Exception as exc:
-        _append_log(domain, f'Cache prewarm omitido: {exc}')
+    prewarm_analytics_cache_after_sync(db, domain, _append_log)
 
 
 def _job_step_from_stage(stage: str | None) -> str | None:
@@ -249,6 +162,27 @@ def _status_log_list(log_json: str | None) -> list[str]:
         return []
     return [str(x) for x in parsed]
 
+
+def _percentile(values: list[float], p: float) -> float:
+    if not values:
+        return 0.0
+    if len(values) == 1:
+        return float(values[0])
+    sorted_values = sorted(float(v) for v in values)
+    rank = (len(sorted_values) - 1) * p
+    low = int(rank)
+    high = min(low + 1, len(sorted_values) - 1)
+    weight = rank - low
+    return float(sorted_values[low] * (1.0 - weight) + sorted_values[high] * weight)
+
+
+def _json_loads_dict(value: str | None) -> dict[str, Any]:
+    try:
+        parsed = json.loads(value or '{}')
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
 _state_lock = threading.Lock()
 _state_by_domain: dict[str, dict] = {}
 _running_by_domain: set[str] = set()
@@ -272,8 +206,7 @@ def _iso_utc(dt: datetime | None) -> str | None:
 
 
 def _query_path_for(domain: str) -> Path:
-    filename = _query_filename_for(domain)
-    return _repo_root() / filename
+    return query_path_for(domain)
 
 
 def _relative_repo_path(path: Path) -> str:
@@ -290,58 +223,11 @@ def _load_sql_with_includes(
     max_depth: int = 5,
     stack: tuple[Path, ...] | None = None,
 ) -> tuple[str, list[str]]:
-    resolved_path = query_path.resolve()
-    if stack is None:
-        stack = tuple()
-    if depth > max_depth:
-        chain = ' -> '.join(_relative_repo_path(p) for p in stack)
-        raise ValueError(f'include depth exceeded (max={max_depth}): {chain}')
-    if resolved_path in stack:
-        chain = ' -> '.join(_relative_repo_path(p) for p in (*stack, resolved_path))
-        raise ValueError(f'circular include detected: {chain}')
-    if not resolved_path.exists():
-        raise FileNotFoundError(f'SQL file not found: {_relative_repo_path(resolved_path)}')
-
-    allowed_roots = (
-        (_repo_root() / 'sql' / 'common').resolve(),
-        (_repo_root() / 'sql' / 'v2').resolve(),
-    )
-    output_lines: list[str] = []
-    includes: list[str] = []
-    text = resolved_path.read_text(encoding='utf-8')
-    for line in text.splitlines():
-        match = INCLUDE_DIRECTIVE_RE.match(line)
-        if not match:
-            output_lines.append(line)
-            continue
-        include_ref = str(match.group(1) or '').strip()
-        include_path = (_repo_root() / include_ref).resolve()
-        if not any(_path_within(include_path, root) for root in allowed_roots):
-            raise ValueError(f'include path not allowed: {include_ref}')
-        if not include_path.exists():
-            raise FileNotFoundError(f'include file not found: {include_ref}')
-        include_sql, nested = _load_sql_with_includes(
-            include_path,
-            depth=depth + 1,
-            max_depth=max_depth,
-            stack=(*stack, resolved_path),
-        )
-        includes.append(_relative_repo_path(include_path))
-        includes.extend(nested)
-        output_lines.append(include_sql)
-    return '\n'.join(output_lines).strip() + '\n', includes
+    return load_sql_with_includes(query_path, depth=depth, max_depth=max_depth, stack=stack)
 
 
 def _month_serial(mm_yyyy: str) -> int:
-    text = str(mm_yyyy or '').strip()
-    parts = text.split('/')
-    if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
-        return 0
-    month = int(parts[0])
-    year = int(parts[1])
-    if month < 1 or month > 12:
-        return 0
-    return year * 12 + month
+    return month_serial(mm_yyyy)
 
 
 def _year_of(mm_yyyy: str) -> int:
@@ -385,42 +271,55 @@ def _semantic_refresh_month_batches(affected_months: set[str]) -> list[list[str]
 
 
 def _month_add(mm_yyyy: str, delta_months: int) -> str:
-    serial = _month_serial(mm_yyyy)
-    if serial <= 0:
-        return ''
-    abs_month = serial + int(delta_months)
-    if abs_month <= 0:
-        return ''
-    year = abs_month // 12
-    month = abs_month % 12
-    if month == 0:
-        month = 12
-        year -= 1
-    if year <= 0:
-        return ''
-    return f'{month:02d}/{year}'
+    return add_months(mm_yyyy, delta_months)
 
 
 def _parse_month(value: object) -> str:
-    if value is None:
-        return ''
-    text = str(value).strip()
-    if not text:
-        return ''
-    if '/' in text:
-        parts = text.split('/')
-        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit() and len(parts[1]) == 4:
-            month = int(parts[0])
-            if 1 <= month <= 12:
-                return f'{month:02d}/{parts[1]}'
-    formats = ['%Y-%m-%d', '%Y/%m/%d', '%d/%m/%Y', '%Y-%m-%d %H:%M:%S']
-    for fmt in formats:
-        try:
-            dt = datetime.strptime(text, fmt)
-            return dt.strftime('%m/%Y')
-        except ValueError:
-            continue
-    return ''
+    return normalize_month(value)
+
+
+def _filters_month_values(filters: dict | None, *keys: str) -> set[str]:
+    if not isinstance(filters, dict):
+        return set()
+    values: set[str] = set()
+    for key in keys:
+        raw = filters.get(key)
+        if isinstance(raw, list):
+            for item in raw:
+                text = str(item or '').strip()
+                if text:
+                    values.add(text)
+        elif raw is not None:
+            text = str(raw or '').strip()
+            if text:
+                values.add(text)
+    return values
+
+
+def _invalidate_when_months_overlap(filters: dict | None, target_months: set[str], *keys: str) -> bool:
+    if not target_months or not isinstance(filters, dict):
+        return True
+    selected = _filters_month_values(filters, *keys)
+    if not selected:
+        return True
+    return bool(selected.intersection(target_months))
+
+
+def _invalidate_cartera_cache(filters: dict | None, target_gestion_months: set[str]) -> bool:
+    if not target_gestion_months or not isinstance(filters, dict):
+        return True
+    target_close_months = {
+        _month_add(month, -1)
+        for month in target_gestion_months
+        if _month_serial(month) > 0 and _month_serial(_month_add(month, -1)) > 0
+    }
+    selected_gestion = _filters_month_values(filters, 'gestion_month', 'contract_month')
+    selected_close = _filters_month_values(filters, 'close_month')
+    if not selected_gestion and not selected_close:
+        return True
+    if selected_gestion.intersection(target_gestion_months):
+        return True
+    return bool(selected_close.intersection(target_close_months))
 
 
 def _parse_date_key(value: object) -> str:
@@ -469,10 +368,7 @@ def _parse_payment_date(row: dict) -> date | None:
 
 
 def _normalize_payment_via_class(value: str) -> str:
-    text = str(value or '').strip().upper()
-    if text == 'COBRADOR':
-        return 'COBRADOR'
-    return 'DEBITO'
+    return normalize_payment_via_class(value)
 
 
 def _normalize_key(row: dict, *candidates: str) -> str:
@@ -828,20 +724,16 @@ def _source_dedupe_key(normalized: dict) -> tuple:
     return tuple(normalized[k] for k in BUSINESS_KEY_FIELDS)
 
 
+def _normalize_record(domain: str, row: dict, seq: int) -> dict:
+    return normalize_record(domain, row, seq)
+
+
+def _fact_row_from_normalized(domain: str, normalized: dict) -> dict:
+    return fact_row_from_normalized(domain, normalized)
+
+
 def _dedupe_rows_in_chunk(rows: list[dict]) -> tuple[list[dict], int]:
-    if not rows:
-        return [], 0
-    deduped: list[dict] = []
-    seen: set[tuple] = set()
-    duplicates = 0
-    for item in rows:
-        key = _source_dedupe_key(item)
-        if key in seen:
-            duplicates += 1
-            continue
-        seen.add(key)
-        deduped.append(item)
-    return deduped, duplicates
+    return dedupe_rows_in_chunk(rows)
 
 
 def _set_state(domain: str, updates: dict) -> None:
@@ -1908,21 +1800,7 @@ def _to_int(value: object, default: int = 0) -> int:
 
 
 def _month_from_any(value: object) -> str:
-    text = str(value or '').strip()
-    if not text:
-        return ''
-    if len(text) == 7 and text[2] == '/':
-        return text
-    if len(text) >= 7 and text[4] in {'-', '/'}:
-        y = text[0:4]
-        m = text[5:7]
-        if y.isdigit() and m.isdigit():
-            return f'{int(m):02d}/{y}'
-    if len(text) == 10 and text[2] == '/' and text[5] == '/':
-        dd, mm, yyyy = text[0:2], text[3:5], text[6:10]
-        if mm.isdigit() and yyyy.isdigit():
-            return f'{int(mm):02d}/{yyyy}'
-    return ''
+    return month_from_any(value)
 
 
 def _year_from_month(mm_yyyy: str) -> int:
@@ -1968,8 +1846,7 @@ def _effective_cartera_month_by_cutoff(db: Session, cutoff_months: list[str]) ->
 
 def _build_cartera_categoria_expr(db: Session):
     _ = db
-    # Regla de negocio AGENTS: VIGENTE=tramo 0..3, MOROSO=tramo > 3.
-    return case((CarteraFact.tramo > 3, literal('MOROSO')), else_=literal('VIGENTE'))
+    return category_expr_for_tramo(CarteraFact.tramo)
 
 
 def _build_cartera_contract_year_expr():
@@ -1983,183 +1860,13 @@ def _build_cartera_contract_year_expr():
 
 
 def _refresh_cartera_corte_agg(db: Session, affected_months: set[str]) -> tuple[int, int]:
-    months = sorted({str(m).strip() for m in (affected_months or set()) if str(m).strip()}, key=_month_serial)
-    if not months:
-        return 0, 0
-
-    deleted = db.query(CarteraCorteAgg).filter(CarteraCorteAgg.gestion_month.in_(months)).delete(synchronize_session=False)
-    db.commit()
-
-    categoria_expr = _build_cartera_categoria_expr(db)
-    contract_year_expr = _build_cartera_contract_year_expr()
-    monto_cuota_expr = cast(func.coalesce(CarteraFact.cuota_amount, 0.0), Numeric)
-    via_cartera_class_expr = case(
-        (func.upper(func.coalesce(CarteraFact.via_cobro, '')) == literal('COBRADOR'), literal('COBRADOR')),
-        else_=literal('DEBITO'),
+    return refresh_cartera_corte_agg(
+        db,
+        affected_months,
+        _month_serial,
+        categoria_expr=_build_cartera_categoria_expr(db),
+        contract_year_expr=_build_cartera_contract_year_expr(),
     )
-    supervisor_sq = (
-        db.query(
-            AnalyticsFact.contract_id.label('contract_id'),
-            AnalyticsFact.gestion_month.label('gestion_month'),
-            func.max(
-                case(
-                    (func.upper(func.coalesce(AnalyticsFact.supervisor, '')) != 'S/D', AnalyticsFact.supervisor),
-                    else_=literal(''),
-                )
-            ).label('supervisor'),
-        )
-        .filter(AnalyticsFact.gestion_month.in_(months))
-        .group_by(AnalyticsFact.contract_id, AnalyticsFact.gestion_month)
-        .subquery()
-    )
-    supervisor_expr = case(
-        (func.upper(func.coalesce(CarteraFact.supervisor, '')) != 'S/D', CarteraFact.supervisor),
-        (func.coalesce(supervisor_sq.c.supervisor, '') != '', supervisor_sq.c.supervisor),
-        else_=literal('S/D'),
-    )
-
-    paid_sq = (
-        db.query(
-            CobranzasFact.contract_id.label('contract_id'),
-            CobranzasFact.payment_month.label('payment_month'),
-            func.coalesce(func.sum(CobranzasFact.payment_amount), 0.0).label('paid_total'),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (CobranzasFact.payment_via_class == 'COBRADOR', CobranzasFact.payment_amount),
-                        else_=literal(0.0),
-                    )
-                ),
-                0.0,
-            ).label('paid_via_cobrador'),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (CobranzasFact.payment_via_class == 'DEBITO', CobranzasFact.payment_amount),
-                        else_=literal(0.0),
-                    )
-                ),
-                0.0,
-            ).label('paid_via_debito'),
-            func.max(case((CobranzasFact.payment_amount > 0, literal(1)), else_=literal(0))).label('contracts_paid_total'),
-            func.max(
-                case(
-                    (and_(CobranzasFact.payment_via_class == 'COBRADOR', CobranzasFact.payment_amount > 0), literal(1)),
-                    else_=literal(0),
-                )
-            ).label('contracts_paid_via_cobrador'),
-            func.max(
-                case(
-                    (and_(CobranzasFact.payment_via_class == 'DEBITO', CobranzasFact.payment_amount > 0), literal(1)),
-                    else_=literal(0),
-                )
-            ).label('contracts_paid_via_debito'),
-        )
-        .filter(CobranzasFact.payment_month.in_(months))
-        .group_by(CobranzasFact.contract_id, CobranzasFact.payment_month)
-        .subquery()
-    )
-
-    grouped_rows = (
-        db.query(
-            CarteraFact.gestion_month.label('gestion_month'),
-            CarteraFact.close_month.label('close_month'),
-            CarteraFact.close_year.label('close_year'),
-            contract_year_expr.label('contract_year'),
-            CarteraFact.un.label('un'),
-            supervisor_expr.label('supervisor'),
-            via_cartera_class_expr.label('via_cobro'),
-            categoria_expr.label('categoria'),
-            CarteraFact.tramo.label('tramo'),
-            func.coalesce(func.sum(CarteraFact.contracts_total), 0).label('contracts_total'),
-            func.coalesce(
-                func.sum(case((categoria_expr == 'VIGENTE', CarteraFact.contracts_total), else_=literal(0))),
-                0,
-            ).label('vigentes_total'),
-            func.coalesce(
-                func.sum(case((categoria_expr == 'MOROSO', CarteraFact.contracts_total), else_=literal(0))),
-                0,
-            ).label('morosos_total'),
-            func.coalesce(func.sum(monto_cuota_expr + CarteraFact.monto_vencido), 0.0).label('monto_total'),
-            func.coalesce(func.sum(CarteraFact.monto_vencido), 0.0).label('monto_vencido_total'),
-            func.coalesce(
-                func.sum(case((via_cartera_class_expr == 'COBRADOR', CarteraFact.contracts_total), else_=literal(0))),
-                0,
-            ).label('contracts_cobrador'),
-            func.coalesce(
-                func.sum(case((via_cartera_class_expr == 'DEBITO', CarteraFact.contracts_total), else_=literal(0))),
-                0,
-            ).label('contracts_debito'),
-            func.coalesce(func.sum(paid_sq.c.paid_total), 0.0).label('paid_total'),
-            func.coalesce(func.sum(paid_sq.c.paid_via_cobrador), 0.0).label('paid_via_cobrador'),
-            func.coalesce(func.sum(paid_sq.c.paid_via_debito), 0.0).label('paid_via_debito'),
-            func.coalesce(func.sum(paid_sq.c.contracts_paid_total), 0).label('contracts_paid_total'),
-            func.coalesce(func.sum(paid_sq.c.contracts_paid_via_cobrador), 0).label('contracts_paid_via_cobrador'),
-            func.coalesce(func.sum(paid_sq.c.contracts_paid_via_debito), 0).label('contracts_paid_via_debito'),
-        )
-        .outerjoin(
-            paid_sq,
-            and_(
-                paid_sq.c.contract_id == CarteraFact.contract_id,
-                paid_sq.c.payment_month == CarteraFact.gestion_month,
-            ),
-        )
-        .outerjoin(
-            supervisor_sq,
-            and_(
-                supervisor_sq.c.contract_id == CarteraFact.contract_id,
-                supervisor_sq.c.gestion_month == CarteraFact.gestion_month,
-            ),
-        )
-        .filter(CarteraFact.gestion_month.in_(months))
-        .group_by(
-            CarteraFact.gestion_month,
-            CarteraFact.close_month,
-            CarteraFact.close_year,
-            contract_year_expr,
-            CarteraFact.un,
-            supervisor_expr,
-            via_cartera_class_expr,
-            categoria_expr,
-            CarteraFact.tramo,
-        )
-        .all()
-    )
-
-    now = datetime.utcnow()
-    mappings: list[dict] = []
-    for row in grouped_rows:
-        mappings.append(
-            {
-                'gestion_month': str(row.gestion_month),
-                'close_month': str(row.close_month),
-                'close_year': int(row.close_year or 0),
-                'contract_year': int(row.contract_year) if row.contract_year is not None else 0,
-                'un': str(row.un or 'S/D'),
-                'supervisor': str(row.supervisor or 'S/D'),
-                'via_cobro': str(row.via_cobro or 'S/D'),
-                'categoria': str(row.categoria or 'VIGENTE'),
-                'tramo': int(row.tramo or 0),
-                'contracts_total': int(row.contracts_total or 0),
-                'vigentes_total': int(row.vigentes_total or 0),
-                'morosos_total': int(row.morosos_total or 0),
-                'monto_total': float(row.monto_total or 0.0),
-                'monto_vencido_total': float(row.monto_vencido_total or 0.0),
-                'contracts_cobrador': int(row.contracts_cobrador or 0),
-                'contracts_debito': int(row.contracts_debito or 0),
-                'paid_total': float(row.paid_total or 0.0),
-                'paid_via_cobrador': float(row.paid_via_cobrador or 0.0),
-                'paid_via_debito': float(row.paid_via_debito or 0.0),
-                'contracts_paid_total': int(row.contracts_paid_total or 0),
-                'contracts_paid_via_cobrador': int(row.contracts_paid_via_cobrador or 0),
-                'contracts_paid_via_debito': int(row.contracts_paid_via_debito or 0),
-                'updated_at': now,
-            }
-        )
-    if mappings:
-        db.bulk_insert_mappings(CarteraCorteAgg, mappings)
-        db.commit()
-    return int(deleted or 0), len(mappings)
 
 
 def _refresh_cobranzas_cohorte_agg(db: Session, affected_months: set[str]) -> tuple[int, int]:
@@ -2167,137 +1874,14 @@ def _refresh_cobranzas_cohorte_agg(db: Session, affected_months: set[str]) -> tu
         {str(m).strip() for m in (affected_months or set()) if _month_serial(str(m).strip()) > 0},
         key=_month_serial,
     )
-    if not months:
-        return 0, 0
-
     effective_by_cutoff = _effective_cartera_month_by_cutoff(db, months)
-    valid_cutoffs = sorted(effective_by_cutoff.keys(), key=_month_serial)
-    if not valid_cutoffs:
-        return 0, 0
-
-    deleted = (
-        db.query(CobranzasCohorteAgg)
-        .filter(CobranzasCohorteAgg.cutoff_month.in_(valid_cutoffs))
-        .delete(synchronize_session=False)
+    return refresh_cobranzas_cohorte_agg(
+        db,
+        affected_months,
+        _month_serial,
+        effective_by_cutoff=effective_by_cutoff,
+        categoria_expr=_build_cartera_categoria_expr(db),
     )
-    db.commit()
-
-    categoria_expr = _build_cartera_categoria_expr(db)
-    via_expr = case(
-        (func.upper(func.coalesce(CarteraFact.via_cobro, '')) == literal('COBRADOR'), literal('COBRADOR')),
-        else_=literal('DEBITO'),
-    )
-    monto_cuota_expr = cast(func.coalesce(CarteraFact.cuota_amount, 0.0), Numeric)
-
-    payments_sq = (
-        db.query(
-            CobranzasFact.payment_month.label('cutoff_month'),
-            CobranzasFact.contract_id.label('contract_id'),
-            func.coalesce(func.sum(CobranzasFact.payment_amount), 0.0).label('cobrado'),
-            func.coalesce(
-                func.sum(case((CobranzasFact.payment_amount > 0, literal(1)), else_=literal(0))),
-                0,
-            ).label('transacciones'),
-        )
-        .filter(CobranzasFact.payment_month.in_(valid_cutoffs))
-        .group_by(CobranzasFact.payment_month, CobranzasFact.contract_id)
-        .subquery()
-    )
-
-    if engine.dialect.name == 'postgresql':
-        payload_jsonb = cast(CarteraFact.payload_json, JSONB)
-        fecha_contrato_raw = func.coalesce(payload_jsonb.op('->>')('fecha_contrato'), literal(''))
-        fecha_iso_norm = func.replace(fecha_contrato_raw, '/', '-')
-        sale_month_from_payload = case(
-            (
-                fecha_iso_norm.op('~')(r'^\d{4}-\d{1,2}-\d{1,2}$'),
-                func.concat(
-                    func.lpad(func.split_part(fecha_iso_norm, '-', 2), 2, '0'),
-                    literal('/'),
-                    func.split_part(fecha_iso_norm, '-', 1),
-                ),
-            ),
-            (
-                fecha_contrato_raw.op('~')(r'^\d{1,2}/\d{1,2}/\d{4}$'),
-                func.concat(
-                    func.lpad(func.split_part(fecha_contrato_raw, '/', 2), 2, '0'),
-                    literal('/'),
-                    func.split_part(fecha_contrato_raw, '/', 3),
-                ),
-            ),
-            else_=literal(''),
-        )
-        sale_month_expr = func.coalesce(func.nullif(CarteraFact.contract_month, ''), sale_month_from_payload, literal(''))
-    else:
-        sale_month_expr = func.coalesce(CarteraFact.contract_month, literal(''))
-
-    now = datetime.utcnow()
-    mappings: list[dict] = []
-    for cutoff_month in valid_cutoffs:
-        effective_month = str(effective_by_cutoff.get(cutoff_month) or '').strip()
-        if _month_serial(effective_month) <= 0:
-            continue
-        grouped_rows = (
-            db.query(
-                literal(cutoff_month).label('cutoff_month'),
-                sale_month_expr.label('sale_month'),
-                func.upper(func.coalesce(CarteraFact.un, 'S/D')).label('un'),
-                func.upper(func.coalesce(CarteraFact.supervisor, 'S/D')).label('supervisor'),
-                via_expr.label('via'),
-                categoria_expr.label('categoria'),
-                func.count().label('activos'),
-                func.coalesce(
-                    func.sum(case((func.coalesce(payments_sq.c.cobrado, 0.0) > 0, literal(1)), else_=literal(0))),
-                    0,
-                ).label('pagaron'),
-                func.coalesce(func.sum(monto_cuota_expr + CarteraFact.monto_vencido), 0.0).label('deberia'),
-                func.coalesce(func.sum(func.coalesce(payments_sq.c.cobrado, 0.0)), 0.0).label('cobrado'),
-                func.coalesce(func.sum(func.coalesce(payments_sq.c.transacciones, 0)), 0).label('transacciones'),
-            )
-            .outerjoin(
-                payments_sq,
-                and_(
-                    payments_sq.c.contract_id == CarteraFact.contract_id,
-                    payments_sq.c.cutoff_month == literal(cutoff_month),
-                ),
-            )
-            .filter(CarteraFact.gestion_month == effective_month)
-            .group_by(
-                sale_month_expr,
-                func.upper(func.coalesce(CarteraFact.un, 'S/D')),
-                func.upper(func.coalesce(CarteraFact.supervisor, 'S/D')),
-                via_expr,
-                categoria_expr,
-            )
-            .all()
-        )
-        cutoff_serial = _month_serial(cutoff_month)
-        for row in grouped_rows:
-            sale_month = str(row.sale_month or '').strip()
-            sale_serial = _month_serial(sale_month)
-            if sale_serial <= 0 or sale_serial > cutoff_serial:
-                continue
-            mappings.append(
-                {
-                    'cutoff_month': cutoff_month,
-                    'sale_month': sale_month,
-                    'sale_year': _year_from_month(sale_month),
-                    'un': str(row.un or 'S/D').strip().upper(),
-                    'supervisor': str(row.supervisor or 'S/D').strip().upper(),
-                    'via_cobro': str(row.via or 'DEBITO').strip().upper(),
-                    'categoria': str(row.categoria or 'VIGENTE').strip().upper(),
-                    'activos': int(row.activos or 0),
-                    'pagaron': int(row.pagaron or 0),
-                    'deberia': float(row.deberia or 0.0),
-                    'cobrado': float(row.cobrado or 0.0),
-                    'transacciones': int(row.transacciones or 0),
-                    'updated_at': now,
-                }
-            )
-    if mappings:
-        db.bulk_insert_mappings(CobranzasCohorteAgg, mappings)
-        db.commit()
-    return int(deleted or 0), len(mappings)
 
 
 def _load_un_canonical_map(db: Session) -> dict[str, str]:
@@ -2331,23 +1915,15 @@ def _seed_default_un_mappings(db: Session) -> None:
     now = datetime.utcnow()
     defaults = [
         {
-            'source_un': 'ODONTOLOGIA',
-            'canonical_un': 'ODONTOLOGIA',
+            'source_un': source_un,
+            'canonical_un': canonical_name,
             'mapping_version': 'v1',
             'is_active': True,
             'active_from': now,
             'active_to': None,
             'updated_at': now,
-        },
-        {
-            'source_un': 'ODONTOLOGIA TTO',
-            'canonical_un': 'ODONTOLOGIA TTO',
-            'mapping_version': 'v1',
-            'is_active': True,
-            'active_from': now,
-            'active_to': None,
-            'updated_at': now,
-        },
+        }
+        for source_un, canonical_name in default_un_mappings()
     ]
     table = DimNegocioUnMap.__table__
     if engine.dialect.name == 'postgresql':
@@ -2377,840 +1953,58 @@ def _seed_default_un_mappings(db: Session) -> None:
 
 
 def _canonical_un(un_map: dict[str, str], value: object) -> str:
-    raw = str(value or 'S/D').strip().upper() or 'S/D'
-    return str(un_map.get(raw) or raw)
+    return canonical_un(un_map, value)
 
 
 def _canonical_via(value: object) -> str:
-    raw = str(value or '').strip().upper()
-    if raw == 'COBRADOR' or 'COBR' in raw:
-        return 'COBRADOR'
-    return 'DEBITO'
+    return canonical_via(value)
 
 
 def _refresh_dim_negocio_contrato(db: Session, affected_months: set[str]) -> tuple[int, int]:
-    months = sorted({str(m).strip() for m in (affected_months or set()) if str(m).strip()}, key=_month_serial)
-    if not months:
-        return 0, 0
-
-    deleted = db.query(DimNegocioContrato).filter(DimNegocioContrato.gestion_month.in_(months)).delete(synchronize_session=False)
-    db.commit()
-
-    _seed_default_un_mappings(db)
-    un_map = _load_un_canonical_map(db)
-    supervisor_rows = (
-        db.query(
-            AnalyticsFact.contract_id.label('contract_id'),
-            AnalyticsFact.gestion_month.label('gestion_month'),
-            func.max(
-                case(
-                    (func.upper(func.coalesce(AnalyticsFact.supervisor, '')) != 'S/D', AnalyticsFact.supervisor),
-                    else_=literal(''),
-                )
-            ).label('supervisor'),
-        )
-        .filter(AnalyticsFact.gestion_month.in_(months))
-        .group_by(AnalyticsFact.contract_id, AnalyticsFact.gestion_month)
-        .all()
+    return refresh_dim_negocio_contrato(
+        db,
+        affected_months,
+        _month_serial,
+        seed_default_un_mappings=_seed_default_un_mappings,
+        load_un_canonical_map=_load_un_canonical_map,
+        canonical_un=_canonical_un,
+        canonical_via=_canonical_via,
+        categoria_from_tramo=categoria_from_tramo,
+        month_from_any=_month_from_any,
+        year_of=_year_of,
     )
-    supervisor_map: dict[tuple[str, str], str] = {}
-    for row in supervisor_rows:
-        key = (str(row.contract_id or '').strip(), str(row.gestion_month or '').strip())
-        sup = str(row.supervisor or '').strip().upper()
-        if key[0] and key[1] and sup:
-            supervisor_map[key] = sup
-
-    rows = (
-        db.query(
-            CarteraFact.contract_id,
-            CarteraFact.gestion_month,
-            func.max(CarteraFact.un).label('un_raw'),
-            func.max(CarteraFact.supervisor).label('supervisor_raw'),
-            func.max(CarteraFact.via_cobro).label('via_raw'),
-            func.max(CarteraFact.tramo).label('tramo'),
-            func.max(CarteraFact.contract_month).label('contract_month'),
-        )
-        .filter(CarteraFact.gestion_month.in_(months))
-        .group_by(CarteraFact.contract_id, CarteraFact.gestion_month)
-        .all()
-    )
-    now = datetime.utcnow()
-    mappings: list[dict] = []
-    for row in rows:
-        contract_id = str(row.contract_id or '').strip()
-        gestion_month = str(row.gestion_month or '').strip()
-        if not contract_id or not gestion_month:
-            continue
-        tramo = int(row.tramo or 0)
-        supervisor_raw = str(row.supervisor_raw or 'S/D').strip().upper() or 'S/D'
-        supervisor_canon = supervisor_raw
-        if supervisor_canon == 'S/D':
-            supervisor_canon = str(supervisor_map.get((contract_id, gestion_month)) or 'S/D')
-        via_canon = _canonical_via(row.via_raw)
-        categoria = 'MOROSO' if tramo > 3 else 'VIGENTE'
-        sale_month = _month_from_any(row.contract_month)
-        sale_year = _year_of(sale_month)
-        mappings.append(
-            {
-                'contract_id': contract_id,
-                'gestion_month': gestion_month,
-                'sale_month': sale_month,
-                'sale_year': int(sale_year or 0),
-                'un_raw': str(row.un_raw or 'S/D').strip().upper() or 'S/D',
-                'supervisor_raw': supervisor_raw,
-                'via_raw': str(row.via_raw or 'S/D').strip().upper() or 'S/D',
-                'tramo': tramo,
-                'categoria': categoria,
-                'un_canonica': _canonical_un(un_map, row.un_raw),
-                'supervisor_canonico': supervisor_canon,
-                'via_canonica': via_canon,
-                'categoria_canonica': categoria,
-                'mapping_version': 'v1',
-                'updated_at': now,
-            }
-        )
-    if mappings:
-        db.bulk_insert_mappings(DimNegocioContrato, mappings)
-        db.commit()
-    return int(deleted or 0), len(mappings)
 
 
 def _refresh_analytics_rendimiento_agg(db: Session, affected_months: set[str]) -> tuple[int, int]:
-    months = sorted({str(m).strip() for m in (affected_months or set()) if str(m).strip()}, key=_month_serial)
-    if not months:
-        return 0, 0
-
-    deleted = (
-        db.query(AnalyticsRendimientoAgg)
-        .filter(AnalyticsRendimientoAgg.gestion_month.in_(months))
-        .delete(synchronize_session=False)
-    )
-    db.commit()
-
-    # Deuda asignada de rendimiento: monto_vencido + monto_cuota.
-    # Si cuota_amount vino en 0/null, usar fallback desde payload_json->monto_cuota.
-    if db.bind is not None and db.bind.dialect.name == 'postgresql':
-        cuota_text = cast(CarteraFact.payload_json, JSONB).op('->>')('monto_cuota')
-        cuota_fallback_expr = case(
-            (cuota_text.op('~')(r'^-?\d+(\.\d+)?$'), cast(cuota_text, Numeric)),
-            else_=literal(0),
-        )
-    else:
-        cuota_fallback_expr = literal(0)
-    cuota_effective_expr = case(
-        (cast(func.coalesce(CarteraFact.cuota_amount, 0.0), Numeric) > 0, cast(func.coalesce(CarteraFact.cuota_amount, 0.0), Numeric)),
-        else_=cuota_fallback_expr,
-    )
-    debt_expr = cast(func.coalesce(CarteraFact.monto_vencido, 0.0), Numeric) + cuota_effective_expr
-
-    debt_rows = (
-        db.query(
-            CarteraFact.contract_id,
-            CarteraFact.gestion_month,
-            func.coalesce(func.sum(debt_expr), 0.0).label('debt'),
-        )
-        .filter(CarteraFact.gestion_month.in_(months))
-        .group_by(CarteraFact.contract_id, CarteraFact.gestion_month)
-        .all()
-    )
-    debt_map: dict[tuple[str, str], float] = {}
-    for row in debt_rows:
-        debt_map[(str(row.contract_id or '').strip(), str(row.gestion_month or '').strip())] = float(row.debt or 0.0)
-
-    dim_rows = (
-        db.query(DimNegocioContrato)
-        .filter(DimNegocioContrato.gestion_month.in_(months))
-        .all()
-    )
-    contract_state: dict[tuple[str, str], dict[str, Any]] = {}
-    for row in dim_rows:
-        contract_id = str(row.contract_id or '').strip()
-        month = str(row.gestion_month or '').strip()
-        if not contract_id or not month:
-            continue
-        key = (contract_id, month)
-        contract_state[key] = {
-            'gestion_month': month,
-            'un': str(row.un_canonica or 'S/D').strip().upper() or 'S/D',
-            'supervisor': str(row.supervisor_canonico or 'S/D').strip().upper() or 'S/D',
-            'via_cobro': _canonical_via(row.via_canonica),
-            'categoria': str(row.categoria_canonica or 'VIGENTE').strip().upper() or 'VIGENTE',
-            'tramo': int(row.tramo or 0),
-            'debt': float(debt_map.get(key, 0.0)),
-            'paid_total': 0.0,
-            'paid_via_cobrador': 0.0,
-            'paid_via_debito': 0.0,
-        }
-
-    paid_rows = (
-        db.query(
-            CobranzasFact.contract_id,
-            CobranzasFact.payment_month,
-            CobranzasFact.payment_via_class,
-            func.coalesce(func.sum(CobranzasFact.payment_amount), 0.0).label('paid'),
-        )
-        .filter(CobranzasFact.payment_month.in_(months))
-        .group_by(CobranzasFact.contract_id, CobranzasFact.payment_month, CobranzasFact.payment_via_class)
-        .all()
-    )
-    for row in paid_rows:
-        key = (str(row.contract_id or '').strip(), str(row.payment_month or '').strip())
-        state = contract_state.get(key)
-        if state is None:
-            continue
-        amount = float(row.paid or 0.0)
-        via = _canonical_via(row.payment_via_class)
-        state['paid_total'] += amount
-        if via == 'COBRADOR':
-            state['paid_via_cobrador'] += amount
-        else:
-            state['paid_via_debito'] += amount
-
-    bucket_map: dict[tuple[str, str, str, str, str, int], dict[str, Any]] = {}
-    for state in contract_state.values():
-        debt_val = float(state['debt'] or 0.0)
-        paid_raw = float(state['paid_total'] or 0.0)
-        paid_capped = min(max(paid_raw, 0.0), max(debt_val, 0.0))
-        if paid_raw > 0.0 and paid_capped < paid_raw:
-            ratio = paid_capped / paid_raw
-            paid_via_cobrador = float(state['paid_via_cobrador'] or 0.0) * ratio
-            paid_via_debito = float(state['paid_via_debito'] or 0.0) * ratio
-        else:
-            paid_via_cobrador = float(state['paid_via_cobrador'] or 0.0)
-            paid_via_debito = float(state['paid_via_debito'] or 0.0)
-        bkey = (
-            str(state['gestion_month']),
-            str(state['un']),
-            str(state['supervisor']),
-            str(state['via_cobro']),
-            str(state['categoria']),
-            int(state['tramo']),
-        )
-        bucket = bucket_map.setdefault(
-            bkey,
-            {
-                'gestion_month': bkey[0],
-                'un': bkey[1],
-                'supervisor': bkey[2],
-                'via_cobro': bkey[3],
-                'categoria': bkey[4],
-                'tramo': bkey[5],
-                'debt_total': 0.0,
-                'paid_total': 0.0,
-                'paid_via_cobrador': 0.0,
-                'paid_via_debito': 0.0,
-                'contracts_total': 0,
-                'contracts_paid': 0,
-            },
-        )
-        bucket['debt_total'] += debt_val
-        bucket['paid_total'] += paid_capped
-        bucket['paid_via_cobrador'] += paid_via_cobrador
-        bucket['paid_via_debito'] += paid_via_debito
-        bucket['contracts_total'] += 1
-        if paid_capped > 0.0:
-            bucket['contracts_paid'] += 1
-
-    now = datetime.utcnow()
-    mappings = []
-    for bucket in bucket_map.values():
-        item = dict(bucket)
-        item['updated_at'] = now
-        mappings.append(item)
-    if mappings:
-        db.bulk_insert_mappings(AnalyticsRendimientoAgg, mappings)
-        db.commit()
-    return int(deleted or 0), len(mappings)
+    return refresh_analytics_rendimiento_agg(db, affected_months, _month_serial, _canonical_via)
 
 
 def _refresh_analytics_anuales_agg(db: Session, affected_months: set[str]) -> tuple[int, int]:
-    months = sorted({str(m).strip() for m in (affected_months or set()) if str(m).strip()}, key=_month_serial)
-    if not months:
-        return 0, 0
-    cutoff = months[-1]
-    deleted = (
-        db.query(AnalyticsAnualesAgg)
-        .filter(AnalyticsAnualesAgg.cutoff_month == cutoff)
-        .delete(synchronize_session=False)
-    )
-    db.commit()
-
-    # Materialize a baseline annual aggregate from v1 summary for fast, no-filter rendering.
-    base = AnalyticsService.fetch_anuales_summary_v1(db, AnalyticsFilters())
-    rows = list(base.get('rows') or [])
-    now = datetime.utcnow()
-    mappings: list[dict] = []
-    for row in rows:
-        year = int(str(row.get('year') or 0) or 0)
-        if year <= 0:
-            continue
-        contracts = int(row.get('contracts') or 0)
-        contracts_vig = int(row.get('contractsVigentes') or 0)
-        culminados = int(row.get('culminados') or 0)
-        culminados_vig = int(row.get('culminadosVigentes') or 0)
-        tkp_contrato = float(row.get('tkpContrato') or 0.0)
-        tkp_pago = float(row.get('tkpPago') or 0.0)
-        tkp_trans = float(row.get('tkpTransaccional') or 0.0)
-        tkp_cul_contrato = float(row.get('tkpContratoCulminado') or 0.0)
-        tkp_cul_pago = float(row.get('tkpPagoCulminado') or 0.0)
-        tkp_cul_contrato_v = float(row.get('tkpContratoCulminadoVigente') or 0.0)
-        tkp_cul_pago_v = float(row.get('tkpPagoCulminadoVigente') or 0.0)
-        ltv = float(row.get('ltvCulminadoVigente') or 0.0)
-        mappings.append(
-            {
-                'cutoff_month': cutoff,
-                'sale_year': year,
-                'sale_month': '*',
-                'un': '*',
-                'contracts': contracts,
-                'contracts_vigentes': contracts_vig,
-                'cuota_total': tkp_contrato * contracts,
-                'paid_to_cutoff_total': tkp_trans * max(contracts, 1),
-                'tx_to_cutoff_total': contracts,
-                'paid_by_contract_month_total': tkp_pago * max(contracts, 1),
-                'paid_by_contract_month_count': contracts,
-                'culminados': culminados,
-                'culminados_vigentes': culminados_vig,
-                'cuota_cul_total': tkp_cul_contrato * max(culminados, 1),
-                'cuota_cul_total_vigente': tkp_cul_contrato_v * max(culminados_vig, 1),
-                'paid_by_contract_month_cul_total': tkp_cul_pago * max(culminados, 1),
-                'paid_by_contract_month_cul_count': culminados,
-                'paid_by_contract_month_cul_total_vigente': tkp_cul_pago_v * max(culminados_vig, 1),
-                'paid_by_contract_month_cul_count_vigente': culminados_vig,
-                'total_cobrado_cul_vigente': ltv * max(culminados_vig, 1),
-                'total_deberia_cul_vigente': float(max(culminados_vig, 1)),
-                'months_weighted_numerator_cul_vigente': float(max(culminados_vig, 1)),
-                'updated_at': now,
-            }
-        )
-    if mappings:
-        db.bulk_insert_mappings(AnalyticsAnualesAgg, mappings)
-        db.commit()
-    return int(deleted or 0), len(mappings)
+    return refresh_analytics_anuales_agg(db, affected_months, _month_serial)
 
 
 def _refresh_dim_time(db: Session, affected_months: set[str]) -> tuple[int, int]:
-    months = sorted({str(m).strip() for m in (affected_months or set()) if _month_serial(str(m).strip()) > 0}, key=_month_serial)
-    if not months:
-        return 0, 0
-
-    deleted = db.query(DimTime).filter(DimTime.month_key.in_(months)).delete(synchronize_session=False)
-    db.commit()
-    mappings: list[dict] = []
-    now = datetime.utcnow()
-    for mm in months:
-        serial = _month_serial(mm)
-        month = int(mm.split('/')[0])
-        year = int(mm.split('/')[1])
-        quarter = ((month - 1) // 3) + 1
-        mappings.append(
-            {
-                'month_key': mm,
-                'year': year,
-                'quarter': quarter,
-                'month': month,
-                'month_name': f'{month:02d}',
-                'sort_key': serial,
-                'updated_at': now,
-            }
-        )
-    if mappings:
-        db.bulk_insert_mappings(DimTime, mappings)
-        db.commit()
-    return int(deleted or 0), len(mappings)
+    return refresh_dim_time(db, affected_months, _month_serial)
 
 
 def _refresh_dim_contract_month_and_catalogs(db: Session, affected_months: set[str]) -> tuple[int, int]:
-    months = sorted({str(m).strip() for m in (affected_months or set()) if _month_serial(str(m).strip()) > 0}, key=_month_serial)
-    if not months:
-        return 0, 0
-    now = datetime.utcnow()
-
-    deleted = db.query(DimContractMonth).filter(DimContractMonth.gestion_month.in_(months)).delete(synchronize_session=False)
-    db.commit()
-    rows = db.query(DimNegocioContrato).filter(DimNegocioContrato.gestion_month.in_(months)).all()
-    mappings: list[dict] = []
-    for row in rows:
-        mappings.append(
-            {
-                'contract_id': str(row.contract_id or '').strip(),
-                'gestion_month': str(row.gestion_month or '').strip(),
-                'sale_month': str(row.sale_month or '').strip(),
-                'sale_year': int(row.sale_year or 0),
-                'un_canonica': str(row.un_canonica or 'S/D').strip().upper() or 'S/D',
-                'supervisor_canonico': str(row.supervisor_canonico or 'S/D').strip().upper() or 'S/D',
-                'categoria_canonica': str(row.categoria_canonica or 'VIGENTE').strip().upper() or 'VIGENTE',
-                'via_canonica': str(row.via_canonica or 'DEBITO').strip().upper() or 'DEBITO',
-                'tramo': int(row.tramo or 0),
-                'updated_at': now,
-            }
-        )
-    if mappings:
-        db.bulk_insert_mappings(DimContractMonth, mappings)
-        db.commit()
-
-    # Keep low-cardinality canonical catalogs fresh.
-    db.query(DimUn).delete(synchronize_session=False)
-    db.query(DimSupervisor).delete(synchronize_session=False)
-    db.query(DimVia).delete(synchronize_session=False)
-    db.query(DimCategoria).delete(synchronize_session=False)
-    db.commit()
-    un_values = {
-        str(v[0] or '').strip().upper()
-        for v in db.query(DimContractMonth.un_canonica).distinct().all()
-        if str(v[0] or '').strip()
-    }
-    sup_values = {
-        str(v[0] or '').strip().upper()
-        for v in db.query(DimContractMonth.supervisor_canonico).distinct().all()
-        if str(v[0] or '').strip()
-    }
-    via_values = {
-        str(v[0] or '').strip().upper()
-        for v in db.query(DimContractMonth.via_canonica).distinct().all()
-        if str(v[0] or '').strip()
-    }
-    cat_values = {
-        str(v[0] or '').strip().upper()
-        for v in db.query(DimContractMonth.categoria_canonica).distinct().all()
-        if str(v[0] or '').strip()
-    }
-    if un_values:
-        db.bulk_insert_mappings(
-            DimUn,
-            [{'un_raw': val, 'un_canonica': val, 'mapping_version': 'v1', 'updated_at': now} for val in sorted(un_values)],
-        )
-    if sup_values:
-        db.bulk_insert_mappings(
-            DimSupervisor,
-            [{'supervisor_raw': val, 'supervisor_canonico': val, 'updated_at': now} for val in sorted(sup_values)],
-        )
-    if via_values:
-        db.bulk_insert_mappings(
-            DimVia,
-            [{'via_raw': val, 'via_canonica': val, 'updated_at': now} for val in sorted(via_values)],
-        )
-    if cat_values:
-        db.bulk_insert_mappings(
-            DimCategoria,
-            [{'categoria_raw': val, 'categoria_canonica': val, 'updated_at': now} for val in sorted(cat_values)],
-        )
-    db.commit()
-    return int(deleted or 0), len(mappings)
+    return refresh_dim_contract_month_and_catalogs(db, affected_months, _month_serial)
 
 
 def _refresh_mv_options_tables(db: Session, affected_months: set[str]) -> dict[str, int]:
-    months = sorted({str(m).strip() for m in (affected_months or set()) if _month_serial(str(m).strip()) > 0}, key=_month_serial)
-    if not months:
-        return {'cartera': 0, 'cohorte': 0, 'rendimiento': 0, 'anuales': 0}
-
-    now = datetime.utcnow()
-
-    db.query(MvOptionsCartera).filter(MvOptionsCartera.gestion_month.in_(months)).delete(synchronize_session=False)
-    rows_cartera = (
-        db.query(
-            CarteraCorteAgg.gestion_month,
-            CarteraCorteAgg.close_month,
-            CarteraCorteAgg.un,
-            CarteraCorteAgg.supervisor,
-            CarteraCorteAgg.via_cobro,
-            CarteraCorteAgg.categoria,
-            CarteraCorteAgg.tramo,
-            CarteraCorteAgg.contract_year,
-        )
-        .filter(CarteraCorteAgg.gestion_month.in_(months))
-        .group_by(
-            CarteraCorteAgg.gestion_month,
-            CarteraCorteAgg.close_month,
-            CarteraCorteAgg.un,
-            CarteraCorteAgg.supervisor,
-            CarteraCorteAgg.via_cobro,
-            CarteraCorteAgg.categoria,
-            CarteraCorteAgg.tramo,
-            CarteraCorteAgg.contract_year,
-        )
-        .all()
-    )
-    cartera_mappings = [
-        {
-            'gestion_month': str(r.gestion_month or '').strip(),
-            'close_month': str(r.close_month or '').strip(),
-            'un': str(r.un or 'S/D').strip().upper() or 'S/D',
-            'supervisor': str(r.supervisor or 'S/D').strip().upper() or 'S/D',
-            'via_cobro': str(r.via_cobro or 'DEBITO').strip().upper() or 'DEBITO',
-            'categoria': str(r.categoria or 'VIGENTE').strip().upper() or 'VIGENTE',
-            'tramo': int(r.tramo or 0),
-            'contract_year': int(r.contract_year or 0),
-            'updated_at': now,
-        }
-        for r in rows_cartera
-    ]
-    if cartera_mappings:
-        db.bulk_insert_mappings(MvOptionsCartera, cartera_mappings)
-
-    db.query(MvOptionsCohorte).filter(MvOptionsCohorte.cutoff_month.in_(months)).delete(synchronize_session=False)
-    rows_cohorte = (
-        db.query(
-            CobranzasCohorteAgg.cutoff_month,
-            CobranzasCohorteAgg.un,
-            CobranzasCohorteAgg.supervisor,
-            CobranzasCohorteAgg.via_cobro,
-            CobranzasCohorteAgg.categoria,
-        )
-        .filter(CobranzasCohorteAgg.cutoff_month.in_(months))
-        .group_by(
-            CobranzasCohorteAgg.cutoff_month,
-            CobranzasCohorteAgg.un,
-            CobranzasCohorteAgg.supervisor,
-            CobranzasCohorteAgg.via_cobro,
-            CobranzasCohorteAgg.categoria,
-        )
-        .all()
-    )
-    cohorte_mappings = [
-        {
-            'cutoff_month': str(r.cutoff_month or '').strip(),
-            'un': str(r.un or 'S/D').strip().upper() or 'S/D',
-            'supervisor': str(r.supervisor or 'S/D').strip().upper() or 'S/D',
-            'via_cobro': str(r.via_cobro or 'DEBITO').strip().upper() or 'DEBITO',
-            'categoria': str(r.categoria or 'VIGENTE').strip().upper() or 'VIGENTE',
-            'updated_at': now,
-        }
-        for r in rows_cohorte
-    ]
-    if cohorte_mappings:
-        db.bulk_insert_mappings(MvOptionsCohorte, cohorte_mappings)
-
-    db.query(MvOptionsRendimiento).filter(MvOptionsRendimiento.gestion_month.in_(months)).delete(synchronize_session=False)
-    rows_rend = (
-        db.query(
-            AnalyticsRendimientoAgg.gestion_month,
-            AnalyticsRendimientoAgg.un,
-            AnalyticsRendimientoAgg.supervisor,
-            AnalyticsRendimientoAgg.via_cobro,
-            AnalyticsRendimientoAgg.categoria,
-            AnalyticsRendimientoAgg.tramo,
-        )
-        .filter(AnalyticsRendimientoAgg.gestion_month.in_(months))
-        .group_by(
-            AnalyticsRendimientoAgg.gestion_month,
-            AnalyticsRendimientoAgg.un,
-            AnalyticsRendimientoAgg.supervisor,
-            AnalyticsRendimientoAgg.via_cobro,
-            AnalyticsRendimientoAgg.categoria,
-            AnalyticsRendimientoAgg.tramo,
-        )
-        .all()
-    )
-    rend_mappings = [
-        {
-            'gestion_month': str(r.gestion_month or '').strip(),
-            'un': str(r.un or 'S/D').strip().upper() or 'S/D',
-            'supervisor': str(r.supervisor or 'S/D').strip().upper() or 'S/D',
-            'via_cobro': str(r.via_cobro or 'DEBITO').strip().upper() or 'DEBITO',
-            'categoria': str(r.categoria or 'VIGENTE').strip().upper() or 'VIGENTE',
-            'tramo': int(r.tramo or 0),
-            'updated_at': now,
-        }
-        for r in rows_rend
-    ]
-    if rend_mappings:
-        db.bulk_insert_mappings(MvOptionsRendimiento, rend_mappings)
-
-    db.query(MvOptionsAnuales).filter(MvOptionsAnuales.cutoff_month.in_(months)).delete(synchronize_session=False)
-    rows_anuales = (
-        db.query(
-            AnalyticsAnualesAgg.cutoff_month,
-            AnalyticsAnualesAgg.sale_month,
-            AnalyticsAnualesAgg.sale_year,
-            AnalyticsAnualesAgg.un,
-        )
-        .filter(AnalyticsAnualesAgg.cutoff_month.in_(months))
-        .group_by(
-            AnalyticsAnualesAgg.cutoff_month,
-            AnalyticsAnualesAgg.sale_month,
-            AnalyticsAnualesAgg.sale_year,
-            AnalyticsAnualesAgg.un,
-        )
-        .all()
-    )
-    anuales_mappings = [
-        {
-            'cutoff_month': str(r.cutoff_month or '').strip(),
-            'sale_month': str(r.sale_month or '').strip(),
-            'sale_year': int(r.sale_year or 0),
-            'un': str(r.un or 'S/D').strip().upper() or 'S/D',
-            'updated_at': now,
-        }
-        for r in rows_anuales
-        if _month_serial(str(r.cutoff_month or '').strip()) > 0
-    ]
-    if anuales_mappings:
-        db.bulk_insert_mappings(MvOptionsAnuales, anuales_mappings)
-
-    db.commit()
-    return {
-        'cartera': len(cartera_mappings),
-        'cohorte': len(cohorte_mappings),
-        'rendimiento': len(rend_mappings),
-        'anuales': len(anuales_mappings),
-    }
+    return refresh_mv_options_tables(db, affected_months, _month_serial)
 
 
 def _bootstrap_mv_options_full(db: Session) -> dict[str, int]:
-    now = datetime.utcnow()
-
-    db.query(MvOptionsCartera).delete(synchronize_session=False)
-    rows_cartera = (
-        db.query(
-            CarteraCorteAgg.gestion_month,
-            CarteraCorteAgg.close_month,
-            CarteraCorteAgg.un,
-            CarteraCorteAgg.supervisor,
-            CarteraCorteAgg.via_cobro,
-            CarteraCorteAgg.categoria,
-            CarteraCorteAgg.tramo,
-            CarteraCorteAgg.contract_year,
-        )
-        .group_by(
-            CarteraCorteAgg.gestion_month,
-            CarteraCorteAgg.close_month,
-            CarteraCorteAgg.un,
-            CarteraCorteAgg.supervisor,
-            CarteraCorteAgg.via_cobro,
-            CarteraCorteAgg.categoria,
-            CarteraCorteAgg.tramo,
-            CarteraCorteAgg.contract_year,
-        )
-        .all()
-    )
-    cartera_mappings = [
-        {
-            'gestion_month': str(r.gestion_month or '').strip(),
-            'close_month': str(r.close_month or '').strip(),
-            'un': str(r.un or 'S/D').strip().upper() or 'S/D',
-            'supervisor': str(r.supervisor or 'S/D').strip().upper() or 'S/D',
-            'via_cobro': str(r.via_cobro or 'DEBITO').strip().upper() or 'DEBITO',
-            'categoria': str(r.categoria or 'VIGENTE').strip().upper() or 'VIGENTE',
-            'tramo': int(r.tramo or 0),
-            'contract_year': int(r.contract_year or 0),
-            'updated_at': now,
-        }
-        for r in rows_cartera
-        if _month_serial(str(r.gestion_month or '').strip()) > 0
-    ]
-    if cartera_mappings:
-        db.bulk_insert_mappings(MvOptionsCartera, cartera_mappings)
-
-    db.query(MvOptionsCohorte).delete(synchronize_session=False)
-    rows_cohorte = (
-        db.query(
-            CobranzasCohorteAgg.cutoff_month,
-            CobranzasCohorteAgg.un,
-            CobranzasCohorteAgg.supervisor,
-            CobranzasCohorteAgg.via_cobro,
-            CobranzasCohorteAgg.categoria,
-        )
-        .group_by(
-            CobranzasCohorteAgg.cutoff_month,
-            CobranzasCohorteAgg.un,
-            CobranzasCohorteAgg.supervisor,
-            CobranzasCohorteAgg.via_cobro,
-            CobranzasCohorteAgg.categoria,
-        )
-        .all()
-    )
-    cohorte_mappings = [
-        {
-            'cutoff_month': str(r.cutoff_month or '').strip(),
-            'un': str(r.un or 'S/D').strip().upper() or 'S/D',
-            'supervisor': str(r.supervisor or 'S/D').strip().upper() or 'S/D',
-            'via_cobro': str(r.via_cobro or 'DEBITO').strip().upper() or 'DEBITO',
-            'categoria': str(r.categoria or 'VIGENTE').strip().upper() or 'VIGENTE',
-            'updated_at': now,
-        }
-        for r in rows_cohorte
-        if _month_serial(str(r.cutoff_month or '').strip()) > 0
-    ]
-    if cohorte_mappings:
-        db.bulk_insert_mappings(MvOptionsCohorte, cohorte_mappings)
-
-    db.query(MvOptionsRendimiento).delete(synchronize_session=False)
-    rows_rend = (
-        db.query(
-            AnalyticsRendimientoAgg.gestion_month,
-            AnalyticsRendimientoAgg.un,
-            AnalyticsRendimientoAgg.supervisor,
-            AnalyticsRendimientoAgg.via_cobro,
-            AnalyticsRendimientoAgg.categoria,
-            AnalyticsRendimientoAgg.tramo,
-        )
-        .group_by(
-            AnalyticsRendimientoAgg.gestion_month,
-            AnalyticsRendimientoAgg.un,
-            AnalyticsRendimientoAgg.supervisor,
-            AnalyticsRendimientoAgg.via_cobro,
-            AnalyticsRendimientoAgg.categoria,
-            AnalyticsRendimientoAgg.tramo,
-        )
-        .all()
-    )
-    rend_mappings = [
-        {
-            'gestion_month': str(r.gestion_month or '').strip(),
-            'un': str(r.un or 'S/D').strip().upper() or 'S/D',
-            'supervisor': str(r.supervisor or 'S/D').strip().upper() or 'S/D',
-            'via_cobro': str(r.via_cobro or 'DEBITO').strip().upper() or 'DEBITO',
-            'categoria': str(r.categoria or 'VIGENTE').strip().upper() or 'VIGENTE',
-            'tramo': int(r.tramo or 0),
-            'updated_at': now,
-        }
-        for r in rows_rend
-        if _month_serial(str(r.gestion_month or '').strip()) > 0
-    ]
-    if rend_mappings:
-        db.bulk_insert_mappings(MvOptionsRendimiento, rend_mappings)
-
-    db.query(MvOptionsAnuales).delete(synchronize_session=False)
-    rows_anuales = (
-        db.query(
-            AnalyticsAnualesAgg.cutoff_month,
-            AnalyticsAnualesAgg.sale_month,
-            AnalyticsAnualesAgg.sale_year,
-            AnalyticsAnualesAgg.un,
-        )
-        .group_by(
-            AnalyticsAnualesAgg.cutoff_month,
-            AnalyticsAnualesAgg.sale_month,
-            AnalyticsAnualesAgg.sale_year,
-            AnalyticsAnualesAgg.un,
-        )
-        .all()
-    )
-    anuales_mappings = [
-        {
-            'cutoff_month': str(r.cutoff_month or '').strip(),
-            'sale_month': str(r.sale_month or '').strip(),
-            'sale_year': int(r.sale_year or 0),
-            'un': str(r.un or 'S/D').strip().upper() or 'S/D',
-            'updated_at': now,
-        }
-        for r in rows_anuales
-        if _month_serial(str(r.cutoff_month or '').strip()) > 0
-    ]
-    if anuales_mappings:
-        db.bulk_insert_mappings(MvOptionsAnuales, anuales_mappings)
-
-    db.commit()
-    return {
-        'cartera': len(cartera_mappings),
-        'cohorte': len(cohorte_mappings),
-        'rendimiento': len(rend_mappings),
-        'anuales': len(anuales_mappings),
-    }
+    return bootstrap_mv_options_full(db, _month_serial)
 
 
 def _mv_options_consistency_report(db: Session) -> dict:
-    def _distinct_months(model, column_name: str) -> set[str]:
-        col = getattr(model, column_name)
-        return {
-            str(v[0] or '').strip()
-            for v in db.query(col).distinct().all()
-            if _month_serial(str(v[0] or '').strip()) > 0
-        }
-
-    checks = {
-        'cartera': {
-            'expected': _distinct_months(CarteraCorteAgg, 'gestion_month'),
-            'actual': _distinct_months(MvOptionsCartera, 'gestion_month'),
-        },
-        'cohorte': {
-            'expected': _distinct_months(CobranzasCohorteAgg, 'cutoff_month'),
-            'actual': _distinct_months(MvOptionsCohorte, 'cutoff_month'),
-        },
-        'rendimiento': {
-            'expected': _distinct_months(AnalyticsRendimientoAgg, 'gestion_month'),
-            'actual': _distinct_months(MvOptionsRendimiento, 'gestion_month'),
-        },
-        'anuales': {
-            'expected': _distinct_months(AnalyticsAnualesAgg, 'cutoff_month'),
-            'actual': _distinct_months(MvOptionsAnuales, 'cutoff_month'),
-        },
-    }
-    out: dict[str, dict] = {}
-    ok = True
-    for key, item in checks.items():
-        expected = item['expected']
-        actual = item['actual']
-        missing = sorted(expected - actual, key=_month_serial)
-        stale = sorted(actual - expected, key=_month_serial)
-        row_ok = not missing and not stale
-        ok = ok and row_ok
-        out[key] = {
-            'ok': row_ok,
-            'expected_months': len(expected),
-            'actual_months': len(actual),
-            'missing_months': missing,
-            'stale_months': stale,
-        }
-    return {
-        'ok': ok,
-        'checks': out,
-        'last_checked_at': datetime.utcnow().isoformat(),
-    }
+    return mv_options_consistency_report(db, _month_serial)
 
 
 def _refresh_source_freshness_snapshots(db: Session, last_job_id: str | None = None) -> None:
-    table = AnalyticsSourceFreshness.__table__
-    now = datetime.utcnow()
-    sources = [
-        ('cartera_fact', CarteraFact.updated_at),
-        ('cobranzas_fact', CobranzasFact.updated_at),
-        ('cartera_corte_agg', CarteraCorteAgg.updated_at),
-        ('cobranzas_cohorte_agg', CobranzasCohorteAgg.updated_at),
-        ('analytics_rendimiento_agg', AnalyticsRendimientoAgg.updated_at),
-        ('analytics_anuales_agg', AnalyticsAnualesAgg.updated_at),
-        ('dim_negocio_contrato', DimNegocioContrato.updated_at),
-        ('analytics_contract_snapshot', AnalyticsContractSnapshot.created_at),
-        ('mv_options_cartera', MvOptionsCartera.updated_at),
-        ('mv_options_cohorte', MvOptionsCohorte.updated_at),
-        ('mv_options_rendimiento', MvOptionsRendimiento.updated_at),
-        ('mv_options_anuales', MvOptionsAnuales.updated_at),
-    ]
-
-    rows: list[dict] = []
-    for source_name, source_col in sources:
-        dt = db.query(source_col).order_by(source_col.desc()).limit(1).scalar()
-        rows.append(
-            {
-                'source_table': source_name,
-                'max_updated_at': dt,
-                'updated_at': now,
-                'last_job_id': last_job_id,
-            }
-        )
-    if engine.dialect.name == 'postgresql':
-        stmt = pg_insert(table).values(rows)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=[table.c.source_table],
-            set_={
-                'max_updated_at': stmt.excluded.max_updated_at,
-                'updated_at': now,
-                'last_job_id': stmt.excluded.last_job_id,
-            },
-        )
-    else:
-        stmt = sqlite_insert(table).values(rows)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=['source_table'],
-            set_={
-                'max_updated_at': stmt.excluded.max_updated_at,
-                'updated_at': now,
-                'last_job_id': stmt.excluded.last_job_id,
-            },
-        )
-    db.execute(stmt)
-    db.commit()
+    refresh_source_freshness_snapshots(db, last_job_id)
 
 
 def _ensure_agg_perf_indexes(db: Session) -> None:
@@ -3244,100 +2038,15 @@ def _refresh_analytics_snapshot(
     target_months: set[str],
     normalized_rows: list[dict] | None,
 ) -> None:
-    q = db.query(AnalyticsContractSnapshot)
-    if target_months:
-        q = q.filter(AnalyticsContractSnapshot.sale_month.in_(target_months))
-    elif mode == 'full_year' and year_from is not None:
-        q = q.filter(func.substr(AnalyticsContractSnapshot.sale_month, 4, 4) == str(year_from))
-    elif mode == 'full_all':
-        pass
-    q.delete(synchronize_session=False)
-    db.commit()
-
-    def _append_snapshot_rows(source_rows: list[dict], now: datetime) -> int:
-        inserted = 0
-        snapshot_rows: list[dict] = []
-        for row in source_rows:
-            contracts = max(1, _to_int(row.get('contracts_total'), 1))
-            debt_total = _to_float(row.get('debt_total'))
-            paid_total = _to_float(row.get('paid_total'))
-            if contracts <= 0 or (debt_total == 0 and paid_total == 0):
-                payload = json.loads(row.get('payload_json') or '{}')
-                contracts = max(1, _to_int(payload.get('contracts_total'), 1))
-                debt_total = _to_float(payload.get('debt_total'))
-                paid_total = _to_float(payload.get('paid_total'))
-            debt_per = debt_total / contracts
-            paid_per = paid_total / contracts
-            base_id = str(row.get('contract_id') or '')
-            if not base_id:
-                continue
-            for i in range(contracts):
-                snapshot_rows.append(
-                    {
-                        'contract_id': f'{base_id}_{i}',
-                        'sale_month': row.get('gestion_month'),
-                        'close_month': row.get('gestion_month'),
-                        'supervisor': row.get('supervisor'),
-                        'un': row.get('un'),
-                        'via': row.get('via'),
-                        'tramo': int(row.get('tramo') or 0),
-                        'debt': debt_per,
-                        'paid': paid_per,
-                        'created_at': now,
-                    }
-                )
-                if len(snapshot_rows) >= 5000:
-                    db.bulk_insert_mappings(AnalyticsContractSnapshot, snapshot_rows)
-                    db.commit()
-                    inserted += len(snapshot_rows)
-                    snapshot_rows = []
-        if snapshot_rows:
-            db.bulk_insert_mappings(AnalyticsContractSnapshot, snapshot_rows)
-            db.commit()
-            inserted += len(snapshot_rows)
-        return inserted
-
-    now = datetime.utcnow()
-    source_rows = list(normalized_rows or [])
-    if source_rows:
-        _append_snapshot_rows(source_rows, now)
-        return
-
-    # Avoid server-side cursor invalidation on PostgreSQL:
-    # this function commits while processing, so we paginate by id.
-    page_size = 1000
-    last_id = 0
-    while True:
-        q_fact = (
-            db.query(AnalyticsFact)
-            .filter(AnalyticsFact.id > last_id)
-            .order_by(AnalyticsFact.id.asc())
-        )
-        if mode == 'full_year' and year_from is not None:
-            q_fact = q_fact.filter(func.substr(AnalyticsFact.gestion_month, 4, 4) == str(year_from))
-        elif mode != 'full_all' and target_months:
-            q_fact = q_fact.filter(AnalyticsFact.gestion_month.in_(target_months))
-        rows = q_fact.limit(page_size).all()
-        if not rows:
-            break
-        batch: list[dict] = []
-        for row in rows:
-            batch.append(
-                {
-                    'contract_id': row.contract_id,
-                    'gestion_month': row.gestion_month,
-                    'supervisor': row.supervisor,
-                    'un': row.un,
-                    'via': row.via,
-                    'tramo': row.tramo,
-                    'contracts_total': row.contracts_total,
-                    'debt_total': row.debt_total,
-                    'paid_total': row.paid_total,
-                    'payload_json': row.payload_json,
-                }
-            )
-        _append_snapshot_rows(batch, now)
-        last_id = int(rows[-1].id or last_id)
+    refresh_analytics_snapshot(
+        db,
+        mode,
+        year_from,
+        target_months,
+        normalized_rows,
+        to_int=_to_int,
+        to_float=_to_float,
+    )
 
 
 def _persist_sync_run(db: Session, payload: dict) -> None:
@@ -4989,31 +3698,59 @@ def _execute_job(
         if domain == 'cartera':
             invalidated_options = invalidate_prefix('portfolio/options')
             invalidated_summary = invalidate_prefix('portfolio/summary')
-            invalidated_rend_v2_options = invalidate_endpoint('rendimiento-v2/options', lambda _: True)
-            invalidated_rend_v2_summary = invalidate_endpoint('rendimiento-v2/summary', lambda _: True)
-            invalidated_anuales_v2_options = invalidate_endpoint('anuales-v2/options', lambda _: True)
-            invalidated_anuales_v2_summary = invalidate_endpoint('anuales-v2/summary', lambda _: True)
-            invalidated_portfolio_fp = invalidate_endpoint('portfolio-corte-v2/first-paint', lambda _: True)
-            invalidated_rend_v2_fp = invalidate_endpoint('rendimiento-v2/first-paint', lambda _: True)
-            invalidated_anuales_v2_fp = invalidate_endpoint('anuales-v2/first-paint', lambda _: True)
-            invalidated_cohorte_v2_fp = invalidate_endpoint('cobranzas-cohorte-v2/first-paint', lambda _: True)
-            invalidated_cohorte_v2_detail = invalidate_endpoint('cobranzas-cohorte-v2/detail', lambda _: True)
             target_months_set = set(ordered_refresh_target_months)
+            invalidated_rend_v2_options = invalidate_endpoint(
+                'rendimiento-v2/options',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
+            )
+            invalidated_rend_v2_summary = invalidate_endpoint(
+                'rendimiento-v2/summary',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
+            )
+            invalidated_anuales_v2_options = invalidate_endpoint(
+                'anuales-v2/options',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
+            )
+            invalidated_anuales_v2_summary = invalidate_endpoint(
+                'anuales-v2/summary',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
+            )
+            invalidated_portfolio_fp = invalidate_endpoint(
+                'portfolio-corte-v2/first-paint',
+                lambda filters: _invalidate_cartera_cache(filters, target_months_set),
+            )
+            invalidated_rend_v2_fp = invalidate_endpoint(
+                'rendimiento-v2/first-paint',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
+            )
+            invalidated_anuales_v2_fp = invalidate_endpoint(
+                'anuales-v2/first-paint',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
+            )
+            invalidated_cohorte_v2_fp = invalidate_endpoint(
+                'cobranzas-cohorte-v2/first-paint',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'cutoff_month'),
+            )
+            invalidated_cohorte_v2_detail = invalidate_endpoint(
+                'cobranzas-cohorte-v2/detail',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'cutoff_month'),
+            )
             invalidated_corte_options = invalidate_endpoint(
                 'portfolio/corte/options',
                 lambda _: True,
             )
-            invalidated_corte_v2_options = invalidate_endpoint('portfolio-corte-v2/options', lambda _: True)
+            invalidated_corte_v2_options = invalidate_endpoint(
+                'portfolio-corte-v2/options',
+                lambda filters: _invalidate_cartera_cache(filters, target_months_set),
+            )
             invalidated_corte_summary = invalidate_endpoint(
                 'portfolio/corte/summary',
-                lambda filters: (
-                    not target_months_set
-                    or not isinstance(filters, dict)
-                    or not filters.get('gestion_month')
-                    or bool(set(filters.get('gestion_month') or []).intersection(target_months_set))
-                ),
+                lambda filters: _invalidate_cartera_cache(filters, target_months_set),
             )
-            invalidated_corte_v2_summary = invalidate_endpoint('portfolio-corte-v2/summary', lambda _: True)
+            invalidated_corte_v2_summary = invalidate_endpoint(
+                'portfolio-corte-v2/summary',
+                lambda filters: _invalidate_cartera_cache(filters, target_months_set),
+            )
             _append_log(
                 domain,
                 (
@@ -5037,51 +3774,58 @@ def _execute_job(
             )
         if domain == 'cobranzas':
             target_months_set = set(ordered_refresh_target_months)
-            invalidated_rend_v2_summary = invalidate_endpoint('rendimiento-v2/summary', lambda _: True)
-            invalidated_anuales_v2_summary = invalidate_endpoint('anuales-v2/summary', lambda _: True)
-            invalidated_corte_options = invalidate_endpoint('portfolio/corte/options', lambda _: True)
-            invalidated_corte_v2_options = invalidate_endpoint('portfolio-corte-v2/options', lambda _: True)
+            invalidated_rend_v2_summary = invalidate_endpoint(
+                'rendimiento-v2/summary',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
+            )
+            invalidated_anuales_v2_summary = invalidate_endpoint(
+                'anuales-v2/summary',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
+            )
+            invalidated_corte_options = invalidate_endpoint(
+                'portfolio/corte/options',
+                lambda filters: _invalidate_cartera_cache(filters, target_months_set),
+            )
+            invalidated_corte_v2_options = invalidate_endpoint(
+                'portfolio-corte-v2/options',
+                lambda filters: _invalidate_cartera_cache(filters, target_months_set),
+            )
             invalidated_corte_summary = invalidate_endpoint(
                 'portfolio/corte/summary',
-                lambda filters: (
-                    not target_months_set
-                    or not isinstance(filters, dict)
-                    or not filters.get('gestion_month')
-                    or bool(set(filters.get('gestion_month') or []).intersection(target_months_set))
-                ),
+                lambda filters: _invalidate_cartera_cache(filters, target_months_set),
             )
-            invalidated_corte_v2_summary = invalidate_endpoint('portfolio-corte-v2/summary', lambda _: True)
+            invalidated_corte_v2_summary = invalidate_endpoint(
+                'portfolio-corte-v2/summary',
+                lambda filters: _invalidate_cartera_cache(filters, target_months_set),
+            )
             invalidated_cohorte_summary = invalidate_endpoint(
                 'cobranzas-cohorte/summary',
-                lambda filters: (
-                    not target_months_set
-                    or not isinstance(filters, dict)
-                    or not filters.get('cutoff_month')
-                    or str(filters.get('cutoff_month')) in target_months_set
-                ),
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'cutoff_month'),
             )
-            invalidated_cohorte_options = invalidate_endpoint('cobranzas-cohorte/options', lambda _: True)
-            invalidated_cohorte_v2_options = invalidate_endpoint('cobranzas-cohorte-v2/options', lambda _: True)
+            invalidated_cohorte_options = invalidate_endpoint(
+                'cobranzas-cohorte/options',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'cutoff_month'),
+            )
+            invalidated_cohorte_v2_options = invalidate_endpoint(
+                'cobranzas-cohorte-v2/options',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'cutoff_month'),
+            )
             invalidated_cohorte_v2_fp = invalidate_endpoint(
                 'cobranzas-cohorte-v2/first-paint',
-                lambda filters: (
-                    not target_months_set
-                    or not isinstance(filters, dict)
-                    or not filters.get('cutoff_month')
-                    or str(filters.get('cutoff_month')) in target_months_set
-                ),
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'cutoff_month'),
             )
             invalidated_cohorte_v2_detail = invalidate_endpoint(
                 'cobranzas-cohorte-v2/detail',
-                lambda filters: (
-                    not target_months_set
-                    or not isinstance(filters, dict)
-                    or not filters.get('cutoff_month')
-                    or str(filters.get('cutoff_month')) in target_months_set
-                ),
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'cutoff_month'),
             )
-            invalidated_rend_v2_fp = invalidate_endpoint('rendimiento-v2/first-paint', lambda _: True)
-            invalidated_anuales_v2_fp = invalidate_endpoint('anuales-v2/first-paint', lambda _: True)
+            invalidated_rend_v2_fp = invalidate_endpoint(
+                'rendimiento-v2/first-paint',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
+            )
+            invalidated_anuales_v2_fp = invalidate_endpoint(
+                'anuales-v2/first-paint',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
+            )
             try:
                 cohorte_base_cache_clear()
             except Exception:
@@ -5106,14 +3850,39 @@ def _execute_job(
                 ),
             )
         if domain == 'analytics':
-            invalidated_rend_v2_options = invalidate_endpoint('rendimiento-v2/options', lambda _: True)
-            invalidated_rend_v2_summary = invalidate_endpoint('rendimiento-v2/summary', lambda _: True)
-            invalidated_anuales_v2_options = invalidate_endpoint('anuales-v2/options', lambda _: True)
-            invalidated_anuales_v2_summary = invalidate_endpoint('anuales-v2/summary', lambda _: True)
-            invalidated_rend_v2_fp = invalidate_endpoint('rendimiento-v2/first-paint', lambda _: True)
-            invalidated_anuales_v2_fp = invalidate_endpoint('anuales-v2/first-paint', lambda _: True)
-            invalidated_corte_v2_options = invalidate_endpoint('portfolio-corte-v2/options', lambda _: True)
-            invalidated_corte_v2_summary = invalidate_endpoint('portfolio-corte-v2/summary', lambda _: True)
+            target_months_set = set(ordered_refresh_target_months)
+            invalidated_rend_v2_options = invalidate_endpoint(
+                'rendimiento-v2/options',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
+            )
+            invalidated_rend_v2_summary = invalidate_endpoint(
+                'rendimiento-v2/summary',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
+            )
+            invalidated_anuales_v2_options = invalidate_endpoint(
+                'anuales-v2/options',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
+            )
+            invalidated_anuales_v2_summary = invalidate_endpoint(
+                'anuales-v2/summary',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
+            )
+            invalidated_rend_v2_fp = invalidate_endpoint(
+                'rendimiento-v2/first-paint',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
+            )
+            invalidated_anuales_v2_fp = invalidate_endpoint(
+                'anuales-v2/first-paint',
+                lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
+            )
+            invalidated_corte_v2_options = invalidate_endpoint(
+                'portfolio-corte-v2/options',
+                lambda filters: _invalidate_cartera_cache(filters, target_months_set),
+            )
+            invalidated_corte_v2_summary = invalidate_endpoint(
+                'portfolio-corte-v2/summary',
+                lambda filters: _invalidate_cartera_cache(filters, target_months_set),
+            )
             _append_log(
                 domain,
                 (
@@ -5866,15 +4635,28 @@ class SyncService:
                 .limit(capped)
                 .all()
             )
+            job_ids = [str(row.job_id or '').strip() for row in rows if str(row.job_id or '').strip()]
+            step_rows = []
+            if job_ids:
+                step_rows = (
+                    db.query(SyncJobStep)
+                    .filter(SyncJobStep.job_id.in_(job_ids))
+                    .order_by(SyncJobStep.started_at.desc())
+                    .all()
+                )
             totals = {
                 'jobs': 0,
                 'completed': 0,
                 'failed': 0,
                 'avg_duration_sec': 0.0,
+                'p95_duration_sec': 0.0,
                 'avg_throughput_rows_per_sec': 0.0,
             }
             by_domain: dict[str, dict[str, int | float]] = {}
+            by_step: dict[str, dict[str, int | float]] = {}
+            last_completed_by_domain: dict[str, dict[str, str | int | float | None]] = {}
             slowest: list[dict[str, str | int | float | None]] = []
+            durations: list[float] = []
             duration_sum = 0.0
             throughput_sum = 0.0
             throughput_count = 0
@@ -5887,6 +4669,8 @@ class SyncService:
                     totals['failed'] += 1
                 dur = float(row.duration_sec or 0.0)
                 th = float(getattr(row, 'throughput_rows_per_sec', 0.0) or 0.0)
+                if dur > 0:
+                    durations.append(dur)
                 duration_sum += dur
                 if th > 0:
                     throughput_sum += th
@@ -5913,6 +4697,7 @@ class SyncService:
                 if th > 0:
                     bucket['_throughput_sum'] += th
                     bucket['_throughput_count'] += 1
+                finished_at = row.finished_at.isoformat() if row.finished_at else None
                 slowest.append(
                     {
                         'job_id': row.job_id,
@@ -5923,15 +4708,97 @@ class SyncService:
                         'rows_read': int(row.rows_read or 0),
                         'rows_upserted': int(row.rows_upserted or 0),
                         'started_at': row.started_at.isoformat() if row.started_at else None,
-                        'finished_at': row.finished_at.isoformat() if row.finished_at else None,
+                        'finished_at': finished_at,
                     }
                 )
+                if str(row.stage or '').lower() == 'completed':
+                    current = last_completed_by_domain.get(domain)
+                    current_finished = str(current.get('finished_at') or '') if current else ''
+                    if finished_at and finished_at >= current_finished:
+                        last_completed_by_domain[domain] = {
+                            'job_id': row.job_id,
+                            'mode': row.mode,
+                            'duration_sec': dur,
+                            'rows_read': int(row.rows_read or 0),
+                            'rows_upserted': int(row.rows_upserted or 0),
+                            'started_at': row.started_at.isoformat() if row.started_at else None,
+                            'finished_at': finished_at,
+                        }
             if totals['jobs'] > 0:
                 totals['avg_duration_sec'] = round(duration_sum / totals['jobs'], 2)
+                totals['p95_duration_sec'] = round(_percentile(durations, 0.95), 2) if durations else 0.0
                 totals['avg_throughput_rows_per_sec'] = round(
                     throughput_sum / max(1, throughput_count),
                     2,
                 )
+            latest_step_rows: dict[tuple[str, str], SyncJobStep] = {}
+            for row in step_rows:
+                step_name = str(row.step_name or 'unknown').strip().lower() or 'unknown'
+                key = (str(row.job_id or ''), step_name)
+                current = latest_step_rows.get(key)
+                current_marker = (
+                    current.finished_at
+                    or current.started_at
+                    or datetime.min.replace(tzinfo=None)
+                    if current is not None
+                    else datetime.min.replace(tzinfo=None)
+                )
+                row_marker = row.finished_at or row.started_at or datetime.min.replace(tzinfo=None)
+                if current is None or row_marker >= current_marker:
+                    latest_step_rows[key] = row
+            for (_, step_name), row in latest_step_rows.items():
+                step_name = str(row.step_name or 'unknown').strip().lower() or 'unknown'
+                bucket = by_step.setdefault(
+                    step_name,
+                    {
+                        'runs': 0,
+                        'completed': 0,
+                        'failed': 0,
+                        'cancelled': 0,
+                        'avg_duration_sec': 0.0,
+                        'p95_duration_sec': 0.0,
+                        'avg_rows': 0.0,
+                        'avg_throughput_rows_per_sec': 0.0,
+                        '_durations': [],
+                        '_rows_sum': 0.0,
+                        '_rows_count': 0,
+                        '_throughput_sum': 0.0,
+                        '_throughput_count': 0,
+                    },
+                )
+                bucket['runs'] += 1
+                status = str(row.status or '').strip().lower()
+                if status == 'completed':
+                    bucket['completed'] += 1
+                elif status == 'failed':
+                    bucket['failed'] += 1
+                elif status == 'cancelled':
+                    bucket['cancelled'] += 1
+                dur = float(row.duration_sec or 0.0)
+                if dur > 0:
+                    bucket['_durations'].append(dur)
+                details = _json_loads_dict(row.details_json)
+                step_rows_value = details.get('rows_upserted', details.get('rows_read', details.get('normalized')))
+                try:
+                    rows_value = float(step_rows_value or 0.0)
+                except Exception:
+                    rows_value = 0.0
+                if rows_value > 0:
+                    bucket['_rows_sum'] += rows_value
+                    bucket['_rows_count'] += 1
+                throughput_value = 0.0
+                for field in ('throughput_rows_per_sec', 'rows_per_sec'):
+                    try:
+                        throughput_value = float(details.get(field) or 0.0)
+                    except Exception:
+                        throughput_value = 0.0
+                    if throughput_value > 0:
+                        break
+                if throughput_value <= 0 and dur > 0 and rows_value > 0:
+                    throughput_value = rows_value / dur
+                if throughput_value > 0:
+                    bucket['_throughput_sum'] += throughput_value
+                    bucket['_throughput_count'] += 1
             for domain, bucket in by_domain.items():
                 jobs = int(bucket['jobs'] or 0)
                 bucket['avg_duration_sec'] = round(float(bucket['_duration_sum']) / max(1, jobs), 2)
@@ -5941,11 +4808,28 @@ class SyncService:
                 bucket.pop('_throughput_sum', None)
                 bucket.pop('_throughput_count', None)
                 by_domain[domain] = bucket
+            for step_name, bucket in by_step.items():
+                durations_for_step = [float(v) for v in bucket.pop('_durations', [])]
+                bucket['avg_duration_sec'] = round(sum(durations_for_step) / max(1, len(durations_for_step)), 2) if durations_for_step else 0.0
+                bucket['p95_duration_sec'] = round(_percentile(durations_for_step, 0.95), 2) if durations_for_step else 0.0
+                rows_count = int(bucket.pop('_rows_count', 0) or 0)
+                rows_sum = float(bucket.pop('_rows_sum', 0.0) or 0.0)
+                bucket['avg_rows'] = round(rows_sum / max(1, rows_count), 2) if rows_count else 0.0
+                throughput_count_for_step = int(bucket.pop('_throughput_count', 0) or 0)
+                throughput_sum_for_step = float(bucket.pop('_throughput_sum', 0.0) or 0.0)
+                bucket['avg_throughput_rows_per_sec'] = (
+                    round(throughput_sum_for_step / max(1, throughput_count_for_step), 2)
+                    if throughput_count_for_step
+                    else 0.0
+                )
+                by_step[step_name] = bucket
             top_slowest_jobs = sorted(slowest, key=lambda item: float(item.get('duration_sec') or 0.0), reverse=True)[:10]
             return {
-                'generated_at': datetime.utcnow().isoformat(),
+                'generated_at': datetime.now(timezone.utc).isoformat(),
                 'totals': totals,
                 'by_domain': by_domain,
+                'by_step': dict(sorted(by_step.items())),
+                'last_completed_by_domain': dict(sorted(last_completed_by_domain.items())),
                 'top_slowest_jobs': top_slowest_jobs,
             }
         finally:
@@ -5953,64 +4837,24 @@ class SyncService:
 
     @staticmethod
     def list_schedules() -> list[dict]:
-        db = SessionLocal()
-        try:
-            rows = db.query(SyncSchedule).order_by(SyncSchedule.id.asc()).all()
-            return [
-                {
-                    'id': r.id,
-                    'name': r.name,
-                    'interval_value': r.interval_value,
-                    'interval_unit': r.interval_unit,
-                    'domains': json.loads(r.domains or '[]') if isinstance(r.domains, str) else (r.domains or []),
-                    'mode': r.mode,
-                    'year_from': r.year_from,
-                    'close_month': r.close_month,
-                    'close_month_from': r.close_month_from,
-                    'close_month_to': r.close_month_to,
-                    'enabled': bool(r.enabled),
-                    'paused': bool(r.paused),
-                    'last_run_at': _iso_utc(r.last_run_at),
-                    'last_run_status': r.last_run_status,
-                    'last_run_summary': json.loads(r.last_run_summary) if isinstance(r.last_run_summary, str) and r.last_run_summary else r.last_run_summary,
-                    'next_run_at': _iso_utc(r.next_run_at),
-                    'created_at': _iso_utc(r.created_at),
-                    'updated_at': _iso_utc(r.updated_at),
-                }
-                for r in rows
-            ]
-        finally:
-            db.close()
+        rows = list_schedules_records()
+        for row in rows:
+            row['last_run_at'] = _iso_utc(row.get('last_run_at'))
+            row['next_run_at'] = _iso_utc(row.get('next_run_at'))
+            row['created_at'] = _iso_utc(row.get('created_at'))
+            row['updated_at'] = _iso_utc(row.get('updated_at'))
+        return rows
 
     @staticmethod
     def get_schedule(schedule_id: int) -> dict | None:
-        db = SessionLocal()
-        try:
-            r = db.query(SyncSchedule).filter(SyncSchedule.id == schedule_id).first()
-            if not r:
-                return None
-            return {
-                'id': r.id,
-                'name': r.name,
-                'interval_value': r.interval_value,
-                'interval_unit': r.interval_unit,
-                'domains': json.loads(r.domains or '[]') if isinstance(r.domains, str) else (r.domains or []),
-                'mode': r.mode,
-                'year_from': r.year_from,
-                'close_month': r.close_month,
-                'close_month_from': r.close_month_from,
-                'close_month_to': r.close_month_to,
-                'enabled': bool(r.enabled),
-                'paused': bool(r.paused),
-                'last_run_at': _iso_utc(r.last_run_at),
-                'last_run_status': r.last_run_status,
-                'last_run_summary': json.loads(r.last_run_summary) if isinstance(r.last_run_summary, str) and r.last_run_summary else r.last_run_summary,
-                'next_run_at': _iso_utc(r.next_run_at),
-                'created_at': _iso_utc(r.created_at),
-                'updated_at': _iso_utc(r.updated_at),
-            }
-        finally:
-            db.close()
+        row = get_schedule_record(schedule_id)
+        if not row:
+            return None
+        row['last_run_at'] = _iso_utc(row.get('last_run_at'))
+        row['next_run_at'] = _iso_utc(row.get('next_run_at'))
+        row['created_at'] = _iso_utc(row.get('created_at'))
+        row['updated_at'] = _iso_utc(row.get('updated_at'))
+        return row
 
     @staticmethod
     def create_schedule(

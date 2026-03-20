@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.domain import category_expr_for_tramo, latest_month, month_from_any, month_serial, normalize_tramo
 from app.models.brokers import (
     AnalyticsContractSnapshot,
     AnalyticsSourceFreshness,
@@ -103,23 +104,11 @@ def _filters_to_query(filters: AnalyticsFilters) -> str:
 
 
 def _month_serial(mm_yyyy: str) -> int:
-    s = str(mm_yyyy or '').strip()
-    parts = s.split('/')
-    if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
-        return 0
-    m = int(parts[0])
-    y = int(parts[1])
-    if m < 1 or m > 12:
-        return 0
-    return y * 12 + m
+    return month_serial(mm_yyyy)
 
 
 def _latest_month(values: list[str]) -> str:
-    months = sorted(
-        {str(v or '').strip() for v in (values or []) if _month_serial(str(v or '').strip()) > 0},
-        key=_month_serial,
-    )
-    return months[-1] if months else ''
+    return latest_month(values)
 
 
 def _month_from_serial(serial: int) -> str:
@@ -152,6 +141,17 @@ def _standard_calendar_months(start_mm_yyyy: str, end_mm_yyyy: str | None = None
         if mm:
             out.append(mm)
     return out
+
+
+def _fetch_canonical_uns(db: Session) -> list[str]:
+    """UN canónicas activas desde dim_negocio_un_map (is_active=true)."""
+    rows = (
+        db.query(DimNegocioUnMap.canonical_un)
+        .filter(DimNegocioUnMap.is_active.is_(True))
+        .distinct()
+        .all()
+    )
+    return sorted({str(v[0]).strip().upper() for v in rows if str(v[0] or '').strip()})
 
 
 def _cap_paid_to_debt(paid: float | int | None, debt: float | int | None) -> float:
@@ -296,30 +296,11 @@ def _to_float(value: object) -> float:
 
 
 def _normalize_tramo(value: object) -> str:
-    s = str(value or '').strip()
-    if not s.isdigit():
-        return '0'
-    n = int(s)
-    if n < 0:
-        return '0'
-    if n >= 7:
-        return '7'
-    return str(n)
+    return str(normalize_tramo(value))
 
 
 def _month_from_any(value: object) -> str:
-    s = str(value or '').strip()
-    if not s:
-        return ''
-    if re.match(r'^\d{2}/\d{4}$', s):
-        return s
-    m = re.match(r'^(\d{4})[-/](\d{2})(?:[-/]\d{2})?', s)
-    if m:
-        return f'{m.group(2)}/{m.group(1)}'
-    m = re.match(r'^(\d{2})/(\d{2})/(\d{4})$', s)
-    if m:
-        return f'{m.group(2)}/{m.group(3)}'
-    return ''
+    return month_from_any(value)
 
 
 def _via_class_expr():
@@ -646,8 +627,7 @@ class AnalyticsService:
         category_filter = _normalize_str_set(filters.categoria)
         tramo_filter = _normalize_str_set(filters.tramo)
         via_expr = _via_class_expr()
-        # Regla de negocio AGENTS: VIGENTE=tramo 0..3, MOROSO=tramo > 3.
-        category_expr = case((CarteraFact.tramo > 3, literal('MOROSO')), else_=literal('VIGENTE'))
+        category_expr = category_expr_for_tramo(CarteraFact.tramo)
 
         base = db.query(CarteraFact)
         if supervisor_filter:
@@ -708,8 +688,7 @@ class AnalyticsService:
         category_filter = _normalize_str_set(filters.categoria)
         tramo_filter = _normalize_str_set(filters.tramo)
         via_expr = _via_class_expr()
-        # Regla de negocio AGENTS: VIGENTE=tramo 0..3, MOROSO=tramo > 3.
-        category_expr = case((CarteraFact.tramo > 3, literal('MOROSO')), else_=literal('VIGENTE'))
+        category_expr = category_expr_for_tramo(CarteraFact.tramo)
 
         base = db.query(CarteraFact)
         if supervisor_filter:
@@ -1011,6 +990,17 @@ class AnalyticsService:
             ]
             source_table = 'cartera_corte_agg'
 
+        uns = sorted(set(uns) | set(_fetch_canonical_uns(db)))
+        agg_gestion = [
+            str(v[0])
+            for v in db.query(CarteraCorteAgg.gestion_month).distinct().all()
+            if str(v[0] or '').strip() and _month_serial(str(v[0]).strip()) > 0
+        ]
+        agg_close = [
+            str(v[0])
+            for v in db.query(CarteraCorteAgg.close_month).distinct().all()
+            if str(v[0] or '').strip() and _month_serial(str(v[0]).strip()) > 0
+        ]
         gestion_months_data = sorted(set(gestion_months), key=_month_serial)
         close_months_data = sorted(set(close_months), key=_month_serial)
         standard_gestion_months = _standard_calendar_months(STANDARD_GESTION_CALENDAR_START)
@@ -1019,6 +1009,8 @@ class AnalyticsService:
             for mm in standard_gestion_months
             if _month_serial(mm) > 1
         ]
+        all_gestion_months = sorted(set(agg_gestion) | set(standard_gestion_months), key=_month_serial)
+        all_close_months = sorted(set(agg_close) | set(standard_close_months), key=_month_serial)
         return {
             'options': {
                 'uns': sorted(set(uns)),
@@ -1026,8 +1018,8 @@ class AnalyticsService:
                 'vias': sorted(set(vias)),
                 'tramos': sorted(set(tramos), key=lambda x: int(x) if str(x).isdigit() else 999),
                 'categories': sorted(set(categories)),
-                'gestion_months': standard_gestion_months,
-                'close_months': standard_close_months,
+                'gestion_months': all_gestion_months,
+                'close_months': all_close_months,
                 'contract_years': sorted(set(contract_years), key=lambda x: int(x) if x.isdigit() else 0),
             },
             'meta': {
@@ -1212,7 +1204,7 @@ class AnalyticsService:
         else:
             monto_cuota_expr = CarteraFact.cuota_amount
 
-        category_expr = case((CarteraFact.tramo > 3, literal('MOROSO')), else_=literal('VIGENTE'))
+        category_expr = category_expr_for_tramo(CarteraFact.tramo)
         cartera_q = (
             db.query(
                 CarteraFact.contract_id,
@@ -1330,16 +1322,26 @@ class AnalyticsService:
         )
         standard_cutoff_months = _standard_calendar_months(STANDARD_GESTION_CALENDAR_START)
         if cutoff_months_mv:
+            uns_mv = sorted(
+                {
+                    str(v[0]).strip().upper()
+                    for v in q.with_entities(MvOptionsCohorte.un).distinct().all()
+                    if str(v[0] or '').strip()
+                }
+            )
+            agg_cutoff_months = [
+                str(v[0]).strip()
+                for v in db.query(CobranzasCohorteAgg.cutoff_month).distinct().all()
+                if str(v[0] or '').strip()
+            ]
+            all_cutoff_months = sorted(
+                set(cutoff_months_mv) | set(agg_cutoff_months) | set(standard_cutoff_months),
+                key=_month_serial,
+            )
             return {
                 'options': {
-                    'cutoff_months': standard_cutoff_months,
-                    'uns': sorted(
-                        {
-                            str(v[0]).strip().upper()
-                            for v in q.with_entities(MvOptionsCohorte.un).distinct().all()
-                            if str(v[0] or '').strip()
-                        }
-                    ),
+                    'cutoff_months': all_cutoff_months,
+                    'uns': sorted(set(uns_mv) | set(_fetch_canonical_uns(db))),
                     'supervisors': sorted(
                         {
                             str(v[0]).strip().upper()
@@ -1432,10 +1434,14 @@ class AnalyticsService:
                 if str(v[0] or '').strip()
             ]
 
+        all_cutoff_months_fallback = sorted(
+            set(cutoff_months) | set(standard_cutoff_months),
+            key=_month_serial,
+        )
         return {
             'options': {
-                'cutoff_months': standard_cutoff_months,
-                'uns': sorted(set(uns)),
+                'cutoff_months': all_cutoff_months_fallback,
+                'uns': sorted(set(uns) | set(_fetch_canonical_uns(db))),
                 'supervisors': sorted(set(supervisors)),
                 'vias': sorted(set(vias)),
                 'categories': sorted(set(categories)) or ['MOROSO', 'VIGENTE'],
@@ -1613,7 +1619,7 @@ class AnalyticsService:
                 }
 
         # Regla de negocio AGENTS: VIGENTE=tramo 0..3, MOROSO=tramo > 3.
-        category_expr = case((CarteraFact.tramo > 3, literal('MOROSO')), else_=literal('VIGENTE'))
+        category_expr = category_expr_for_tramo(CarteraFact.tramo)
 
         if db.bind is not None and db.bind.dialect.name == 'postgresql':
             monto_cuota_text = cast(CarteraFact.payload_json, JSONB).op('->>')('monto_cuota')
@@ -2137,7 +2143,7 @@ class AnalyticsService:
         supervisor_filter = _normalize_str_set(filters.supervisor)
 
         via_expr = _via_class_expr()
-        categoria_expr = case((CarteraFact.tramo > 3, literal('MOROSO')), else_=literal('VIGENTE'))
+        categoria_expr = category_expr_for_tramo(CarteraFact.tramo)
         q = db.query(CarteraFact)
         if un_filter:
             q = q.filter(func.upper(func.coalesce(CarteraFact.un, '')).in_(list(un_filter)))
@@ -2509,20 +2515,27 @@ class AnalyticsService:
                 if str(v[0] or '').strip()
             ]
             source_table = 'analytics_rendimiento_agg'
+        uns = sorted(set(uns) | set(_fetch_canonical_uns(db)))
+        agg_gestion_months = [
+            str(v[0]).strip()
+            for v in db.query(AnalyticsRendimientoAgg.gestion_month).distinct().all()
+            if str(v[0] or '').strip() and _month_serial(str(v[0]).strip()) > 0
+        ]
         vias_pago = ['COBRADOR', 'DEBITO']
         data_months = sorted(set(gestion_months), key=_month_serial)
         calendar_months = _standard_calendar_months(STANDARD_GESTION_CALENDAR_START)
+        all_gestion_months = sorted(set(agg_gestion_months) | set(calendar_months), key=_month_serial)
         return {
             'options': {
                 'uns': sorted(set(uns)),
                 'tramos': sorted(set(tramos), key=lambda x: int(x) if str(x).isdigit() else 999),
-                'gestion_months': calendar_months,
+                'gestion_months': all_gestion_months,
                 'vias_cobro': sorted(set(vias_cobro)),
                 'vias_pago': sorted(set(vias_pago)),
                 'categorias': sorted(set(categorias)),
                 'supervisors': sorted(set(supervisors)),
             },
-            'default_gestion_month': data_months[-1] if data_months else (calendar_months[-1] if calendar_months else None),
+            'default_gestion_month': data_months[-1] if data_months else (all_gestion_months[-1] if all_gestion_months else None),
             'meta': {
                 'source': 'api-v2',
                 'source_table': source_table,

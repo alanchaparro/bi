@@ -1,4 +1,6 @@
-import React, { useMemo, useState, useRef, useEffect } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Button } from "@heroui/react";
 import { filterOptions } from "./filterOptions";
 
 type Props = {
@@ -23,15 +25,25 @@ export function MultiSelectFilter({
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [isClosing, setIsClosing] = useState(false);
+  const [portalStyle, setPortalStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const listboxRef = useRef<HTMLDivElement>(null);
   const filtered = useMemo(() => filterOptions(options, q), [options, q]);
   const listboxId = `${label.replace(/\s+/g, "-").toLowerCase()}-listbox`;
   const optionIdBase = `${listboxId}-option`;
 
   useEffect(() => {
     const onOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        listboxRef.current &&
+        !listboxRef.current.contains(target)
+      ) {
         setOpen(false);
       }
     };
@@ -40,12 +52,52 @@ export function MultiSelectFilter({
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setIsClosing(false);
+      return;
+    }
     const firstSelected = filtered.findIndex((v) => selected.includes(v));
     setActiveIndex(firstSelected >= 0 ? firstSelected : 0);
     const t = window.setTimeout(() => searchRef.current?.focus(), 0);
     return () => window.clearTimeout(t);
-  }, [open, filtered, selected]);
+  }, [filtered, open, selected]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const updatePosition = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const viewportPadding = 12;
+      const availableHeight = Math.max(220, window.innerHeight - rect.bottom - viewportPadding - 8);
+      setPortalStyle({
+        position: "fixed",
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        maxHeight: Math.min(320, availableHeight),
+        zIndex: 4000,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open]);
+
+  const handleClose = () => {
+    setIsClosing(true);
+    const t = window.setTimeout(() => {
+      setOpen(false);
+      setIsClosing(false);
+    }, 180);
+    return () => window.clearTimeout(t);
+  };
 
   const toggle = (value: string) => {
     const has = selected.includes(value);
@@ -60,6 +112,7 @@ export function MultiSelectFilter({
   };
 
   const activeOptionId = filtered[activeIndex] ? `${optionIdBase}-${activeIndex}` : undefined;
+
   const onTriggerKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
     if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -94,8 +147,7 @@ export function MultiSelectFilter({
     }
     if (e.key === "Escape") {
       e.preventDefault();
-      setOpen(false);
-      return;
+      handleClose();
     }
   };
 
@@ -115,75 +167,73 @@ export function MultiSelectFilter({
       className={`multi-select-filter ${open ? "is-open" : ""} ${className}`.trim()}
     >
       <label className="input-label">{label}</label>
-      <button
-        type="button"
-        className="input multi-select-trigger"
-        onClick={() => setOpen((o) => !o)}
+      <Button
+        ref={triggerRef}
+        variant="outline"
+        className="multi-select-trigger w-full justify-between"
+        onPress={() => setOpen((o) => !o)}
         onKeyDown={onTriggerKeyDown}
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-controls={listboxId}
-        disabled={options.length === 0}
+        isDisabled={options.length === 0}
       >
-        <span className="multi-select-value">
-          {displayText}
-        </span>
-        <span className="multi-select-caret" aria-hidden>
-          {open ? "^" : "v"}
-        </span>
-      </button>
-      {open && options.length > 0 && (
-        <div
-          id={listboxId}
-          role="listbox"
-          aria-multiselectable="true"
-          aria-activedescendant={activeOptionId}
-          className="multi-select-listbox"
-          onKeyDown={onListboxKeyDown}
-          tabIndex={-1}
-        >
-          <input
-            ref={searchRef}
-            className="input multi-select-search"
-            placeholder="Buscar..."
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onClick={(e) => e.stopPropagation()}
+        <span className="multi-select-value truncate">{displayText}</span>
+        <span className="multi-select-caret" aria-hidden>{open ? "^" : "v"}</span>
+      </Button>
+      {open && options.length > 0 && typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={listboxRef}
+            id={listboxId}
+            role="listbox"
+            aria-multiselectable="true"
+            aria-activedescendant={activeOptionId}
+            className={`multi-select-listbox ${isClosing ? "multi-select-listbox-closing" : "multi-select-listbox-open"}`}
             onKeyDown={onListboxKeyDown}
-          />
-          {filtered.map((v, idx) => (
-            <button
-              key={v}
-              id={`${optionIdBase}-${idx}`}
-              type="button"
-              role="option"
-              aria-selected={selected.includes(v)}
-              className={`multi-select-option ${idx === activeIndex ? "is-active" : ""}`.trim()}
-              onClick={(e) => {
-                e.stopPropagation();
-                toggle(v);
-              }}
-              onMouseEnter={() => setActiveIndex(idx)}
-              onFocus={() => setActiveIndex(idx)}
+            onMouseDown={(e) => e.stopPropagation()}
+            tabIndex={-1}
+            style={portalStyle}
+          >
+            <input
+              ref={searchRef}
+              type="search"
+              placeholder="Buscar..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
               onKeyDown={onListboxKeyDown}
-              tabIndex={idx === activeIndex ? 0 : -1}
-              onMouseDown={(e) => e.preventDefault()}
-            >
-              <span aria-hidden className={`multi-select-check ${selected.includes(v) ? "is-selected" : ""}`.trim()} />
-              <span className="multi-select-option-text">{v}</span>
-              <span className="multi-select-option-action">
-                <input
-                  type="checkbox"
-                  checked={selected.includes(v)}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={() => undefined}
-                  aria-label={`Seleccionar ${v}`}
-                />
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+              aria-label={`Buscar en ${label}`}
+              className="multi-select-search input-heroui-tokens"
+            />
+            <div className="multi-select-options">
+              {filtered.map((v, idx) => (
+                <button
+                  key={v}
+                  id={`${optionIdBase}-${idx}`}
+                  type="button"
+                  role="option"
+                  aria-selected={selected.includes(v)}
+                  className={`multi-select-option ${idx === activeIndex ? "is-active" : ""}`.trim()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggle(v);
+                  }}
+                  onMouseEnter={() => setActiveIndex(idx)}
+                  onFocus={() => setActiveIndex(idx)}
+                  onKeyDown={onListboxKeyDown}
+                  tabIndex={idx === activeIndex ? 0 : -1}
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  <span aria-hidden className={`multi-select-check ${selected.includes(v) ? "is-selected" : ""}`.trim()} />
+                  <span className="multi-select-option-text">{v}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          ,
+          document.body,
+        )}
     </div>
   );
 }

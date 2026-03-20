@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { Button } from '@heroui/react'
 import { SectionHeader } from '../../components/layout/SectionHeader'
 import { getApiErrorMessage } from '../../shared/apiErrors'
 
@@ -92,37 +93,16 @@ export function BrokersPrizesView({ rules, canEdit, loading, error, onSave }: Pr
           {draft.map((rule, idx) => (
             <tr key={idx}>
               <td>
-                <input
-                  className="input"
-                  aria-label={`prize-supervisors-${idx}`}
-                  value={(rule.supervisors || []).join(', ')}
-                  onChange={(e) => updateText(idx, 'supervisors', e.target.value)}
-                  disabled={!canEdit}
-                  style={{ width: '100%', minWidth: 120 }}
-                />
+                <input className="input" aria-label={`prize-supervisors-${idx}`} value={(rule.supervisors || []).join(', ')} onChange={(e) => updateText(idx, 'supervisors', e.target.value)} disabled={!canEdit} style={{ width: '100%', minWidth: 120 }} />
               </td>
               <td>
-                <input
-                  className="input"
-                  aria-label={`prize-uns-${idx}`}
-                  value={(rule.uns || []).join(', ')}
-                  onChange={(e) => updateText(idx, 'uns', e.target.value)}
-                  disabled={!canEdit}
-                  style={{ width: '100%', minWidth: 100 }}
-                />
+                <input className="input" aria-label={`prize-uns-${idx}`} value={(rule.uns || []).join(', ')} onChange={(e) => updateText(idx, 'uns', e.target.value)} disabled={!canEdit} style={{ width: '100%', minWidth: 100 }} />
               </td>
               <td>
-                <input
-                  className="input"
-                  aria-label={`prize-scales-${idx}`}
-                  value={(rule.scales || []).map((s) => `${Number(s.threshold || 0)}:${Number(s.prize || 0)}`).join(', ')}
-                  onChange={(e) => updateScales(idx, e.target.value)}
-                  disabled={!canEdit}
-                  style={{ width: '100%', minWidth: 160 }}
-                />
+                <input className="input" aria-label={`prize-scales-${idx}`} value={(rule.scales || []).map((s) => `${Number(s.threshold || 0)}:${Number(s.prize || 0)}`).join(', ')} onChange={(e) => updateScales(idx, e.target.value)} disabled={!canEdit} style={{ width: '100%', minWidth: 160 }} />
               </td>
               <td>
-                <button type="button" className="btn btn-secondary" onClick={() => removeRule(idx)} disabled={!canEdit}>Eliminar</button>
+                <Button size="sm" variant="danger" onPress={() => removeRule(idx)} isDisabled={!canEdit}>Eliminar</Button>
               </td>
             </tr>
           ))}
@@ -130,8 +110,8 @@ export function BrokersPrizesView({ rules, canEdit, loading, error, onSave }: Pr
       </table>
       </div>
       <div className="flex-actions flex-actions--top">
-        <button type="button" className="btn btn-secondary" onClick={addRule} disabled={!canEdit}>Agregar regla</button>
-        <button type="button" className="btn btn-primary" onClick={save} disabled={!canEdit || saving}>{saving ? 'Guardando…' : 'Guardar premios'}</button>
+        <Button variant="outline" onPress={addRule} isDisabled={!canEdit}>Agregar regla</Button>
+        <Button variant="primary" onPress={save} isDisabled={!canEdit || saving}>{saving ? 'Guardando…' : 'Guardar premios'}</Button>
       </div>
     </section>
   )

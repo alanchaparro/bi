@@ -11,19 +11,25 @@ import type {
 
 export type { BrokersFilters, BrokersPreferences };
 import { clearSession, getStoredRefreshToken, setStoredRefreshToken } from "./sessionStorage";
+import {
+  API_BASE_URL,
+  USE_FRONTEND_PERF_TELEMETRY as USE_FRONTEND_PERF_TELEMETRY_ENV,
+  USE_STRICT_UI_TOKENS as USE_STRICT_UI_TOKENS_ENV,
+  USE_UI_IOS_REFINEMENT as USE_UI_IOS_REFINEMENT_ENV,
+  UI_IOS_REFINEMENT_MODULES as UI_IOS_REFINEMENT_MODULES_ENV,
+  APP_VERSION,
+} from "./env";
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1",
+  baseURL: API_BASE_URL,
 });
 const USE_ANALYTICS_V2 = true;
 const USE_COHORTE_V2_FIRST_PAINT = true;
 const USE_FIRST_PAINT_ALL_SECTIONS = true;
-const USE_FRONTEND_PERF_TELEMETRY = String(import.meta.env.VITE_USE_FRONTEND_PERF_TELEMETRY || "1").trim() !== "0";
-export const USE_STRICT_UI_TOKENS = String(import.meta.env.VITE_USE_STRICT_UI_TOKENS || "1").trim() !== "0";
-export const USE_UI_IOS_REFINEMENT = String(import.meta.env.VITE_USE_UI_IOS_REFINEMENT || "0").trim() === "1";
-export const UI_IOS_REFINEMENT_MODULES = String(import.meta.env.VITE_USE_UI_IOS_REFINEMENT_MODULES || "all")
-  .trim()
-  .toLowerCase();
+const USE_FRONTEND_PERF_TELEMETRY = USE_FRONTEND_PERF_TELEMETRY_ENV;
+export const USE_STRICT_UI_TOKENS = USE_STRICT_UI_TOKENS_ENV;
+export const USE_UI_IOS_REFINEMENT = USE_UI_IOS_REFINEMENT_ENV;
+export const UI_IOS_REFINEMENT_MODULES = UI_IOS_REFINEMENT_MODULES_ENV;
 
 /** Callback when session is invalid (e.g. refresh failed). App should clear auth state and show login. */
 let onUnauthorized: (() => void) | null = null;
@@ -228,7 +234,7 @@ export async function markPerfReady(route: FrontendPerfRoute): Promise<void> {
       bytes: c.bytes,
     })),
     timestamp_utc: new Date().toISOString(),
-    app_version: String(import.meta.env.VITE_APP_VERSION || "dev"),
+    app_version: APP_VERSION,
   };
   try {
     await sendFrontendPerf(payload);

@@ -1,36 +1,69 @@
-# Frontend v1 (React + TS)
+# Frontend – Next.js + React + HeroUI v3
 
-## Dev
+Stack: **Next.js 15** (App Router), **React 19**, **TypeScript**, **Tailwind CSS v4**, **HeroUI v3** (componentes UI).
+
+## Desarrollo
+
 ```bash
 npm install
 npm run dev
 ```
 
+La app se sirve en **http://localhost:3000** (Next.js). La página raíz redirige a `/login` o `/analisis-cartera` según el estado de sesión.
+
+## Build
+
+```bash
+npm run build
+npm run start
+```
+
+## Rutas (App Router)
+
+| Ruta | Descripción |
+|------|-------------|
+| `/` | Redirección según auth |
+| `/login` | Inicio de sesión |
+| `/analisis-cartera` | Análisis de Cartera |
+| `/analisis-anuales` | Análisis Anuales |
+| `/rendimiento` | Rendimiento de Cartera |
+| `/cobranzas-cohorte` | Análisis Cobranzas Corte |
+| `/config` | Configuración (sync, usuarios, etc.) |
+
+## Variables de entorno
+
+Crear `.env.local` (o usar `.env.example` como referencia):
+
+- `NEXT_PUBLIC_API_BASE_URL` – URL base de la API (default: `http://localhost:8000/api/v1`)
+
+Opcionales: `NEXT_PUBLIC_USE_FRONTEND_PERF_TELEMETRY`, `NEXT_PUBLIC_APP_VERSION`, `NEXT_PUBLIC_LEGACY_DASHBOARD_URL`.
+
 ## Tipos OpenAPI
+
 ```bash
 npm run generate:types
 ```
-Genera `src/shared/api-types.ts` desde `../docs/openapi-v1.json`.
 
-## Variables
-- `VITE_API_BASE_URL` (default `http://localhost:8000/api/v1`)
+Genera `src/shared/api-types.ts` desde `../docs/openapi-v1.json` (requiere `openapi-typescript` en devDependencies si se usa).
 
 ## Tests
-```bash
-npm run test
-```
-Cobertura incluye el menú de navegación: el componente `AppNav` (enlaces por sección, ítem activo con `aria-current`) y la integración en `App` (todas las secciones de `NAV_SECTIONS` presentes en el DOM con el `id` correcto). Vitest + jsdom + React Testing Library.
 
-## E2E (Playwright)
-Primera vez: instalar navegador Chromium (desde `frontend/`):
-```bash
-npx playwright install chromium
-```
-Ejecutar E2E:
-```bash
-npm run test:e2e
-```
-Playwright arranca la API (`docker compose --profile dev up api-v1` desde la raíz) y el front (`npm run dev`) si no están en marcha; con `reuseExistingServer` puede reutilizar servidores ya levantados. El test: login con `admin`/`change_me_demo_admin_password` (o `E2E_USERNAME`/`E2E_PASSWORD`), clic en "Comisiones" y comprueba que la sección `#comisiones` está visible en viewport.
+- **Typecheck:** `npm run typecheck`
+- **E2E (Playwright):** por defecto los tests apuntan a **http://localhost:8080** (frontend en Docker). Desde `frontend/`:
+  - `npm ci` (incluye `@playwright/test`)
+  - `npx playwright install chromium`
+  - Con Docker levantado (`docker compose up -d`): `npm run test:e2e`
+  - Para otro origen: `E2E_BASE_URL=http://localhost:3000 npm run test:e2e`
+  - Usuario/contraseña E2E: `E2E_USERNAME` / `E2E_PASSWORD` (default: `admin` / `admin123`). En el backend define `DEMO_ADMIN_PASSWORD=admin123` en `.env` (solo `APP_ENV=dev`) para que el login funcione.
+
+## Estructura relevante
+
+- `src/app/` – App Router: `layout.tsx`, `page.tsx`, `login/`, `(dashboard)/` (rutas protegidas).
+- `src/components/layout/DashboardLayout.tsx` – Layout con sidebar, header, tema y estado de sync.
+- `src/config/routes.ts` – Definición de rutas y ítems del menú.
+- `src/modules/` – Vistas por módulo (analisisCartera, config, etc.); siguen usando estilos en `src/index.css` para compatibilidad.
+- `src/shared/` – API, contratos, formatters, `env.ts` (variables Next/Vite).
 
 ## Objetivo
-Scaffold de migración para módulos Brokers sin romper el frontend legacy.
+
+Frontend listo para uso con Next.js y HeroUI v3: login y shell (sidebar + header) en HeroUI; vistas de análisis y configuración conservan la lógica existente y pueden migrarse a HeroUI de forma gradual.

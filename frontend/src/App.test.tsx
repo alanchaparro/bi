@@ -11,25 +11,31 @@ const { mockAuth } = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('./shared/api', () => ({
-  api: {
-    post: vi.fn().mockResolvedValue({ data: { rows: [] } }),
-    defaults: {
-      baseURL: 'http://localhost:8000/api/v1',
+vi.mock('./shared/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./shared/api')>()
+  return {
+    ...actual,
+    api: {
+      post: vi.fn().mockResolvedValue({ data: { rows: [] } }),
+      defaults: { baseURL: 'http://localhost:8000/api/v1' },
     },
-  },
-  restoreSession: vi.fn().mockResolvedValue(mockAuth),
-  setOnUnauthorized: vi.fn(),
-  setAuthToken: vi.fn(),
-  getSupervisorsScope: vi.fn().mockResolvedValue({ supervisors: [] }),
-  getCommissionsRules: vi.fn().mockResolvedValue({ rules: [] }),
-  getPrizesRules: vi.fn().mockResolvedValue({ rules: [] }),
-  saveCommissionsRules: vi.fn(),
-  savePrizesRules: vi.fn(),
-  saveSupervisorsScope: vi.fn(),
-  login: vi.fn(),
-  logout: vi.fn(),
-}))
+    restoreSession: vi.fn().mockResolvedValue(mockAuth),
+    setOnUnauthorized: vi.fn(),
+    setAuthToken: vi.fn(),
+    getSupervisorsScope: vi.fn().mockResolvedValue({ supervisors: [] }),
+    getCommissionsRules: vi.fn().mockResolvedValue({ rules: [] }),
+    getPrizesRules: vi.fn().mockResolvedValue({ rules: [] }),
+    saveCommissionsRules: vi.fn(),
+    savePrizesRules: vi.fn(),
+    saveSupervisorsScope: vi.fn(),
+    login: vi.fn(),
+    logout: vi.fn(),
+    markPerfRoute: vi.fn(),
+    clearAnalyticsApiCache: vi.fn(),
+    USE_UI_IOS_REFINEMENT: false,
+    UI_IOS_REFINEMENT_MODULES: [],
+  }
+})
 
 vi.mock('./store/userPreferences', () => ({
   loadBrokersPreferences: vi.fn().mockResolvedValue({ filters: {} }),

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.core.analytics_cache import get as cache_get, set as cache_set
+from app.core.config import settings
 from app.core.deps import require_permission, write_rate_limiter
 from app.db.session import get_db
 from app.schemas.analytics import (
@@ -46,12 +47,13 @@ def _call(endpoint: str, filters: AnalyticsFilters):
     try:
         return AnalyticsService.fetch_legacy(endpoint, filters)
     except Exception as exc:
+        detail_msg = None if settings.app_env == 'prod' else str(exc)
         raise HTTPException(
             status_code=502,
             detail={
                 'error_code': 'ANALYTICS_BACKEND_ERROR',
                 'message': 'No se pudo obtener analytics legacy',
-                'details': str(exc),
+                'details': detail_msg,
             },
         )
 

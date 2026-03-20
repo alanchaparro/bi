@@ -4,6 +4,9 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
 from fastapi import HTTPException, status
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
@@ -62,7 +65,7 @@ def revoke_refresh_session(db: Session, refresh_token: str) -> bool:
     if not row:
         return False
     row.revoked = True
-    row.rotated_at = datetime.utcnow()
+    row.rotated_at = _utcnow()
     db.commit()
     return True
 
@@ -76,7 +79,7 @@ def rotate_refresh_session(db: Session, old_refresh_token: str, username: str) -
             detail={'error_code': 'UNAUTHORIZED', 'message': 'Refresh token revocado', 'details': None},
         )
     old_row.revoked = True
-    old_row.rotated_at = datetime.utcnow()
+    old_row.rotated_at = _utcnow()
     new_refresh = create_refresh_token(username)
     new_row = AuthSession(
         username=username,
@@ -99,9 +102,19 @@ def _get_user_state(db: Session, username: str) -> AuthUserState:
     return row
 
 
+def _utcnow_naive() -> datetime:
+    """UTC now as naive datetime for comparison with DB-stored datetimes (SQLite returns naive)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def assert_not_blocked(db: Session, username: str) -> None:
     row = _get_user_state(db, username)
-    if row.blocked_until and row.blocked_until > datetime.utcnow():
+    if not row.blocked_until:
+        return
+    blocked = row.blocked_until
+    if blocked.tzinfo is not None:
+        blocked = blocked.astimezone(timezone.utc).replace(tzinfo=None)
+    if blocked > _utcnow_naive():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -116,9 +129,9 @@ def register_login_failure(db: Session, username: str) -> None:
     row = _get_user_state(db, username)
     row.failed_attempts = int(row.failed_attempts or 0) + 1
     if row.failed_attempts >= settings.auth_max_failed_attempts:
-        row.blocked_until = datetime.utcnow() + timedelta(minutes=settings.auth_lock_minutes)
+        row.blocked_until = _utcnow() + timedelta(minutes=settings.auth_lock_minutes)
         row.failed_attempts = 0
-    row.updated_at = datetime.utcnow()
+    row.updated_at = _utcnow()
     db.commit()
 
 
@@ -126,5 +139,5 @@ def register_login_success(db: Session, username: str) -> None:
     row = _get_user_state(db, username)
     row.failed_attempts = 0
     row.blocked_until = None
-    row.updated_at = datetime.utcnow()
+    row.updated_at = _utcnow()
     db.commit()

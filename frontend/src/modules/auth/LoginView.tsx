@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Button, Input, Label } from "@heroui/react";
 import type { LoginRequest } from "../../shared/contracts";
 
 type Props = {
@@ -32,43 +33,41 @@ export function LoginView({ onSubmit, error, loading = false }: Props) {
         <p className="section-subtitle">Inicia sesión con tu usuario y contraseña.</p>
         <form onSubmit={handleSubmit} className="form-stack">
           <div className="form-group">
-            <label htmlFor="login-username" className="input-label">
-              Usuario
-            </label>
-            <input
+            <Label htmlFor="login-username" className="input-label">Usuario</Label>
+            <Input
               id="login-username"
               type="text"
               autoComplete="username"
-              className="input"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               disabled={loading || submitting}
               placeholder="Tu usuario"
+              aria-label="Usuario"
+              className="input border border-[var(--color-border)] bg-[var(--input-bg)]"
             />
           </div>
           <div className="form-group">
-            <label htmlFor="login-password" className="input-label">
-              Contraseña
-            </label>
-            <input
+            <Label htmlFor="login-password" className="input-label">Contraseña</Label>
+            <Input
               id="login-password"
               type="password"
               autoComplete="current-password"
-              className="input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading || submitting}
               placeholder="********"
+              aria-label="Contraseña"
+              className="input border border-[var(--color-border)] bg-[var(--input-bg)]"
             />
           </div>
-          {error ? <p className="alert-error">{error}</p> : null}
-          <button
-            type="submit"
-            className="btn btn-primary btn-full-width"
-            disabled={loading || submitting || !username.trim() || !password}
-          >
+          {error ? (
+            <p className="alert-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <Button type="submit" variant="primary" className="w-full" isDisabled={loading || submitting || !username.trim() || !password} aria-label="Entrar">
             {submitting ? "Entrando..." : "Entrar"}
-          </button>
+          </Button>
         </form>
       </div>
     </div>

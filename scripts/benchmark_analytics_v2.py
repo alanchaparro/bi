@@ -77,6 +77,12 @@ def main() -> int:
     parser.add_argument("--base-url", default="http://localhost:8000/api/v1")
     parser.add_argument("--token", default=None)
     parser.add_argument("--rounds", type=int, default=8, help="Llamadas por endpoint (1 cold + resto warm).")
+    parser.add_argument(
+        "--target-p95-ms",
+        type=float,
+        default=800.0,
+        help="Objetivo global de warm p95 en ms para marcar pass/fail rapido.",
+    )
     args = parser.parse_args()
 
     payloads: list[tuple[str, dict[str, Any]]] = [
@@ -122,10 +128,17 @@ def main() -> int:
             }
         )
 
-    print(json.dumps({"generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "rows": rows}, indent=2))
+    summary = {
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "target_p95_ms": float(args.target_p95_ms),
+        "rows": rows,
+        "failing_endpoints": [
+            row["endpoint"] for row in rows if (not row["status_ok"]) or float(row["warm_p95_ms"]) > float(args.target_p95_ms)
+        ],
+    }
+    print(json.dumps(summary, indent=2))
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

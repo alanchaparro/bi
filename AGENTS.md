@@ -34,6 +34,8 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
    - No consolidar por hardcode en sync; usar tabla de mapeo.
 8. **Scope de extraccion MySQL**:
    - Empresas permitidas: `enterprise_id IN (1,2,5)`.
+8.1. **Exclusion de contratos en cobranzas**:
+   - En sync y queries de cobranzas (MySQL) se excluyen por regla de negocio los contratos `contract_id NOT IN (55411, 55414, 59127, 59532, 60402)`. Este listado está en `query_cobranzas.sql` y en `MYSQL_PRECHECK_QUERIES` de sync; cualquier cambio debe reflejarse en ambos y documentarse aquí.
 9. **Rendimiento de cartera (dos metricas obligatorias)**:
    - `rendimiento_monto_% = cobrado / monto_a_cobrar`.
    - `monto_a_cobrar = monto_vencido + monto_cuota`.
@@ -75,6 +77,9 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
 3. **Codigo y SQL sin hardcode sensible**:
    - Prohibido hardcodear usuarios/passwords/hosts sensibles en codigo, scripts o `.sql`.
    - Logs y errores no deben exponer secretos ni encabezados `Authorization`.
+3.1. **Autenticacion (JWT y contraseñas)**:
+   - Access token JWT debe incluir `typ: 'access'`; refresh token `typ: 'refresh'`. Las rutas protegidas validan que el token sea de tipo access.
+   - Contraseñas de usuarios (AuthUser): se hashean con **passlib** usando el esquema configurado (p. ej. `pbkdf2_sha256`). No cambiar el esquema sin plan de migración de hashes existentes.
 4. **Control obligatorio antes de commit/push**:
    - Ejecutar escaneo de secretos (ej: `gitleaks` o equivalente) antes de push.
    - Si el escaneo detecta secretos: bloquear push hasta corregir.
@@ -115,6 +120,8 @@ Actualizar inmediatamente si cambia:
 1. Definicion de categorias por tramo.
 2. Politica canonica de UN.
 3. Reglas de calendario (cierre/gestion/corte).
-4. Contratos de endpoints v2 o criterios de performance/SLA.
-5. Definicion de rendimiento de cartera (monto/cantidad) o sus dimensiones de corte.
-6. Politicas de seguridad de repositorio, CI/CD o manejo de secretos.
+4. Listado de contratos excluidos en cobranzas (sync/MySQL).
+5. Contratos de endpoints v2 o criterios de performance/SLA.
+6. Definicion de rendimiento de cartera (monto/cantidad) o sus dimensiones de corte.
+7. Politicas de seguridad de repositorio, CI/CD o manejo de secretos.
+8. Esquema de hashing de contraseñas o validacion de tipo de token JWT.

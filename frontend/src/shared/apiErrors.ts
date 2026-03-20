@@ -32,7 +32,7 @@ export function parseApiError(e: unknown): ApiErrorDetail {
     if (res?.status === 403)
       return { message: 'Cuenta bloqueada temporalmente. Intenta más tarde.', trace_id: res?.data?.trace_id };
     if (res?.status === 504)
-      return { message: msg || 'Sincronización excedió el tiempo. Comprueba MYSQL_HOST (host.docker.internal si MySQL está en el host).', trace_id: res?.data?.trace_id };
+      return { message: 'La operación tardó demasiado. Inténtalo de nuevo más tarde.', trace_id: res?.data?.trace_id };
   }
 
   if (e instanceof Error && e.message.trim()) {
@@ -42,5 +42,5 @@ export function parseApiError(e: unknown): ApiErrorDetail {
     return { message: e.trim() };
   }
 
-  return { message: 'Error de conexión. Revisa que la API esté disponible.' };
+  return { message: 'No se pudo conectar. Comprueba tu conexión o contacta al administrador del sistema.' };
 }

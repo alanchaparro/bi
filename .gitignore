@@ -42,6 +42,11 @@ htmlcov/
 coverage.xml
 frontend/node_modules/
 frontend/dist/
+frontend/.next/
+frontend/playwright-report/
+frontend/test-results/
+frontend/.tmp_homepage.html
+frontend/tsconfig.tsbuildinfo
 
 # Local runtime persisted state
 data/*.db

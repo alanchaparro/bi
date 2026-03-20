@@ -16,6 +16,7 @@ os.environ.setdefault('JWT_SECRET_KEY', 'test_secret_key')
 
 from app.main import app  # noqa: E402
 from app.core.rate_limit import rate_limiter  # noqa: E402
+from app.core.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
 from app.models.brokers import BrokersSupervisorScope, AuthSession, AuthUser, AuthUserState, UserPreference  # noqa: E402
 
@@ -42,6 +43,13 @@ class ApiV1BrokersConfigTests(unittest.TestCase):
         try:
             db.query(AuthUserState).delete()
             db.query(AuthUser).filter(AuthUser.username.in_([TEST_ADMIN_USER, TEST_ANALYST_USER])).delete(synchronize_session=False)
+            db.commit()
+            for username, password, role in [
+                (TEST_ADMIN_USER, TEST_ADMIN_PASSWORD, 'admin'),
+                (TEST_ANALYST_USER, TEST_ANALYST_PASSWORD, 'analyst'),
+            ]:
+                if db.query(AuthUser).filter(AuthUser.username == username).first() is None:
+                    db.add(AuthUser(username=username, password_hash=hash_password(password), role=role, is_active=True))
             db.commit()
         finally:
             db.close()

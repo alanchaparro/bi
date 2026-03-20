@@ -1,4 +1,5 @@
 import React from 'react'
+import { Button } from '@heroui/react'
 import type { NavSection } from '../AppNav/AppNav'
 
 type Props = {
@@ -72,16 +73,16 @@ export function SidebarNav({
 
   return (
     <>
-      <button
-        type="button"
+      <Button
+        isIconOnly
+        variant="ghost"
         className="menu-toggle"
-        onClick={onToggleSidebar}
         aria-label={sidebarOpen ? 'Cerrar menú' : 'Abrir menú'}
         aria-expanded={sidebarOpen}
-        title={sidebarOpen ? 'Cerrar menú' : 'Abrir menú'}
+        onPress={onToggleSidebar}
       >
         ☰
-      </button>
+      </Button>
       <div
         className="sidebar-overlay"
         onClick={onCloseSidebar}
@@ -98,17 +99,16 @@ export function SidebarNav({
               const isSub = SUB_IDS.has(s.id)
               const icon = SECTION_ICON[s.id] ?? ''
               return (
-                <button
+                <Button
                   key={s.id}
-                  type="button"
+                  variant="ghost"
                   className={`tab-btn ${isSub ? 'tab-sub-btn' : ''} ${activeId === s.id ? 'active' : ''}`}
-                  onClick={() => handleClick(s.id)}
-                  aria-current={activeId === s.id ? 'true' : undefined}
-                  title={s.label}
+                  onPress={() => handleClick(s.id)}
+                  aria-current={activeId === s.id ? 'page' : undefined}
                 >
                   <span className="tab-icon" aria-hidden>{icon}</span>
                   <span className="tab-label">{s.label}</span>
-                </button>
+                </Button>
               )
             })}
           </div>

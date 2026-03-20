@@ -1,4 +1,5 @@
 SELECT
+    -- Regla operativa: este SQL define solo scope de extracción; la semántica de negocio final vive en Python.
     YEAR(p.date) AS anio,
     MONTH(p.date) AS mes,
     DAY(p.date) AS dia,

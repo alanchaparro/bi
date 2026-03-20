@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { Button, Input } from '@heroui/react'
 import { SectionHeader } from '../../components/layout/SectionHeader'
 import { getApiErrorMessage } from '../../shared/apiErrors'
 
@@ -75,58 +76,53 @@ export function BrokersCommissionsView({ rules, canEdit, loading, error, onSave 
           {draft.map((rule, idx) => (
             <tr key={idx}>
               <td>
-                <input
-                  className="input"
+                <Input
+                  className="w-full min-w-[100px] border border-[var(--color-border)] bg-[var(--input-bg)]"
                   aria-label={`commission-supervisors-${idx}`}
                   value={(rule.supervisors || []).join(', ')}
                   onChange={(e) => update(idx, 'supervisors', e.target.value)}
                   disabled={!canEdit}
-                  style={{ width: '100%', minWidth: 100 }}
                 />
               </td>
               <td>
-                <input
-                  className="input"
+                <Input
+                  className="w-full min-w-[100px] border border-[var(--color-border)] bg-[var(--input-bg)]"
                   aria-label={`commission-uns-${idx}`}
                   value={(rule.uns || []).join(', ')}
                   onChange={(e) => update(idx, 'uns', e.target.value)}
                   disabled={!canEdit}
-                  style={{ width: '100%', minWidth: 100 }}
                 />
               </td>
               <td>
-                <input
-                  className="input"
+                <Input
+                  className="w-full min-w-[80px] border border-[var(--color-border)] bg-[var(--input-bg)]"
                   aria-label={`commission-vias-${idx}`}
                   value={(rule.vias || []).join(', ')}
                   onChange={(e) => update(idx, 'vias', e.target.value)}
                   disabled={!canEdit}
-                  style={{ width: '100%', minWidth: 80 }}
                 />
               </td>
               <td>
-                <input
-                  className="input"
+                <Input
+                  className="w-full min-w-[100px] border border-[var(--color-border)] bg-[var(--input-bg)]"
                   aria-label={`commission-months-${idx}`}
                   value={(rule.months || []).join(', ')}
                   onChange={(e) => update(idx, 'months', e.target.value)}
                   disabled={!canEdit}
-                  style={{ width: '100%', minWidth: 100 }}
                 />
               </td>
               <td>
-                <input
-                  className="input"
-                  aria-label={`commission-rate-${idx}`}
+                <Input
                   type="number"
-                  value={Number(rule.rate || 0)}
+                  className="w-20 border border-[var(--color-border)] bg-[var(--input-bg)]"
+                  aria-label={`commission-rate-${idx}`}
+                  value={String(rule.rate ?? 0)}
                   onChange={(e) => update(idx, 'rate', e.target.value)}
                   disabled={!canEdit}
-                  style={{ width: 80 }}
                 />
               </td>
               <td>
-                <button type="button" className="btn btn-secondary" onClick={() => removeRule(idx)} disabled={!canEdit}>Eliminar</button>
+                <Button size="sm" variant="danger" onPress={() => removeRule(idx)} isDisabled={!canEdit}>Eliminar</Button>
               </td>
             </tr>
           ))}
@@ -134,8 +130,8 @@ export function BrokersCommissionsView({ rules, canEdit, loading, error, onSave 
       </table>
       </div>
       <div className="flex-actions flex-actions--top">
-        <button type="button" className="btn btn-secondary" onClick={addRule} disabled={!canEdit}>Agregar regla</button>
-        <button type="button" className="btn btn-primary" onClick={save} disabled={!canEdit || saving}>{saving ? 'Guardando…' : 'Guardar comisiones'}</button>
+        <Button variant="outline" onPress={addRule} isDisabled={!canEdit}>Agregar regla</Button>
+        <Button variant="primary" onPress={save} isDisabled={!canEdit || saving}>{saving ? 'Guardando…' : 'Guardar comisiones'}</Button>
       </div>
     </section>
   )

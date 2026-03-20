@@ -1,4 +1,5 @@
 import React from "react";
+import { Button } from "@heroui/react";
 
 export type ToastType = "success" | "info" | "error";
 
@@ -20,14 +21,15 @@ export function ToastStack({ items, onDismiss }: Props) {
       {items.map((item) => (
         <div key={item.id} className={`toast toast-${item.type}`} role="status">
           <span>{item.message}</span>
-          <button
-            type="button"
-            className="toast-close"
-            onClick={() => onDismiss(item.id)}
-            aria-label="Cerrar notificacion"
+          <Button
+            isIconOnly
+            size="sm"
+            variant="ghost"
+            aria-label={item.message.length <= 40 ? `Cerrar notificación: ${item.message}` : "Cerrar notificación"}
+            onPress={() => onDismiss(item.id)}
           >
-            x
-          </button>
+            ×
+          </Button>
         </div>
       ))}
     </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { Button } from '@heroui/react'
 import { SectionHeader } from '../../components/layout/SectionHeader'
 import { getApiErrorMessage } from '../../shared/apiErrors'
 
@@ -48,21 +49,16 @@ export function BrokersSupervisorsView({ allSupervisors, enabledSupervisors, can
         <div className="supervisors-grid">
           {options.map((v) => (
             <label key={v} className="supervisors-label">
-              <input
-                type="checkbox"
-                checked={selected.includes(v)}
-                disabled={!canEdit}
-                onChange={() => toggle(v)}
-              />
+              <input type="checkbox" checked={selected.includes(v)} disabled={!canEdit} onChange={() => toggle(v)} />
               <span>{v}</span>
             </label>
           ))}
         </div>
       </div>
       <div className="flex-actions flex-actions--top">
-        <button type="button" className="btn btn-primary" onClick={save} disabled={!canEdit || saving}>
+        <Button variant="primary" onPress={save} isDisabled={!canEdit || saving}>
           {saving ? 'Guardando…' : 'Guardar supervisores'}
-        </button>
+        </Button>
       </div>
     </section>
   )

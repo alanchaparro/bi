@@ -5,8 +5,9 @@ from datetime import datetime
 
 from sqlalchemy import inspect, text
 
-from app.db.session import SessionLocal, engine
 from app.core.config import settings
+from app.core.security import hash_password
+from app.db.session import SessionLocal, engine
 from app.models.brokers import (
     AnalyticsContractSnapshot,
     AnalyticsSourceFreshness,
@@ -94,13 +95,55 @@ def ensure_sync_schema_compatibility() -> None:
             )
 
 
+def ensure_demo_auth_users() -> None:
+    """
+    In dev, create or update demo users (admin, analyst) in auth_user so that
+    login works with DEMO_ADMIN_PASSWORD (e.g. admin/admin123) without running
+    scripts manually.
+    """
+    if settings.app_env == 'prod':
+        return
+    db = SessionLocal()
+    try:
+        for username, password, role in [
+            (settings.demo_admin_user, settings.demo_admin_password, 'admin'),
+            (settings.demo_analyst_user, settings.demo_analyst_password, 'analyst'),
+        ]:
+            if not username or not password:
+                continue
+            row = db.query(AuthUser).filter(AuthUser.username == username).first()
+            if row:
+                row.password_hash = hash_password(password)
+                row.role = role
+                row.is_active = True
+            else:
+                db.add(
+                    AuthUser(
+                        username=username,
+                        password_hash=hash_password(password),
+                        role=role,
+                        is_active=True,
+                    )
+                )
+        db.commit()
+        logger.info('Demo auth users ensured (admin/analyst from settings)')
+    except Exception:
+        db.rollback()
+        logger.exception('ensure_demo_auth_users failed')
+    finally:
+        db.close()
+
+
 def bootstrap_database_with_demo_probe() -> None:
     """
     Ensure schema exists and run a short insert/delete probe to validate write path.
-    The probe leaves no demo data persisted.
+    The probe leaves no demo data persisted. In dev, also ensure demo auth users exist.
     """
     ensure_runtime_schema()
     ensure_sync_schema_compatibility()
+
+    if settings.app_env != 'prod':
+        ensure_demo_auth_users()
 
     if not settings.db_demo_probe_on_start:
         logger.info('DB bootstrap completed (schema ensured, demo probe disabled)')

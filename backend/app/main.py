@@ -22,13 +22,19 @@ if settings.app_env != 'prod' and not settings.db_bootstrap_on_start:
 
 app = FastAPI(title=settings.app_name, version='1.0.0')
 
+_dev_origins = [
+    'http://localhost:3000', 'http://localhost:8080', 'http://localhost:5173',
+    'http://127.0.0.1:3000', 'http://127.0.0.1:8080', 'http://127.0.0.1:5173',
+]
 if settings.cors_origins and settings.cors_origins.strip() != '*':
     origins = [o.strip() for o in settings.cors_origins.split(',') if o.strip()]
+    # En dev, asegurar que orígenes de desarrollo locales estén permitidos
+    if settings.app_env != 'prod':
+        for o in _dev_origins:
+            if o not in origins:
+                origins.append(o)
 else:
-    origins = [
-        'http://localhost:8080', 'http://localhost:5173',
-        'http://127.0.0.1:8080', 'http://127.0.0.1:5173',
-    ]
+    origins = _dev_origins.copy()
 
 
 def _cors_error_headers(request: Request) -> dict[str, str]:
@@ -81,7 +87,9 @@ async def trace_and_logging(request: Request, call_next):
             endpoint=f'{request.method} {request.url.path}',
             error=str(exc),
         )
-        body = {'error_code': 'INTERNAL_ERROR', 'message': 'Error interno', 'details': str(exc), 'trace_id': trace_id}
+        # No exponer detalles de la excepción en la respuesta (AGENTS.md: logs/errores sin secretos)
+        details = None if settings.app_env == 'prod' else str(exc)
+        body = {'error_code': 'INTERNAL_ERROR', 'message': 'Error interno', 'details': details, 'trace_id': trace_id}
         headers = {'x-trace-id': trace_id, 'x-latency-ms': str(latency)}
         headers.update(_cors_error_headers(request))
         return JSONResponse(status_code=500, content=body, headers=headers)
@@ -149,9 +157,13 @@ def _prewarm_analytics_cache_on_startup() -> None:
         cache_set('anuales-v2/summary', base, anuales_summary, ttl_seconds=300)
         anuales_fp = AnalyticsService.fetch_anuales_first_paint_v2(db, base)
         cache_set('anuales-v2/first-paint', base, anuales_fp, ttl_seconds=180)
-    except Exception:
+    except Exception as exc:
         # Best effort: startup must continue even if prewarm fails.
-        pass
+        structured_log(
+            'warning',
+            'prewarm_analytics_cache_failed',
+            error_type=exc.__class__.__name__,
+        )
     finally:
         db.close()
 

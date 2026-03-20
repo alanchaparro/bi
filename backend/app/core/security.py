@@ -87,15 +87,25 @@ def authenticate_user_with_db(db: Session | None, username: str, password: str):
 
 def create_access_token(data: dict, expires_minutes: int | None = None):
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes or settings.jwt_expire_minutes)
-    to_encode.update({'exp': expire})
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=expires_minutes or settings.jwt_expire_minutes)
+    to_encode.update({'exp': expire, 'iat': int(now.timestamp()), 'typ': 'access'})
     return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
 def decode_token(token: str):
     try:
         payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        # Rechazar tokens que no sean de tipo access (p. ej. refresh token usado en Authorization)
+        typ = payload.get('typ')
+        if typ is not None and typ != 'access':
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={'error_code': 'UNAUTHORIZED', 'message': 'Tipo de token no válido para esta ruta', 'details': None},
+            )
         return payload
+    except HTTPException:
+        raise
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

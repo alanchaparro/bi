@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.deps import require_permission
 from app.core.request_metrics import summary as request_metrics_summary
 from app.db.session import SessionLocal
+from app.services.sync_service import SyncService
 
 router = APIRouter()
 
@@ -81,44 +82,68 @@ def health():
     }
 
 
+def _is_sqlite() -> bool:
+    return (settings.database_url or '').strip().lower().startswith('sqlite')
+
+
 @router.get('/health/perf')
 def health_perf(_user=Depends(require_permission('system:read'))):
     """Métricas de rendimiento y pg_stat_statements. Requiere permiso system:read (admin/analyst)."""
     db = SessionLocal()
     pg_stat_top: list[dict] = []
     try:
-        # If extension is not enabled, this query will fail and we return empty block.
-        rows = db.execute(
-            text(
-                """
-                SELECT query,
-                       calls,
-                       total_exec_time AS total_time_ms,
-                       mean_exec_time AS mean_time_ms,
-                       rows
-                FROM pg_stat_statements
-                ORDER BY total_exec_time DESC
-                LIMIT 10
-                """
-            )
-        ).mappings().all()
-        for r in rows:
-            pg_stat_top.append(
-                {
-                    'query': str(r.get('query') or '')[:180],
-                    'calls': int(r.get('calls') or 0),
-                    'total_time_ms': round(float(r.get('total_time_ms') or 0.0), 2),
-                    'mean_time_ms': round(float(r.get('mean_time_ms') or 0.0), 2),
-                    'rows': int(r.get('rows') or 0),
-                }
-            )
-    except Exception:
-        pg_stat_top = []
+        if not _is_sqlite():
+            try:
+                # pg_stat_statements solo existe en PostgreSQL; si la extensión no está, devolvemos []
+                rows = db.execute(
+                    text(
+                        """
+                        SELECT query,
+                               calls,
+                               total_exec_time AS total_time_ms,
+                               mean_exec_time AS mean_time_ms,
+                               rows
+                        FROM pg_stat_statements
+                        ORDER BY total_exec_time DESC
+                        LIMIT 10
+                        """
+                    )
+                ).mappings().all()
+                for r in rows:
+                    pg_stat_top.append(
+                        {
+                            'query': str(r.get('query') or '')[:180],
+                            'calls': int(r.get('calls') or 0),
+                            'total_time_ms': round(float(r.get('total_time_ms') or 0.0), 2),
+                            'mean_time_ms': round(float(r.get('mean_time_ms') or 0.0), 2),
+                            'rows': int(r.get('rows') or 0),
+                        }
+                    )
+            except Exception:
+                pg_stat_top = []
     finally:
         db.close()
+    try:
+        sync_perf = SyncService.perf_summary(limit=200)
+    except Exception:
+        sync_perf = {
+            'generated_at': None,
+            'totals': {},
+            'by_domain': {},
+            'by_step': {},
+            'last_completed_by_domain': {},
+            'top_slowest_jobs': [],
+        }
+    try:
+        freshness = SyncService.source_freshness()
+        freshness_rows = list(freshness.get('rows') or [])
+    except Exception:
+        freshness_rows = []
     return {
         'service': 'cobranzas-api-v1',
         'request_latency': request_metrics_summary(),
         'cache_metrics': analytics_cache_metrics(),
+        'sync_perf_summary': sync_perf,
+        'analytics_freshness': freshness_rows[:12],
         'pg_stat_statements_top': pg_stat_top,
     }

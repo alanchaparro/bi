@@ -1,5 +1,6 @@
 -- Solo alias ASCII (anio, mes, dia) para que el driver y el sync lean siempre la fecha del pago.
 -- Version optimizada para usar indices por rango de fecha y joins explicitos.
+-- Regla operativa: este SQL define solo scope de extracción; la semántica de negocio final vive en Python.
 SELECT
     YEAR(p.date) AS anio,
     MONTH(p.date) AS mes,

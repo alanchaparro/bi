@@ -1,11 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { Button } from '@heroui/react'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
+import { AnalyticsMetaBadges } from '../../components/analytics/AnalyticsMetaBadges'
 import { AnalysisSelectionSummary } from '../../components/analytics/AnalysisSelectionSummary'
-import { EmptyState } from '../../components/feedback/EmptyState'
+import { ChartSection } from '../../components/analytics/ChartSection'
+import { MetricExplainer } from '../../components/analytics/MetricExplainer'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { LoadingState } from '../../components/feedback/LoadingState'
+import { AnalysisFiltersSkeleton } from '../../components/feedback/AnalysisFiltersSkeleton'
 import { getApiErrorMessage } from '../../shared/apiErrors'
 import { formatCount, formatGsFull } from '../../shared/formatters'
 import {
@@ -38,11 +42,13 @@ type Options = {
 }
 
 type KpiId =
-  | 'recuperacion_global'
-  | 'contratos_asignados'
-  | 'deuda_asignada'
+  | 'rendimiento_monto'
+  | 'rendimiento_cantidad'
+  | 'contratos_por_cobrar'
   | 'contratos_con_cobro'
+  | 'monto_a_cobrar'
   | 'total_cobrado'
+
 type SeriesPoint = { label: string; value: number }
 type MultiValueFilterKey = keyof Filters
 
@@ -69,13 +75,14 @@ const EMPTY_OPTIONS: Options = {
 
 const pct = (num: number, den: number) => `${den > 0 ? ((num / den) * 100).toFixed(1) : '0.0'}%`
 const pctNum = (num: number, den: number) => (den > 0 ? (num / den) * 100 : 0)
-const RENDIMIENTO_KPI_ORDER_STORAGE = 'analisis_rendimiento_kpi_order_v1'
+const RENDIMIENTO_KPI_ORDER_STORAGE = 'analisis_rendimiento_kpi_order_v2'
 const RENDIMIENTO_CHART_LABELS_STORAGE = 'analisis_rendimiento_chart_labels_v1'
 const DEFAULT_KPI_ORDER: KpiId[] = [
-  'recuperacion_global',
-  'contratos_asignados',
-  'deuda_asignada',
+  'rendimiento_monto',
+  'rendimiento_cantidad',
+  'contratos_por_cobrar',
   'contratos_con_cobro',
+  'monto_a_cobrar',
   'total_cobrado',
 ]
 
@@ -129,7 +136,12 @@ function toSummaryFromFirstPaint(data: Awaited<ReturnType<typeof getRendimientoF
   }
 }
 
-function percentLinePath(points: SeriesPoint[], width: number, height: number, padding: { top: number; right: number; bottom: number; left: number }) {
+function percentLinePath(
+  points: SeriesPoint[],
+  width: number,
+  height: number,
+  padding: { top: number; right: number; bottom: number; left: number },
+) {
   if (!points.length) return ''
   const plotW = Math.max(1, width - padding.left - padding.right)
   const plotH = Math.max(1, height - padding.top - padding.bottom)
@@ -257,6 +269,29 @@ function PercentBarChart({
       })}
     </svg>
   )
+}
+
+function hasAnyAppliedFilter(filters: Filters): boolean {
+  return Object.values(filters).some((values) => values.length > 0)
+}
+
+function getChartEmptyCopy(hasOptions: boolean, hasFilters: boolean) {
+  if (!hasOptions) {
+    return {
+      message: 'Sin datos cargados para rendimiento.',
+      suggestion: 'Verifica el sync y la carga de opciones de analytics.',
+    }
+  }
+  if (hasFilters) {
+    return {
+      message: 'Sin resultados para los filtros seleccionados.',
+      suggestion: 'Prueba con otro mes de gestión, tramo, categoría o unidad de negocio.',
+    }
+  }
+  return {
+    message: 'Todavía no hay resultados para mostrar.',
+    suggestion: 'Vuelve a intentar luego o revisa la disponibilidad del dataset.',
+  }
 }
 
 export function AnalisisRendimientoView() {
@@ -461,6 +496,13 @@ export function AnalisisRendimientoView() {
     [summary?.viaCStats],
   )
 
+  const hasOptions = useMemo(
+    () => Object.values(options).some((value) => Array.isArray(value) && value.length > 0),
+    [options],
+  )
+  const hasAppliedFilters = useMemo(() => hasAnyAppliedFilter(appliedFilters), [appliedFilters])
+  const emptyCopy = useMemo(() => getChartEmptyCopy(hasOptions, hasAppliedFilters), [hasAppliedFilters, hasOptions])
+
   const moveKpi = useCallback((fromId: KpiId, toId: KpiId) => {
     if (fromId === toId) return
     setKpiOrder((prev) => {
@@ -475,28 +517,38 @@ export function AnalisisRendimientoView() {
   }, [])
 
   const kpiCards: Record<KpiId, { title: string; value: string; note?: string; className: string }> = {
-    recuperacion_global: {
-      title: 'Recuperación Global',
+    rendimiento_monto: {
+      title: 'Rendimiento por monto',
       value: pct(Number(summary?.totalPaid || 0), Number(summary?.totalDebt || 0)),
+      note: 'Cobrado / monto a cobrar',
       className: 'cohorte-kpi-emerald',
     },
-    contratos_asignados: {
-      title: 'Contratos Asignados',
-      value: formatCount(summary?.totalContracts || 0),
-      className: 'cohorte-kpi-primary',
-    },
-    deuda_asignada: {
-      title: 'Deuda Asignada',
-      value: formatGsFull(summary?.totalDebt || 0),
-      className: 'cohorte-kpi-gold',
-    },
-    contratos_con_cobro: {
-      title: 'Contratos con Cobro',
-      value: formatCount(summary?.totalContractsPaid || 0),
+    rendimiento_cantidad: {
+      title: 'Rendimiento por cantidad',
+      value: pct(Number(summary?.totalContractsPaid || 0), Number(summary?.totalContracts || 0)),
+      note: 'Contratos con cobro / contratos por cobrar',
       className: 'cohorte-kpi-cyan',
     },
+    contratos_por_cobrar: {
+      title: 'Contratos por cobrar',
+      value: formatCount(summary?.totalContracts || 0),
+      note: 'Base filtrada por mes de gestión',
+      className: 'cohorte-kpi-primary',
+    },
+    contratos_con_cobro: {
+      title: 'Contratos con cobro',
+      value: formatCount(summary?.totalContractsPaid || 0),
+      note: 'Cantidad de contratos con pago registrado',
+      className: 'cohorte-kpi-primary',
+    },
+    monto_a_cobrar: {
+      title: 'Monto a cobrar',
+      value: formatGsFull(summary?.totalDebt || 0),
+      note: 'Monto vencido + monto cuota',
+      className: 'cohorte-kpi-gold',
+    },
     total_cobrado: {
-      title: 'Total Cobrado',
+      title: 'Total cobrado',
       value: formatGsFull(summary?.totalPaid || 0),
       note: `${formatCount(summary?.totalContractsPaid || 0)} contratos con cobro`,
       className: 'cohorte-kpi-primary',
@@ -505,11 +557,11 @@ export function AnalisisRendimientoView() {
 
   const activeFilterChips = useMemo<FilterChip[]>(() => {
     const blocks: Array<{ key: MultiValueFilterKey; label: string }> = [
-      { key: 'gestionMonths', label: 'Mes de Gestión' },
-      { key: 'uns', label: 'Unidad de Negocio' },
+      { key: 'gestionMonths', label: 'Mes de gestión' },
+      { key: 'uns', label: 'Unidad de negocio' },
       { key: 'tramos', label: 'Tramo' },
-      { key: 'viasCobro', label: 'Vía Cobro' },
-      { key: 'viasPago', label: 'Vía Pago' },
+      { key: 'viasCobro', label: 'Vía de cobro' },
+      { key: 'viasPago', label: 'Vía de pago' },
       { key: 'categorias', label: 'Categoría' },
       { key: 'supervisors', label: 'Supervisor' },
     ]
@@ -526,48 +578,53 @@ export function AnalisisRendimientoView() {
   }, [])
 
   return (
-    <section className="card analysis-card analysis-panel-card">
-      <AnalyticsPageHeader
-        kicker="Panel ejecutivo"
-        pill="Rendimiento"
-        title="Rendimiento de Cartera (Eficacia)"
-        subtitle="Cruce de cartera con cobranzas por contrato y mes de gestión."
-      />
+    <section className="card analysis-card analysis-panel-card rendimiento-panel">
+      <div className="rendimiento-hero">
+        <AnalyticsPageHeader
+          kicker="RENDIMIENTO"
+          pill="Analytics v2"
+          title="Rendimiento de cartera"
+          subtitle="Cruce de cartera y cobranzas por contrato y mes de gestión para seguimiento por monto y cantidad."
+          meta={<AnalyticsMetaBadges meta={summary?.meta} />}
+        />
+
+        <MetricExplainer
+          items={[
+            {
+              label: 'Rendimiento por monto',
+              formula: 'cobrado / monto_a_cobrar',
+              note: 'Monto a cobrar = monto vencido + monto cuota.',
+            },
+            {
+              label: 'Rendimiento por cantidad',
+              formula: 'contratos_con_cobro / contratos_por_cobrar',
+              note: 'La pantalla compara contratos con pago vs contratos de la base filtrada.',
+            },
+            {
+              label: 'Categorías por tramo',
+              formula: 'VIGENTE = 0..3 | MOROSO = >3',
+              note: 'Los cortes operativos siguen mes de gestión, no fecha de cierre.',
+            },
+          ]}
+        />
+      </div>
 
       {loadingOptions ? (
-        <div className="analysis-skeleton-wrap" aria-live="polite" aria-busy="true">
-          <div className="analysis-skeleton-grid">
-            <div className="analysis-skeleton-input" />
-            <div className="analysis-skeleton-input" />
-            <div className="analysis-skeleton-input" />
-            <div className="analysis-skeleton-input" />
-            <div className="analysis-skeleton-input" />
-          </div>
-          <div className="analysis-skeleton-kpis">
-            <div className="analysis-skeleton-kpi" />
-            <div className="analysis-skeleton-kpi" />
-            <div className="analysis-skeleton-kpi" />
-            <div className="analysis-skeleton-kpi" />
-            <div className="analysis-skeleton-kpi" />
-            <div className="analysis-skeleton-kpi" />
-          </div>
-          <div className="analysis-skeleton-table" />
-        </div>
+        <AnalysisFiltersSkeleton filterCount={7} kpiCount={6} showTable />
       ) : (
-        <>
+        <div className="rendimiento-filters-panel">
           <div className="analysis-filters-grid">
             <MultiSelectFilter
               className="analysis-filter-control"
-              label="Mes de Gestión"
+              label="Mes de gestión"
               options={options.gestionMonths}
               selected={filters.gestionMonths}
               onChange={(values) => setFilters((prev) => ({ ...prev, gestionMonths: values }))}
               placeholder="Historia"
             />
-
             <MultiSelectFilter
               className="analysis-filter-control"
-              label="Unidad de Negocio"
+              label="Unidad de negocio"
               options={options.uns}
               selected={filters.uns}
               onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
@@ -583,7 +640,7 @@ export function AnalisisRendimientoView() {
             />
             <MultiSelectFilter
               className="analysis-filter-control"
-              label="Vía Cobro (Intención)"
+              label="Vía de cobro"
               options={options.viasCobro}
               selected={filters.viasCobro}
               onChange={(values) => setFilters((prev) => ({ ...prev, viasCobro: values }))}
@@ -591,7 +648,7 @@ export function AnalisisRendimientoView() {
             />
             <MultiSelectFilter
               className="analysis-filter-control"
-              label="Vía Pago (Real)"
+              label="Vía de pago"
               options={options.viasPago}
               selected={filters.viasPago}
               onChange={(values) => setFilters((prev) => ({ ...prev, viasPago: values }))}
@@ -615,46 +672,36 @@ export function AnalisisRendimientoView() {
             />
           </div>
 
+          <div className="rendimiento-filter-hints" role="note" aria-label="Ayuda de filtros">
+            <span className="rendimiento-filter-hint">Mes de gestión usa `gestion_month`.</span>
+            <span className="rendimiento-filter-hint">Vía de cobro = intención operativa.</span>
+            <span className="rendimiento-filter-hint">Vía de pago = cobro real registrado.</span>
+          </div>
+
           <div className="analysis-actions-row analysis-actions">
-            <button type="button" className="btn btn-primary" onClick={() => void onApply()} disabled={applying || loadingSummary}>
+            <Button variant="primary" onPress={() => void onApply()} isDisabled={applying || loadingSummary}>
               {applying ? <span className="inline-spinner" aria-hidden /> : null}
               {applying ? 'Aplicando...' : 'Aplicar filtros'}
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={clearFilters} disabled={applying || loadingSummary}>
-              Limpiar filtros
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => void onReset()} disabled={applying || loadingSummary}>
-              Resetear filtros
-            </button>
+            </Button>
+            <Button variant="outline" onPress={clearFilters} isDisabled={applying || loadingSummary}>
+              Limpiar
+            </Button>
+            <Button variant="outline" onPress={() => void onReset()} isDisabled={applying || loadingSummary}>
+              Restablecer
+            </Button>
             <span className="analysis-active-count">
               {activeFilterChips.length} filtro{activeFilterChips.length === 1 ? '' : 's'} activo{activeFilterChips.length === 1 ? '' : 's'}
             </span>
             <label className="rendimiento-label-toggle">
-              <input
-                type="checkbox"
-                checked={showChartLabels}
-                onChange={(event) => setShowChartLabels(event.target.checked)}
-              />
-              Mostrar números en gráficos
+              <input type="checkbox" checked={showChartLabels} onChange={(e) => setShowChartLabels(e.target.checked)} />
+              Mostrar numeros en graficos
             </label>
           </div>
 
           <div className="analysis-active-filters">
             <ActiveFilterChips chips={activeFilterChips} onRemove={removeChip} />
           </div>
-
-          <AnalysisSelectionSummary
-            items={[
-              { label: "Mes Gestión", value: appliedFilters.gestionMonths.length ? appliedFilters.gestionMonths.join(", ") : "Historia" },
-              { label: "UN", value: appliedFilters.uns.length ? appliedFilters.uns.join(", ") : "Todas" },
-              { label: "Tramo", value: appliedFilters.tramos.length ? appliedFilters.tramos.join(", ") : "Todos" },
-              { label: "Vía Cobro", value: appliedFilters.viasCobro.length ? appliedFilters.viasCobro.join(", ") : "Todas" },
-              { label: "Vía Pago", value: appliedFilters.viasPago.length ? appliedFilters.viasPago.join(", ") : "Todas" },
-              { label: "Categoría", value: appliedFilters.categorias.length ? appliedFilters.categorias.join(", ") : "Todas" },
-              { label: "Supervisor", value: appliedFilters.supervisors.length ? appliedFilters.supervisors.join(", ") : "Todos" },
-            ]}
-          />
-        </>
+        </div>
       )}
 
       {error ? (
@@ -665,10 +712,25 @@ export function AnalisisRendimientoView() {
           retryLabel="Reintentar"
         />
       ) : null}
+
       {loadingSummary && !error ? <LoadingState message="Actualizando rendimiento..." /> : null}
 
       {!loadingOptions && !error ? (
-        <>
+        <div className={`data-transition ${loadingSummary ? 'data-transition--loading' : ''}`}>
+          <div className="rendimiento-selection-block">
+            <AnalysisSelectionSummary
+              items={[
+                { label: 'Mes de gestión', value: appliedFilters.gestionMonths.length ? appliedFilters.gestionMonths.join(', ') : 'Historia' },
+                { label: 'UN', value: appliedFilters.uns.length ? appliedFilters.uns.join(', ') : 'Todas' },
+                { label: 'Tramo', value: appliedFilters.tramos.length ? appliedFilters.tramos.join(', ') : 'Todos' },
+                { label: 'Vía de cobro', value: appliedFilters.viasCobro.length ? appliedFilters.viasCobro.join(', ') : 'Todas' },
+                { label: 'Vía de pago', value: appliedFilters.viasPago.length ? appliedFilters.viasPago.join(', ') : 'Todas' },
+                { label: 'Categoría', value: appliedFilters.categorias.length ? appliedFilters.categorias.join(', ') : 'Todas' },
+                { label: 'Supervisor', value: appliedFilters.supervisors.length ? appliedFilters.supervisors.join(', ') : 'Todos' },
+              ]}
+            />
+          </div>
+
           <div className="analysis-kpis rendimiento-kpis-auto">
             {kpiOrder.map((kpiId) => {
               const card = kpiCards[kpiId]
@@ -711,33 +773,83 @@ export function AnalisisRendimientoView() {
           </div>
 
           <div className="charts-grid rendimiento-charts-grid">
-            <article className="card chart-card chart-card-wide rend-chart-card">
-              <h3 className="rend-chart-title">Evolución de Rendimiento (Tendencia)</h3>
-              {trendAmountSeries.length ? <PercentLineChart data={trendAmountSeries} color="var(--color-chart-1)" showLabels={showChartLabels} ariaLabel="Evolución de rendimiento por mes en porcentaje de eficacia" /> : <EmptyState message="Sin datos." className="rend-no-data" />}
-            </article>
+            <ChartSection
+              title="Tendencia de rendimiento por monto"
+              subtitle="Sigue el porcentaje cobrado sobre monto a cobrar por mes de gestión."
+              hasData={trendAmountSeries.length > 0}
+              emptyMessage={emptyCopy.message}
+              emptySuggestion={emptyCopy.suggestion}
+            >
+              <PercentLineChart
+                data={trendAmountSeries}
+                color="var(--color-chart-1)"
+                showLabels={showChartLabels}
+                ariaLabel="Tendencia de rendimiento por monto por mes de gestión"
+              />
+            </ChartSection>
 
-            <article className="card chart-card chart-card-wide rend-chart-card">
-              <h3 className="rend-chart-title">% Eficacia por Cantidad (Tendencia)</h3>
-              {trendCountSeries.length ? <PercentLineChart data={trendCountSeries} color="var(--color-chart-5)" showLabels={showChartLabels} ariaLabel="Eficacia por cantidad por mes en porcentaje" /> : <EmptyState message="Sin datos." className="rend-no-data" />}
-            </article>
+            <ChartSection
+              title="Tendencia de rendimiento por cantidad"
+              subtitle="Compara contratos con cobro sobre contratos por cobrar por mes de gestión."
+              hasData={trendCountSeries.length > 0}
+              emptyMessage={emptyCopy.message}
+              emptySuggestion={emptyCopy.suggestion}
+            >
+              <PercentLineChart
+                data={trendCountSeries}
+                color="var(--color-chart-5)"
+                showLabels={showChartLabels}
+                ariaLabel="Tendencia de rendimiento por cantidad por mes de gestión"
+              />
+            </ChartSection>
 
-            <article className="card chart-card chart-card-wide rend-chart-card">
-              <h3 className="rend-chart-title">% Eficacia por Tramo</h3>
-              {tramoSeries.length ? <PercentBarChart data={tramoSeries} color="var(--color-chart-2)" showLabels={showChartLabels} ariaLabel="Eficacia por tramo en porcentaje" /> : <EmptyState message="Sin datos." className="rend-no-data" />}
-            </article>
+            <ChartSection
+              title="Rendimiento por tramo"
+              subtitle="Lectura rápida por tramo con la categoría operativa vigente o moroso."
+              hasData={tramoSeries.length > 0}
+              emptyMessage={emptyCopy.message}
+              emptySuggestion={emptyCopy.suggestion}
+            >
+              <PercentBarChart
+                data={tramoSeries}
+                color="var(--color-chart-2)"
+                showLabels={showChartLabels}
+                ariaLabel="Rendimiento por tramo en porcentaje"
+              />
+            </ChartSection>
 
-            <article className="card chart-card chart-card-wide rend-chart-card">
-              <h3 className="rend-chart-title">% Eficacia por UN</h3>
-              {unSeries.length ? <PercentBarChart data={unSeries} color="var(--color-chart-3)" showLabels={showChartLabels} ariaLabel="Eficacia por unidad de negocio en porcentaje" /> : <EmptyState message="Sin datos." className="rend-no-data" />}
-            </article>
+            <ChartSection
+              title="Rendimiento por unidad de negocio"
+              subtitle="Permite comparar la eficacia entre unidades de negocio de la base filtrada."
+              hasData={unSeries.length > 0}
+              emptyMessage={emptyCopy.message}
+              emptySuggestion={emptyCopy.suggestion}
+            >
+              <PercentBarChart
+                data={unSeries}
+                color="var(--color-chart-3)"
+                showLabels={showChartLabels}
+                ariaLabel="Rendimiento por unidad de negocio en porcentaje"
+              />
+            </ChartSection>
 
-            <article className="card chart-card chart-card-wide rend-chart-card">
-              <h3 className="rend-chart-title">% Eficacia por Vía de Cobro (Intención)</h3>
-              {viaCobroSeries.length ? <PercentBarChart data={viaCobroSeries} color="var(--color-chart-4)" showLabels={showChartLabels} ariaLabel="Eficacia por vía de cobro intención en porcentaje" /> : <EmptyState message="Sin datos." className="rend-no-data" />}
-            </article>
+            <ChartSection
+              title="Rendimiento por vía de cobro"
+              subtitle="Cruza la intención operativa de cobro con el resultado agregado de cobranzas."
+              hasData={viaCobroSeries.length > 0}
+              emptyMessage={emptyCopy.message}
+              emptySuggestion={emptyCopy.suggestion}
+            >
+              <PercentBarChart
+                data={viaCobroSeries}
+                color="var(--color-chart-4)"
+                showLabels={showChartLabels}
+                ariaLabel="Rendimiento por vía de cobro en porcentaje"
+              />
+            </ChartSection>
           </div>
-        </>
-      ) : null} 
+        </div>
+      ) : null}
     </section>
   )
 }

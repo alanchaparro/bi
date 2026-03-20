@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
-import { SectionHeader } from '../../components/layout/SectionHeader'
+import { Button, Input, Tabs } from '@heroui/react'
+import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
 import {
   api,
   createUser,
@@ -1308,45 +1309,44 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
 
   return (
     <section className="card config-card">
-      <SectionHeader title="Configuración" subtitle="Usuarios, negocio, importaciones y programación." />
-      <div className="config-submenu" role="tablist" aria-label="Subsecciones de configuración">
-        <button
-          type="button"
-          className={`btn btn-secondary config-submenu-btn ${configSection === 'usuarios' ? 'active' : ''}`}
-          onClick={() => setConfigSection('usuarios')}
-          role="tab"
-          aria-selected={configSection === 'usuarios'}
-        >
-          Usuarios
-        </button>
-        <button
-          type="button"
-          className={`btn btn-secondary config-submenu-btn ${configSection === 'negocio' ? 'active' : ''}`}
-          onClick={() => setConfigSection('negocio')}
-          role="tab"
-          aria-selected={configSection === 'negocio'}
-        >
-          Configuración de negocio
-        </button>
-        <button
-          type="button"
-          className={`btn btn-secondary config-submenu-btn ${configSection === 'importaciones' ? 'active' : ''}`}
-          onClick={() => setConfigSection('importaciones')}
-          role="tab"
-          aria-selected={configSection === 'importaciones'}
-        >
-          Importaciones
-        </button>
-        <button
-          type="button"
-          className={`btn btn-secondary config-submenu-btn ${configSection === 'programacion' ? 'active' : ''}`}
-          onClick={() => setConfigSection('programacion')}
-          role="tab"
-          aria-selected={configSection === 'programacion'}
-        >
-          Programación
-        </button>
+      <AnalyticsPageHeader kicker="SISTEMA" title="Configuración" subtitle="Usuarios, negocio, importaciones y programación." />
+      <div className="config-segmented-nav" role="tablist" aria-label="Subsecciones de configuracion">
+        {([
+          ['usuarios', 'Usuarios'],
+          ['negocio', 'Configuracion de negocio'],
+          ['importaciones', 'Importaciones'],
+          ['programacion', 'Programacion'],
+        ] as const).map(([value, label]) => {
+          const selected = configSection === value
+          return (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              className={`config-segmented-nav__button ${selected ? 'is-active' : ''}`}
+              onClick={() => setConfigSection(value)}
+            >
+              {label}
+            </button>
+          )
+        })}
       </div>
+      <Tabs
+        selectedKey={configSection}
+        onSelectionChange={(key) => key != null && setConfigSection(String(key) as ConfigSection)}
+        className="config-tabs-heroui"
+        aria-label="Subsecciones de configuración"
+      >
+        <Tabs.ListContainer>
+          <Tabs.List>
+            <Tabs.Tab id="usuarios">Usuarios</Tabs.Tab>
+            <Tabs.Tab id="negocio">Configuración de negocio</Tabs.Tab>
+            <Tabs.Tab id="importaciones">Importaciones</Tabs.Tab>
+            <Tabs.Tab id="programacion">Programación</Tabs.Tab>
+          </Tabs.List>
+        </Tabs.ListContainer>
+      </Tabs>
       <div className="config-form-wrap">
         {configSection === 'negocio' && (
         <>
@@ -2092,11 +2092,12 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   >
                     {s.paused ? 'Reanudar' : 'Pausar'}
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-small"
-                    disabled={scheduleActionLoading !== null}
-                    onClick={async () => {
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    isDisabled={scheduleActionLoading !== null}
+                    aria-label="Eliminar esta programación"
+                    onPress={async () => {
                       if (!window.confirm('¿Eliminar esta programación?')) return
                       setScheduleActionLoading(s.id)
                       try {
@@ -2110,7 +2111,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                     }}
                   >
                     Eliminar
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
@@ -2118,28 +2119,32 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
 
           <h4 className="config-section-title config-subtitle-sm">Nueva programación</h4>
           <div className="config-stack-sm config-stack-sm-max">
-            <label className="config-label-col">
-              <span className="config-label-caption">Nombre</span>
-              <input
-                className="input"
+            <div className="config-label-col">
+              <label htmlFor="config-schedule-name" className="config-label-caption">Nombre</label>
+              <Input
+                id="config-schedule-name"
+                className="border border-[var(--color-border)] bg-[var(--input-bg)]"
                 value={scheduleFormName}
                 onChange={(e) => setScheduleFormName(e.target.value)}
                 placeholder="Ej: Carga horaria"
                 disabled={scheduleSaving}
+                aria-label="Nombre de la programación"
               />
-            </label>
+            </div>
             <div className="config-row-wrap">
-              <label className="config-label-col">
-                <span className="config-label-caption">Cada</span>
-                <input
-                  className="input"
+              <div className="config-label-col">
+                <label htmlFor="config-schedule-interval" className="config-label-caption">Cada</label>
+                <Input
+                  id="config-schedule-interval"
                   type="number"
                   min={10}
-                  value={scheduleFormIntervalValue}
+                  className="border border-[var(--color-border)] bg-[var(--input-bg)]"
+                  value={String(scheduleFormIntervalValue)}
                   onChange={(e) => setScheduleFormIntervalValue(Math.max(10, Number(e.target.value) || 10))}
                   disabled={scheduleSaving}
+                  aria-label="Intervalo numérico"
                 />
-              </label>
+              </div>
               <label className="config-label-col">
                 <span className="config-label-caption">Unidad</span>
                 <select
@@ -2147,6 +2152,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   value={scheduleFormIntervalUnit}
                   onChange={(e) => setScheduleFormIntervalUnit(e.target.value as 'minute' | 'hour' | 'day' | 'month')}
                   disabled={scheduleSaving}
+                  aria-label="Unidad de intervalo"
                 >
                   <option value="minute">Minutos (mín. 10)</option>
                   <option value="hour">Horas</option>
@@ -2207,4 +2213,3 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
     </section>
   )
 }
-

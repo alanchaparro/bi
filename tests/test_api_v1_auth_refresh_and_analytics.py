@@ -85,6 +85,19 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
             db.query(AuthUserState).delete()
             db.query(AuthUser).filter(AuthUser.username.in_([TEST_ADMIN_USER, TEST_ANALYST_USER])).delete(synchronize_session=False)
             db.commit()
+            # Crear usuarios de prueba para que login funcione
+            for username, password, role in [
+                (TEST_ADMIN_USER, TEST_ADMIN_PASSWORD, 'admin'),
+                (TEST_ANALYST_USER, TEST_ANALYST_PASSWORD, 'analyst'),
+            ]:
+                if db.query(AuthUser).filter(AuthUser.username == username).first() is None:
+                    db.add(AuthUser(
+                        username=username,
+                        password_hash=hash_password(password),
+                        role=role,
+                        is_active=True,
+                    ))
+            db.commit()
         finally:
             db.close()
         rate_limiter._events.clear()

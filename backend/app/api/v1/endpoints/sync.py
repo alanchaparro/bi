@@ -21,6 +21,39 @@ from app.services.sync_service import SyncService
 router = APIRouter()
 
 
+def _err_detail(message: str, error_code: str = 'SYNC_ERROR') -> dict:
+    """Formato unificado de detalle de error para respuestas HTTP."""
+    return {'error_code': error_code, 'message': message}
+
+
+def _sync_error_message(exc: Exception) -> str:
+    """Mensaje seguro para respuesta: no exponer detalles internos en producción."""
+    if settings.app_env == 'prod':
+        return 'Error al ejecutar la sincronización. Revisar logs.'
+    return f'Sync run failed: {type(exc).__name__}: {str(exc)}'
+
+
+def _sync_conflict_message(exc: Exception) -> str:
+    """Mensaje para RuntimeError (conflicto): genérico en prod, detalle en dev."""
+    if settings.app_env == 'prod':
+        return 'Conflicto en la operación de sincronización.'
+    return str(exc)
+
+
+def _sync_status_error_message(exc: Exception) -> str:
+    """Mensaje para fallo de sync status: genérico en prod, detalle en dev."""
+    if settings.app_env == 'prod':
+        return 'Error al obtener el estado de sincronización.'
+    return f'Sync status failed: {type(exc).__name__}: {str(exc)}'
+
+
+def _validation_error_message(exc: Exception) -> str:
+    """Mensaje para ValueError en schedules: genérico en prod, detalle en dev."""
+    if settings.app_env == 'prod':
+        return 'Datos de solicitud inválidos.'
+    return str(exc)
+
+
 @router.post('/run', response_model=SyncRunOut, status_code=202)
 def run_sync(
     payload: SyncRunIn,
@@ -38,11 +71,14 @@ def run_sync(
             actor,
         )
     except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail={'message': str(exc)})
+        raise HTTPException(
+            status_code=409,
+            detail=_err_detail(_sync_conflict_message(exc), 'CONFLICT'),
+        )
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail={'message': f'Sync run failed: {type(exc).__name__}: {str(exc)}'},
+            detail=_err_detail(_sync_error_message(exc), 'SYNC_ERROR'),
         )
 
 
@@ -55,7 +91,10 @@ def preview_sync(
     user=Depends(require_permission('brokers:read')),
 ):
     if not settings.sync_preview_enabled:
-        raise HTTPException(status_code=409, detail={'message': 'Preview de sincronizacion deshabilitado por configuracion.'})
+        raise HTTPException(
+            status_code=409,
+            detail=_err_detail('Preview de sincronizacion deshabilitado por configuracion.', 'CONFLICT'),
+        )
     return SyncService.preview(
         payload.domain,
         payload.year_from,
@@ -79,7 +118,7 @@ def sync_status(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail={'message': f'Sync status failed: {type(exc).__name__}: {str(exc)}'},
+            detail=_err_detail(_sync_status_error_message(exc), 'SYNC_STATUS_ERROR'),
         )
 
 
@@ -137,7 +176,7 @@ def get_schedule(
 ):
     out = SyncService.get_schedule(schedule_id)
     if out is None:
-        raise HTTPException(status_code=404, detail='Schedule not found')
+        raise HTTPException(status_code=404, detail=_err_detail('Schedule not found', 'NOT_FOUND'))
     return out
 
 
@@ -148,7 +187,10 @@ def create_schedule(
     user=Depends(require_permission('brokers:write_config')),
 ):
     if payload.interval_unit == 'minute' and payload.interval_value < 10:
-        raise HTTPException(status_code=400, detail='El intervalo minimo es 10 minutos')
+        raise HTTPException(
+            status_code=400,
+            detail=_err_detail('El intervalo minimo es 10 minutos', 'VALIDATION_ERROR'),
+        )
     try:
         created = SyncService.create_schedule(
             name=payload.name,
@@ -164,7 +206,10 @@ def create_schedule(
         )
         return SyncService.get_schedule(created['id'])
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(
+            status_code=400,
+            detail=_err_detail(_validation_error_message(e), 'VALIDATION_ERROR'),
+        )
 
 
 @router.patch('/schedules/{schedule_id}', response_model=SyncScheduleOut)
@@ -190,9 +235,12 @@ def update_schedule(
             paused=payload.paused,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(
+            status_code=400,
+            detail=_err_detail(_validation_error_message(e), 'VALIDATION_ERROR'),
+        )
     if out is None:
-        raise HTTPException(status_code=404, detail='Schedule not found')
+        raise HTTPException(status_code=404, detail=_err_detail('Schedule not found', 'NOT_FOUND'))
     full = SyncService.get_schedule(schedule_id)
     return full
 
@@ -204,7 +252,7 @@ def delete_schedule(
     user=Depends(require_permission('brokers:write_config')),
 ):
     if not SyncService.delete_schedule(schedule_id):
-        raise HTTPException(status_code=404, detail='Schedule not found')
+        raise HTTPException(status_code=404, detail=_err_detail('Schedule not found', 'NOT_FOUND'))
 
 
 @router.post('/schedules/{schedule_id}/run-now')
@@ -215,7 +263,7 @@ def run_schedule_now(
 ):
     out = SyncService.run_schedule_now(schedule_id)
     if out is None:
-        raise HTTPException(status_code=404, detail='Schedule not found')
+        raise HTTPException(status_code=404, detail=_err_detail('Schedule not found', 'NOT_FOUND'))
     return out
 
 
@@ -226,7 +274,7 @@ def pause_schedule(
     user=Depends(require_permission('brokers:write_config')),
 ):
     if not SyncService.pause_schedule(schedule_id):
-        raise HTTPException(status_code=404, detail='Schedule not found')
+        raise HTTPException(status_code=404, detail=_err_detail('Schedule not found', 'NOT_FOUND'))
 
 
 @router.post('/schedules/{schedule_id}/resume', status_code=204)
@@ -236,7 +284,7 @@ def resume_schedule(
     user=Depends(require_permission('brokers:write_config')),
 ):
     if not SyncService.resume_schedule(schedule_id):
-        raise HTTPException(status_code=404, detail='Schedule not found')
+        raise HTTPException(status_code=404, detail=_err_detail('Schedule not found', 'NOT_FOUND'))
 
 
 @router.post('/schedules/emergency-stop', status_code=204)

@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react'
+import { Button } from '@heroui/react'
 import { SectionHeader } from '../../components/layout/SectionHeader'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
 
@@ -120,12 +121,12 @@ export function BrokersView(props: Props) {
         />
       </div>
       <div className="flex-actions">
-        <button type="button" className="btn btn-primary" onClick={applyFilters} disabled={props.loading}>
+        <Button variant="primary" onPress={applyFilters} isDisabled={props.loading}>
           {props.loading ? 'Aplicando…' : 'Aplicar filtros'}
-        </button>
-        <button type="button" className="btn btn-secondary" onClick={resetFilters} disabled={props.loading}>
-          Resetear filtros
-        </button>
+        </Button>
+        <Button variant="outline" onPress={resetFilters} isDisabled={props.loading}>
+          Restablecer
+        </Button>
       </div>
 
       {props.loading ? <p className="text-muted">Cargando…</p> : null}
