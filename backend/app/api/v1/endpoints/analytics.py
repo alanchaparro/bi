@@ -13,6 +13,7 @@ from app.schemas.analytics import (
     CobranzasCohorteOptionsOut,
     ExportRequest,
     PortfolioCorteOptionsOut,
+    PortfolioRoloSummaryOut,
     PortfolioCorteSummaryOut,
     PortfolioOptionsOut,
     PortfolioSummaryIn,
@@ -25,6 +26,7 @@ PORTFOLIO_OPTIONS_CACHE_TTL = 600
 PORTFOLIO_SUMMARY_CACHE_TTL = 180
 PORTFOLIO_CORTE_OPTIONS_CACHE_TTL = 600
 PORTFOLIO_CORTE_SUMMARY_CACHE_TTL = 180
+PORTFOLIO_ROLO_V2_SUMMARY_CACHE_TTL = 180
 COHORTE_OPTIONS_CACHE_TTL = 1800
 COHORTE_SUMMARY_CACHE_TTL = 300
 RENDIMIENTO_SUMMARY_CACHE_TTL = 120
@@ -198,6 +200,20 @@ def portfolio_corte_first_paint_v2(
     result = AnalyticsService.fetch_portfolio_corte_first_paint_v2(db, filters)
     cache_set('portfolio-corte-v2/first-paint', filters, result, ttl_seconds=PORTFOLIO_CORTE_V2_FIRST_PAINT_CACHE_TTL)
     return _decorate_meta(db, result, cache_hit=False, source_table='cartera_corte_agg')
+
+
+@router.post('/portfolio-rolo-v2/summary', response_model=PortfolioRoloSummaryOut)
+def portfolio_rolo_summary_v2(
+    filters: AnalyticsFilters,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('analytics:read')),
+):
+    cached = cache_get('portfolio-rolo-v2/summary', filters)
+    if cached is not None:
+        return _decorate_meta(db, cached, cache_hit=True, source_table='cartera_fact')
+    result = AnalyticsService.fetch_portfolio_rolo_summary_v2(db, filters)
+    cache_set('portfolio-rolo-v2/summary', filters, result, ttl_seconds=PORTFOLIO_ROLO_V2_SUMMARY_CACHE_TTL)
+    return _decorate_meta(db, result, cache_hit=False, source_table='cartera_fact')
 
 
 @router.post('/rendimiento/summary')

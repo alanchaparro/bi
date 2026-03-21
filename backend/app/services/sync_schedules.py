@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -69,7 +69,7 @@ def create_schedule(
         raise ValueError("El intervalo mínimo es 10 minutos")
     db = session_factory()
     try:
-        now = datetime.now(UTC).replace(tzinfo=None)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         row = SyncSchedule(
             name=name,
             interval_value=interval_value,
@@ -220,7 +220,7 @@ def run_schedule_now(
                     "job_step": "queued",
                     "duplicates_detected": 0,
                     "error": None,
-                    "started_at": datetime.now(UTC).replace(tzinfo=None),
+                    "started_at": datetime.now(timezone.utc).replace(tzinfo=None),
                     "finished_at": None,
                     "duration_sec": None,
                     "log": ["Ejecutar ahora (manual)"],
@@ -245,7 +245,7 @@ def pause_schedule(schedule_id: int, session_factory=SessionLocal) -> bool:
             SyncJob.schedule_id == schedule_id,
             SyncJob.status.in_(["pending", "running"]),
         ).update(
-            {"status": "cancelled", "error": "cancelled_by_user", "finished_at": datetime.now(UTC).replace(tzinfo=None)},
+            {"status": "cancelled", "error": "cancelled_by_user", "finished_at": datetime.now(timezone.utc).replace(tzinfo=None)},
             synchronize_session=False,
         )
         db.commit()

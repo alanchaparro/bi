@@ -606,6 +606,38 @@ export type PortfolioCorteSummaryResponse = {
   meta?: AnalyticsMeta;
 };
 
+export type PortfolioRoloSummaryResponse = {
+  kpis?: {
+    resolved_close_month?: string | null;
+    previous_close_month?: string | null;
+    resolved_gestion_month?: string | null;
+    vigente_inicial?: number;
+    vigente_final?: number;
+    ventas_nuevas?: number;
+    recuperados_a_vigente?: number;
+    culminados_vigentes?: number;
+    caidos_a_moroso?: number;
+    neto_rolo?: number;
+    esperado_final?: number;
+    otros_ajustes?: number;
+  };
+  charts?: {
+    by_un_neto?: Record<string, number>;
+    composition?: Record<string, number>;
+  };
+  rows?: Array<{
+    un: string;
+    vigente_inicial: number;
+    ventas_nuevas: number;
+    recuperados_a_vigente: number;
+    culminados_vigentes: number;
+    caidos_a_moroso: number;
+    neto_rolo: number;
+    vigente_final: number;
+  }>;
+  meta?: AnalyticsMeta;
+};
+
 export type CobranzasCohorteOptionsResponse = {
   options: {
     cutoff_months?: string[];
@@ -1177,6 +1209,16 @@ export async function getPortfolioCorteSummary(payload: {
   include_rows?: boolean;
 }): Promise<PortfolioCorteSummaryResponse> {
   return cachedAnalyticsPost<PortfolioCorteSummaryResponse>("/analytics/portfolio-corte-v2/summary", payload, "summary");
+}
+
+export async function getPortfolioRoloSummary(payload: {
+  supervisor?: string[];
+  un?: string[];
+  via_cobro?: string[];
+  anio?: string[];
+  close_month?: string[];
+}): Promise<PortfolioRoloSummaryResponse> {
+  return cachedAnalyticsPost<PortfolioRoloSummaryResponse>("/analytics/portfolio-rolo-v2/summary", payload, "summary");
 }
 
 export async function getCobranzasCohorteOptions(payload: {

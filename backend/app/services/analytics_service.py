@@ -1009,8 +1009,8 @@ class AnalyticsService:
             for mm in standard_gestion_months
             if _month_serial(mm) > 1
         ]
-        all_gestion_months = sorted(set(agg_gestion) | set(standard_gestion_months), key=_month_serial)
-        all_close_months = sorted(set(agg_close) | set(standard_close_months), key=_month_serial)
+        all_gestion_months = gestion_months_data if gestion_months_data else standard_gestion_months
+        all_close_months = close_months_data if close_months_data else standard_close_months
         return {
             'options': {
                 'uns': sorted(set(uns)),
@@ -2086,6 +2086,223 @@ class AnalyticsService:
                 'source_table': 'cartera_corte_agg',
                 'payload_mode': 'first_paint',
                 'generated_at': datetime.utcnow().isoformat(),
+            },
+        }
+
+    @staticmethod
+    def fetch_portfolio_rolo_summary_v2(db: Session, filters: AnalyticsFilters) -> dict:
+        close_month_filter = sorted(
+            {
+                str(v).strip()
+                for v in (filters.close_month or [])
+                if _month_serial(str(v).strip()) > 0
+            },
+            key=_month_serial,
+        )
+        resolved_close_month = close_month_filter[-1] if close_month_filter else (
+            db.query(CarteraFact.close_month)
+            .filter(CarteraFact.close_month != '')
+            .order_by(CarteraFact.close_date.desc())
+            .limit(1)
+            .scalar()
+            or ''
+        )
+        close_serial = _month_serial(resolved_close_month)
+        if close_serial <= 1:
+            return {
+                'kpis': {
+                    'resolved_close_month': resolved_close_month or None,
+                    'previous_close_month': None,
+                    'resolved_gestion_month': None,
+                    'vigente_inicial': 0,
+                    'vigente_final': 0,
+                    'ventas_nuevas': 0,
+                    'recuperados_a_vigente': 0,
+                    'culminados_vigentes': 0,
+                    'caidos_a_moroso': 0,
+                    'neto_rolo': 0,
+                    'esperado_final': 0,
+                    'otros_ajustes': 0,
+                },
+                'charts': {'by_un_neto': {}},
+                'rows': [],
+                'meta': {
+                    'source': 'api-v1',
+                    'source_table': 'cartera_fact',
+                    'generated_at': datetime.utcnow().isoformat(),
+                },
+            }
+
+        previous_close_month = _month_from_serial(close_serial - 1)
+        resolved_gestion_month = _month_from_serial(close_serial + 1)
+        un_filter = _normalize_str_set(filters.un)
+        supervisor_filter = _normalize_str_set(filters.supervisor)
+        via_filter = _normalize_str_set(filters.via_cobro)
+        year_filter = {str(v).strip() for v in (filters.anio or []) if str(v).strip()}
+
+        q = db.query(
+            CarteraFact.contract_id,
+            CarteraFact.close_month,
+            CarteraFact.gestion_month,
+            CarteraFact.contract_month,
+            CarteraFact.culm_month,
+            CarteraFact.un,
+            CarteraFact.supervisor,
+            CarteraFact.via_cobro,
+            CarteraFact.tramo,
+            CarteraFact.category,
+        ).filter(CarteraFact.close_month.in_([previous_close_month, resolved_close_month]))
+
+        if un_filter:
+            q = q.filter(func.upper(func.coalesce(CarteraFact.un, '')).in_([v.upper() for v in un_filter]))
+        if supervisor_filter:
+            q = q.filter(func.upper(func.coalesce(CarteraFact.supervisor, '')).in_([v.upper() for v in supervisor_filter]))
+        if via_filter:
+            q = q.filter(func.upper(func.coalesce(CarteraFact.via_cobro, '')).in_([v.upper() for v in via_filter]))
+
+        prev_rows: dict[str, dict] = {}
+        curr_rows: dict[str, dict] = {}
+        for row in q.yield_per(2000):
+            contract_id = _normalize_contract_id_for_lookup(row.contract_id)
+            if not contract_id:
+                continue
+            item = {
+                'contract_id': contract_id,
+                'close_month': str(row.close_month or '').strip(),
+                'gestion_month': str(row.gestion_month or '').strip(),
+                'sale_month': str(row.contract_month or '').strip(),
+                'culm_month': str(row.culm_month or '').strip(),
+                'un': str(row.un or 'S/D').strip().upper() or 'S/D',
+                'supervisor': str(row.supervisor or 'S/D').strip().upper() or 'S/D',
+                'via_cobro': str(row.via_cobro or 'S/D').strip().upper() or 'S/D',
+                'tramo': int(row.tramo or 0),
+                'category': str(row.category or '').strip().upper(),
+            }
+            if item['close_month'] == previous_close_month:
+                prev_rows[contract_id] = item
+            elif item['close_month'] == resolved_close_month:
+                curr_rows[contract_id] = item
+
+        def _is_vigente(row: dict | None) -> bool:
+            if not row:
+                return False
+            category = str(row.get('category') or '').strip().upper()
+            if category in {'VIGENTE', 'MOROSO'}:
+                return category == 'VIGENTE'
+            return int(row.get('tramo') or 0) <= 3
+
+        def _is_moroso(row: dict | None) -> bool:
+            return bool(row) and not _is_vigente(row)
+
+        def _sale_year(row: dict | None) -> str:
+            sale_month = str((row or {}).get('sale_month') or '').strip()
+            serial = _month_serial(sale_month)
+            if serial <= 0:
+                return ''
+            return sale_month[-4:]
+
+        by_un: dict[str, dict[str, int | str]] = {}
+        vigente_inicial = 0
+        vigente_final = 0
+        ventas_nuevas = 0
+        recuperados = 0
+        culminados_vigentes = 0
+        caidos_a_moroso = 0
+
+        contract_ids = sorted(set(prev_rows.keys()) | set(curr_rows.keys()))
+        for contract_id in contract_ids:
+            prev_row = prev_rows.get(contract_id)
+            curr_row = curr_rows.get(contract_id)
+            reference = curr_row or prev_row
+            if not reference:
+                continue
+            if year_filter and _sale_year(reference) not in year_filter:
+                continue
+
+            un = str(reference.get('un') or 'S/D')
+            bucket = by_un.setdefault(
+                un,
+                {
+                    'un': un,
+                    'vigente_inicial': 0,
+                    'ventas_nuevas': 0,
+                    'recuperados_a_vigente': 0,
+                    'culminados_vigentes': 0,
+                    'caidos_a_moroso': 0,
+                    'neto_rolo': 0,
+                    'vigente_final': 0,
+                },
+            )
+
+            prev_vig = _is_vigente(prev_row)
+            prev_mor = _is_moroso(prev_row)
+            curr_vig = _is_vigente(curr_row)
+            curr_mor = _is_moroso(curr_row)
+            sale_month = str(reference.get('sale_month') or '').strip()
+            culm_month = str(reference.get('culm_month') or '').strip()
+
+            if prev_vig:
+                vigente_inicial += 1
+                bucket['vigente_inicial'] = int(bucket['vigente_inicial']) + 1
+            if curr_vig:
+                vigente_final += 1
+                bucket['vigente_final'] = int(bucket['vigente_final']) + 1
+            if sale_month == resolved_close_month:
+                ventas_nuevas += 1
+                bucket['ventas_nuevas'] = int(bucket['ventas_nuevas']) + 1
+            if prev_mor and curr_vig:
+                recuperados += 1
+                bucket['recuperados_a_vigente'] = int(bucket['recuperados_a_vigente']) + 1
+            if prev_vig and culm_month == resolved_close_month:
+                culminados_vigentes += 1
+                bucket['culminados_vigentes'] = int(bucket['culminados_vigentes']) + 1
+            if prev_vig and curr_mor:
+                caidos_a_moroso += 1
+                bucket['caidos_a_moroso'] = int(bucket['caidos_a_moroso']) + 1
+
+        rows: list[dict[str, str | int]] = []
+        for row in by_un.values():
+            neto_un = int(row['ventas_nuevas']) + int(row['recuperados_a_vigente']) - int(row['culminados_vigentes']) - int(row['caidos_a_moroso'])
+            row['neto_rolo'] = neto_un
+            rows.append(row)
+        rows.sort(key=lambda item: (-abs(int(item['neto_rolo'])), str(item['un'])))
+
+        neto_rolo = ventas_nuevas + recuperados - culminados_vigentes - caidos_a_moroso
+        esperado_final = vigente_inicial + neto_rolo
+        otros_ajustes = vigente_final - esperado_final
+
+        return {
+            'kpis': {
+                'resolved_close_month': resolved_close_month,
+                'previous_close_month': previous_close_month,
+                'resolved_gestion_month': resolved_gestion_month,
+                'vigente_inicial': vigente_inicial,
+                'vigente_final': vigente_final,
+                'ventas_nuevas': ventas_nuevas,
+                'recuperados_a_vigente': recuperados,
+                'culminados_vigentes': culminados_vigentes,
+                'caidos_a_moroso': caidos_a_moroso,
+                'neto_rolo': neto_rolo,
+                'esperado_final': esperado_final,
+                'otros_ajustes': otros_ajustes,
+            },
+            'charts': {
+                'by_un_neto': {str(row['un']): int(row['neto_rolo']) for row in rows},
+                'composition': {
+                    'vigente_inicial': vigente_inicial,
+                    'ventas_nuevas': ventas_nuevas,
+                    'recuperados_a_vigente': recuperados,
+                    'culminados_vigentes': culminados_vigentes,
+                    'caidos_a_moroso': caidos_a_moroso,
+                    'vigente_final': vigente_final,
+                },
+            },
+            'rows': rows,
+            'meta': {
+                'source': 'api-v1',
+                'source_table': 'cartera_fact',
+                'generated_at': datetime.utcnow().isoformat(),
+                'signature': f'portfolio-rolo-v2|{_filters_to_query(filters)}|{resolved_close_month}',
             },
         }
 

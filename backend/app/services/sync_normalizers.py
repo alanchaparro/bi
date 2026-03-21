@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import UTC, date, datetime
+from datetime import date, datetime, timezone
 
 from app.domain import add_months, canonical_via, categoria_from_tramo, month_from_any, monto_a_cobrar, normalize_month, tramo_from_cuotas_vencidas
 
@@ -98,7 +98,7 @@ def normalize_record(domain: str, row: dict, seq: int) -> dict:
             if shifted:
                 gestion_month = shifted
     if not gestion_month:
-        gestion_month = datetime.now(UTC).strftime("%m/%Y")
+        gestion_month = datetime.now(timezone.utc).strftime("%m/%Y")
 
     supervisor = normalize_key(row, "supervisor", "Supervisor", "Gestor", "Vendedor").upper() or "S/D"
     un = normalize_key(row, "un", "UN").upper() or "S/D"
@@ -126,7 +126,7 @@ def normalize_record(domain: str, row: dict, seq: int) -> dict:
         parsed_payment_date = parse_payment_date(row)
         payment_date = parsed_payment_date.strftime("%Y-%m-%d") if parsed_payment_date else ""
         payment_month = normalize_month(parsed_payment_date.strftime("%Y-%m-%d") if parsed_payment_date else "") or gestion_month
-        payment_year = int(payment_month[-4:]) if payment_month else datetime.now(UTC).year
+        payment_year = int(payment_month[-4:]) if payment_month else datetime.now(timezone.utc).year
         payment_amount = _to_float(normalize_key(row, "monto", "amount", "payment_amount"))
         payment_via_class = normalize_payment_via_class(via)
         signature = (
@@ -181,17 +181,17 @@ def fact_row_from_normalized(domain: str, normalized: dict) -> dict:
     close_month = str(normalized.get("close_month") or "")
     if not normalize_month(close_month):
         close_month = normalize_month(normalized.get("close_date") or "") or gestion_month
-    close_year = int(close_month[-4:]) if close_month else datetime.now(UTC).year
+    close_year = int(close_month[-4:]) if close_month else datetime.now(timezone.utc).year
     close_date = parse_iso_date(normalized.get("close_date"))
     if close_date is None:
         try:
             close_date = datetime.strptime(f"01/{close_month}", "%d/%m/%Y").date()
         except ValueError:
-            close_date = datetime.now(UTC).date()
+            close_date = datetime.now(timezone.utc).date()
 
     tramo = tramo_from_cuotas_vencidas(normalized.get("tramo"))
     category = categoria_from_tramo(tramo)
-    loaded_at = datetime.now(UTC).replace(tzinfo=None)
+    loaded_at = datetime.now(timezone.utc).replace(tzinfo=None)
     base = {
         "contract_id": normalized["contract_id"],
         "gestion_month": gestion_month,
@@ -241,9 +241,9 @@ def fact_row_from_normalized(domain: str, normalized: dict) -> dict:
             try:
                 payment_date = datetime.strptime(f"01/{gestion_month}", "%d/%m/%Y").date()
             except ValueError:
-                payment_date = datetime.now(UTC).date()
+                payment_date = datetime.now(timezone.utc).date()
         payment_month = str(normalized.get("payment_month") or gestion_month)[:7]
-        payment_year = int(normalized.get("payment_year") or (payment_month[-4:] if payment_month else datetime.now(UTC).year))
+        payment_year = int(normalized.get("payment_year") or (payment_month[-4:] if payment_month else datetime.now(timezone.utc).year))
         return {
             **base,
             "via": normalized["via"],

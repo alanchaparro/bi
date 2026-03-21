@@ -84,6 +84,31 @@ const STORAGE_KPI_MODE = "analisis_cartera_kpi_mode_v1";
 
 const formatPct = (value: number, total: number) => `${((Number(value || 0) / Math.max(1, Number(total || 0))) * 100).toFixed(1)}%`;
 
+const monthFromRank = (rank: number) => {
+  if (!Number.isFinite(rank) || rank <= 0) return "";
+  const year = Math.floor(rank / 100);
+  const month = rank % 100;
+  if (month < 1 || month > 12) return "";
+  return `${String(month).padStart(2, "0")}/${year}`;
+};
+
+const enumerateMonths = (months: string[]) => {
+  const valid = [...new Set((months || []).filter((month) => monthRank(month) > 0))].sort((a, b) => monthRank(a) - monthRank(b));
+  if (valid.length <= 1) return valid;
+  const start = monthRank(valid[0]);
+  const end = monthRank(valid[valid.length - 1]);
+  const result: string[] = [];
+  let current = start;
+  while (current <= end) {
+    const month = monthFromRank(current);
+    if (month) result.push(month);
+    const year = Math.floor(current / 100);
+    const mm = current % 100;
+    current = mm === 12 ? (year + 1) * 100 + 1 : year * 100 + (mm + 1);
+  }
+  return result;
+};
+
 function KpiIcon({ icon }: { icon: KpiIconId }) {
   const common = { width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   if (icon === "doc") return <svg {...common}><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" /></svg>;
@@ -355,7 +380,7 @@ function LegacyStackedColumnChart({
               const aPct = barTotalPct(a);
               const bPct = barTotalPct(b);
               const isHovered = hoveredLabel === d.label;
-              const canSeparate = isHovered && aPct > 0 && bPct > 0;
+              const totalPct = Math.max(aPct + bPct, 0);
               return (
                 <div
                   key={d.label}
@@ -364,42 +389,52 @@ function LegacyStackedColumnChart({
                   style={{ flex: "1 1 0", minWidth: `${barWidth}px`, height: "100%", position: "relative", cursor: "pointer", overflow: "visible" }}
                   title={`${d.label} | ${aLabel}: ${formatCount(a)} | ${bLabel}: ${formatCount(b)} | Total: ${formatCount(a + b)}`}
                 >
-                  {aPct > 0 && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        height: `${aPct}%`,
-                        background: aColor,
-                        transform: "scaleX(1) translateY(0)",
-                        transformOrigin: "center top",
-                        filter: "none",
-                        transition: "transform 260ms cubic-bezier(0.22, 1, 0.36, 1), filter 260ms ease",
-                        willChange: "transform, filter",
-                        pointerEvents: "none",
-                      }}
-                    />
-                  )}
-                  {bPct > 0 && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: 0,
-                        right: 0,
-                        bottom: `calc(${aPct}% - 1px)`,
-                        height: `${bPct}%`,
-                        background: bColor,
-                        transform: canSeparate ? "scaleX(0.84) translateY(-8px)" : "scaleX(1) translateY(0)",
-                        transformOrigin: "center bottom",
-                        filter: canSeparate ? "brightness(1.07) saturate(1.03)" : "none",
-                        transition: "transform 340ms cubic-bezier(0.22, 1, 0.36, 1), filter 340ms ease",
-                        willChange: "transform, filter",
-                        pointerEvents: "none",
-                      }}
-                    />
-                  )}
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: "8%",
+                      right: "8%",
+                      bottom: 0,
+                      height: `${totalPct}%`,
+                      borderRadius: "999px",
+                      overflow: "hidden",
+                      pointerEvents: "none",
+                      transform: isHovered ? "scaleX(0.88) translateY(-6px)" : "scaleX(1) translateY(0)",
+                      transformOrigin: "center bottom",
+                      filter: isHovered ? "brightness(1.04) saturate(1.03)" : "none",
+                      transition: "transform 320ms cubic-bezier(0.22, 1, 0.36, 1), filter 320ms ease",
+                      willChange: "transform, filter",
+                    }}
+                  >
+                    {aPct > 0 && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          height: `${aPct}%`,
+                          background: aColor,
+                          borderBottomLeftRadius: "999px",
+                          borderBottomRightRadius: "999px",
+                        }}
+                      />
+                    )}
+                    {bPct > 0 && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: 0,
+                          right: 0,
+                          bottom: `calc(${aPct}% - 1px)`,
+                          height: `${bPct}%`,
+                          background: bColor,
+                          borderTopLeftRadius: "999px",
+                          borderTopRightRadius: "999px",
+                        }}
+                      />
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -460,12 +495,23 @@ export function AnalisisCarteraView() {
     return [...months].sort((a, b) => monthRank(b) - monthRank(a))[0];
   }, []);
 
+  const deriveLatestCloseMonthFromGestion = useCallback((gestionMonths: string[]) => {
+    if (!gestionMonths || gestionMonths.length === 0) return null;
+    const latestGestion = [...gestionMonths].sort((a, b) => monthRank(b) - monthRank(a))[0];
+    const latestGestionRank = monthRank(latestGestion);
+    if (!latestGestionRank) return null;
+    const year = Math.floor(latestGestionRank / 100);
+    const month = latestGestionRank % 100;
+    const previousMonthRank = month === 1 ? (year - 1) * 100 + 12 : year * 100 + (month - 1);
+    return monthFromRank(previousMonthRank) || null;
+  }, []);
+
   const toPayload = useCallback((next: Filters) => ({
     supervisor: next.supervisors,
     un: next.uns,
     via_cobro: next.vias,
     anio: next.years,
-    contract_month: next.gestionMonths,
+    contract_month: [],
     gestion_month: next.gestionMonths,
     close_month: next.closeMonths,
     via_pago: [],
@@ -521,6 +567,9 @@ export function AnalisisCarteraView() {
       if (kpiMode === "last_close") {
         let lastMonth = getLatestCloseMonth(next.closeMonths);
         if (!lastMonth) {
+          lastMonth = deriveLatestCloseMonthFromGestion(next.gestionMonths);
+        }
+        if (!lastMonth) {
           const optionsRes = await getPortfolioCorteOptions(toPayload(next));
           const availableCloseMonths = optionsRes?.options?.close_months || [];
           lastMonth = getLatestCloseMonth(availableCloseMonths);
@@ -529,6 +578,7 @@ export function AnalisisCarteraView() {
           payloadFilters = {
             ...next,
             closeMonths: [lastMonth],
+            gestionMonths: next.gestionMonths.length ? [next.gestionMonths.sort((a, b) => monthRank(b) - monthRank(a))[0]] : next.gestionMonths,
           };
         }
       }
@@ -541,7 +591,7 @@ export function AnalisisCarteraView() {
       setLoadingKpis(false);
       setIsApplyingFilters(false);
     }
-  }, [getLatestCloseMonth, kpiMode, pushToast, toPayload]);
+  }, [deriveLatestCloseMonthFromGestion, getLatestCloseMonth, kpiMode, pushToast, toPayload]);
 
   useEffect(() => { void loadOptions(filters); }, [loadOptions]);
   useEffect(() => {
@@ -589,6 +639,25 @@ export function AnalisisCarteraView() {
   }, [loadSummary, loadKpiSummary]);
 
   const options = optionsData?.options || {};
+  const expectedGestionMonths = useMemo(() => {
+    if (appliedFilters.gestionMonths.length) {
+      return enumerateMonths(appliedFilters.gestionMonths);
+    }
+    if (appliedFilters.closeMonths.length) {
+      const derived = appliedFilters.closeMonths
+        .map((closeMonth) => {
+          const rank = monthRank(closeMonth);
+          if (!rank) return "";
+          const year = Math.floor(rank / 100);
+          const month = rank % 100;
+          return monthFromRank(month === 12 ? (year + 1) * 100 + 1 : year * 100 + (month + 1));
+        })
+        .filter(Boolean) as string[];
+      return enumerateMonths(derived);
+    }
+    return [];
+  }, [appliedFilters.closeMonths, appliedFilters.gestionMonths]);
+
   const byUn = useMemo(() => Object.entries(summaryData?.charts?.by_un || {}).map(([label, value]) => ({ label, value: Number(value || 0) })).sort((a, b) => b.value - a.value).slice(0, 8), [summaryData]);
   const byTramo = useMemo(() => Object.entries(summaryData?.charts?.by_tramo || {}).map(([label, value]) => ({ label: `Tramo ${label}`, value: Number(value || 0) })).sort((a, b) => b.value - a.value).slice(0, 6), [summaryData]);
   const byVia = useMemo(() => Object.entries(summaryData?.charts?.by_via || {}).map(([label, value]) => ({ label: String(label), value: Number(value || 0) })).sort((a, b) => b.value - a.value), [summaryData]);
@@ -596,8 +665,20 @@ export function AnalisisCarteraView() {
     const rows = Object.entries(summaryData?.charts?.by_contract_year || {}).map(([label, value]) => ({ label: String(label), value: Number(value || 0) })).filter((x) => x.label && x.label !== "null");
     return yearSort === "asc" ? rows.sort((a, b) => a.value - b.value || Number(a.label) - Number(b.label)) : rows.sort((a, b) => b.value - a.value || Number(a.label) - Number(b.label));
   }, [summaryData, yearSort]);
-  const vigMorByMonth = useMemo(() => Object.entries(summaryData?.charts?.series_vigente_moroso_by_month || {}).map(([label, val]) => ({ label, a: Number(val?.vigente || 0), b: Number(val?.moroso || 0) })).sort((a, b) => monthRank(a.label) - monthRank(b.label)), [summaryData]);
-  const viaByMonth = useMemo(() => Object.entries(summaryData?.charts?.series_cobrador_debito_by_month || {}).map(([label, val]) => ({ label, a: Number(val?.cobrador || 0), b: Number(val?.debito || 0) })).sort((a, b) => monthRank(a.label) - monthRank(b.label)), [summaryData]);
+  const vigMorByMonth = useMemo(() => {
+    const raw = summaryData?.charts?.series_vigente_moroso_by_month || {};
+    const months = expectedGestionMonths.length ? expectedGestionMonths : Object.keys(raw);
+    return months.map((label) => ({ label, a: Number(raw[label]?.vigente || 0), b: Number(raw[label]?.moroso || 0) })).sort((a, b) => monthRank(a.label) - monthRank(b.label));
+  }, [expectedGestionMonths, summaryData]);
+  const viaByMonth = useMemo(() => {
+    const raw = summaryData?.charts?.series_cobrador_debito_by_month || {};
+    const months = expectedGestionMonths.length ? expectedGestionMonths : Object.keys(raw);
+    return months.map((label) => ({ label, a: Number(raw[label]?.cobrador || 0), b: Number(raw[label]?.debito || 0) })).sort((a, b) => monthRank(a.label) - monthRank(b.label));
+  }, [expectedGestionMonths, summaryData]);
+  const missingGestionMonths = useMemo(() => {
+    const available = new Set(Object.keys(summaryData?.charts?.series_vigente_moroso_by_month || {}));
+    return expectedGestionMonths.filter((month) => !available.has(month));
+  }, [expectedGestionMonths, summaryData]);
   const effectiveMeta = kpiSummaryData?.meta || summaryData?.meta || optionsData?.meta;
   const effectiveKpis = kpiSummaryData?.kpis || summaryData?.kpis;
   const totalContracts = Number(effectiveKpis?.total_cartera || 0);
@@ -777,6 +858,11 @@ export function AnalisisCarteraView() {
           aria-label="Criterio de KPIs: último cierre o filtros acumulados"
         />
         {loadingSummary || loadingKpis ? <LoadingState message="Cargando resumen..." className="summary-loading-note" /> : null}
+        {!loadingSummary && missingGestionMonths.length > 0 ? (
+          <div className="analysis-inline-note">
+            Faltaban meses sin datos reales en la serie y se completaron en cero: {missingGestionMonths.join(", ")}.
+          </div>
+        ) : null}
         <div className={`summary-grid ${loadingSummary || loadingKpis ? "summary-grid-loading" : ""}`}>
           {kpiOrder.map((kpiId) => {
             const k = kpiCards[kpiId];

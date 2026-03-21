@@ -66,6 +66,13 @@ class PortfolioCorteSummaryOut(BaseModel):
     meta: dict[str, str | bool | None]
 
 
+class PortfolioRoloSummaryOut(BaseModel):
+    kpis: dict[str, float | int | str | None]
+    charts: dict[str, dict]
+    rows: list[dict[str, str | float | int]]
+    meta: dict[str, str | bool | None]
+
+
 class CobranzasCohorteIn(BaseModel):
     cutoff_month: str | None = None
     un: list[str] = Field(default_factory=list)

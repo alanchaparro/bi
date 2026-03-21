@@ -383,6 +383,11 @@ body {
   gap: 2px;
 }
 
+.dashboard-sidebar-item-block {
+  display: flex;
+  flex-direction: column;
+}
+
 .dashboard-sidebar-link {
   display: flex;
   align-items: center;
@@ -452,6 +457,57 @@ body {
 .dashboard-sidebar-link.is-active .dashboard-sidebar-link-icon {
   background: color-mix(in srgb, var(--color-primary) 16%, transparent);
   color: var(--color-primary);
+}
+
+.dashboard-sidebar-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0.2rem 0 0.4rem 2.15rem;
+  padding: 0.25rem 0 0.1rem 0.85rem;
+  border-left: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.dashboard-sidebar-sublink {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 36px;
+  padding: 0.35rem 0.7rem;
+  border-radius: 12px;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: 0.86rem;
+  border: 1px solid transparent;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.dashboard-sidebar-sublink:hover {
+  background: var(--sidebar-hover-bg);
+  color: var(--color-text);
+  border-color: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  transform: translateX(2px);
+}
+
+.dashboard-sidebar-sublink.is-active {
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  color: var(--color-primary);
+  border-color: color-mix(in srgb, var(--color-primary) 24%, transparent);
+}
+
+.dashboard-sidebar-sublink-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.72;
+}
+
+.dashboard-sidebar-sublink-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 :root[data-theme="light"] .dashboard-sidebar-link-icon {

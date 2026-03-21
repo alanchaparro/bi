@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@heroui/react";
 import { useAuth } from "@/app/providers";
-import { NAV_ITEMS } from "@/config/routes";
+import { NAV_ITEMS, type NavItem } from "@/config/routes";
 
 type SyncLive = {
   running?: boolean;
@@ -45,13 +45,17 @@ export function useSyncLive() {
 }
 
 function groupNavItems() {
-  const map = new Map<string, Array<(typeof NAV_ITEMS)[number]>>();
+  const map = new Map<string, NavItem[]>();
   for (const item of NAV_ITEMS) {
     const g = item.group ?? "";
     if (!map.has(g)) map.set(g, []);
     map.get(g)!.push(item);
   }
   return map;
+}
+
+function isActivePath(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 const SIDEBAR_ICON_SIZE = 20;
@@ -311,23 +315,45 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               {groupName ? <div className="dashboard-sidebar-group-label">{groupName}</div> : null}
               <div className="dashboard-sidebar-links">
                 {items.map((item) => {
-                  const isActive = pathname === item.href;
+                  const isActive = isActivePath(pathname, item.href);
+                  const showChildren = Boolean(item.children?.length);
                   const isRendimiento = item.id === "analisisCarteraRendimientoLegacy";
                   return (
-                    <Link
-                      key={item.id}
-                      href={item.href}
-                      onClick={() => (typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches ? setSidebarOpen(false) : undefined)}
-                      className={`dashboard-sidebar-link ${isActive ? "is-active" : ""} ${isRendimiento ? "sidebar-item-rendimiento" : ""}`}
-                      aria-current={isActive ? "page" : undefined}
-                      aria-label={item.label}
-                      data-testid={isRendimiento ? "nav-rendimiento-cartera" : undefined}
-                    >
-                      <span className="dashboard-sidebar-link-icon" aria-hidden>
-                        <SidebarIcon id={item.id} />
-                      </span>
-                      <span className="dashboard-sidebar-link-text">{item.label}</span>
-                    </Link>
+                    <div key={item.id} className="dashboard-sidebar-item-block">
+                      <Link
+                        href={item.href}
+                        onClick={() => (typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches ? setSidebarOpen(false) : undefined)}
+                        className={`dashboard-sidebar-link ${isActive ? "is-active" : ""} ${isRendimiento ? "sidebar-item-rendimiento" : ""}`}
+                        aria-current={isActive ? "page" : undefined}
+                        aria-label={item.label}
+                        data-testid={isRendimiento ? "nav-rendimiento-cartera" : undefined}
+                      >
+                        <span className="dashboard-sidebar-link-icon" aria-hidden>
+                          <SidebarIcon id={item.id} />
+                        </span>
+                        <span className="dashboard-sidebar-link-text">{item.label}</span>
+                      </Link>
+                      {showChildren ? (
+                        <div className="dashboard-sidebar-submenu is-open">
+                          {item.children?.map((child) => {
+                            const isChildActive = pathname === child.href;
+                            return (
+                              <Link
+                                key={child.id}
+                                href={child.href}
+                                onClick={() => (typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches ? setSidebarOpen(false) : undefined)}
+                                className={`dashboard-sidebar-sublink ${isChildActive ? "is-active" : ""}`}
+                                aria-current={isChildActive ? "page" : undefined}
+                                aria-label={child.label}
+                              >
+                                <span className="dashboard-sidebar-sublink-dot" aria-hidden />
+                                <span className="dashboard-sidebar-sublink-text">{child.label}</span>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
                   );
                 })}
               </div>
