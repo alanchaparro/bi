@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.domain.portfolio_rules import monto_a_cobrar
+from .portfolio_rules import monto_a_cobrar
 
 
 def _safe_pct(numerator: object, denominator: object) -> float:
@@ -20,3 +20,4 @@ def rendimiento_monto_pct(cobrado: object, monto_vencido: object, monto_cuota: o
 
 def rendimiento_cantidad_pct(contratos_con_cobro: object, contratos_por_cobrar: object) -> float:
     return _safe_pct(contratos_con_cobro, contratos_por_cobrar)
+
