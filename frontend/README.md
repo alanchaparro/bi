@@ -64,6 +64,11 @@ Genera `src/shared/api-types.ts` desde `../docs/openapi-v1.json` (requiere `open
 - `src/modules/` – Vistas por módulo (analisisCartera, config, etc.); siguen usando estilos en `src/index.css` para compatibilidad.
 - `src/shared/` – API, contratos, formatters, `env.ts` (variables Next/Vite).
 
+## Referencias visuales
+
+- Estándar visual analytics: [docs/frontend-visual-standard.md](C:/desarrollos/bi-clone-nuevo/docs/frontend-visual-standard.md)
+- Checklist de revisión visual para PRs: [docs/frontend-visual-pr-checklist.md](C:/desarrollos/bi-clone-nuevo/docs/frontend-visual-pr-checklist.md)
+
 ## Objetivo
 
 Frontend listo para uso con Next.js y HeroUI v3: login y shell (sidebar + header) en HeroUI; vistas de análisis y configuración conservan la lógica existente y pueden migrarse a HeroUI de forma gradual.

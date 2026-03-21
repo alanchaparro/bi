@@ -532,7 +532,7 @@ export function AnalisisCobranzasCohorteView() {
                 return (
                   <article
                     key={kpiId}
-                    className={`card kpi-card analysis-kpi-card ${card.className} ${dragOverKpi === kpiId ? 'chart-drop-target' : ''} ${draggingKpi === kpiId ? 'dragging-card' : ''}`}
+                    className={`card kpi-card analysis-card-pad cohorte-kpi-card ${card.className} ${dragOverKpi === kpiId ? 'chart-drop-target' : ''} ${draggingKpi === kpiId ? 'dragging-card' : ''}`}
                     draggable
                     onDragStart={(e) => {
                       setDraggingKpi(kpiId)

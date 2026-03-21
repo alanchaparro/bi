@@ -739,7 +739,7 @@ export function AnalisisRendimientoView() {
               return (
                 <article
                   key={kpiId}
-                  className={`analysis-kpi-card ${card.className} ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''}`}
+                  className={`card kpi-card analysis-card-pad analysis-kpi-card ${card.className} ${isDragging ? 'dragging-card' : ''} ${isDropTarget ? 'chart-drop-target' : ''}`}
                   draggable
                   onDragStart={(event) => {
                     setDraggingKpi(kpiId)
@@ -764,9 +764,12 @@ export function AnalisisRendimientoView() {
                     setDragOverKpi(null)
                   }}
                 >
-                  <div className="kpi-card-title">{card.title}</div>
-                  <strong className="kpi-card-value">{card.value}</strong>
-                  {card.note ? <small>{card.note}</small> : null}
+                  <div className="chart-card-header">
+                    <div className="kpi-card-title-wrap"><h3 className="kpi-card-title">{card.title}</h3></div>
+                    <span className="chart-drag-handle" title="Arrastrar para reordenar" aria-hidden>::</span>
+                  </div>
+                  <strong className="kpi-card-value" title={card.value}>{card.value}</strong>
+                  {card.note ? <small className="analysis-kpi-note">{card.note}</small> : null}
                 </article>
               )
             })}

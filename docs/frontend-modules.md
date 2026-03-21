@@ -1,5 +1,9 @@
 # Frontend Modules
 
+## Referencias
+- Estandar visual analytics: [frontend-visual-standard.md](C:/desarrollos/bi-clone-nuevo/docs/frontend-visual-standard.md)
+- Checklist visual de PR: [frontend-visual-pr-checklist.md](C:/desarrollos/bi-clone-nuevo/docs/frontend-visual-pr-checklist.md)
+
 ## Core
 - `dashboard.js`: orchestrator and fallback local computations.
 

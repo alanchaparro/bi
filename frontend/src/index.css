@@ -1172,8 +1172,10 @@ body.sidebar-open .tabs-nav {
   min-height: 30px;
   padding: 0 0.7rem;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--color-border) 76%, transparent);
-  background: color-mix(in srgb, var(--color-surface-elevated) 84%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface-elevated) 78%, transparent) 0%, color-mix(in srgb, var(--card-bg) 92%, transparent) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   color: var(--color-text-muted);
   font-size: 0.79rem;
   font-variant-numeric: tabular-nums;
@@ -1280,9 +1282,12 @@ body.sidebar-open .tabs-nav {
   margin-bottom: 0.95rem;
 }
 
-.analysis-kpi-card {
-  cursor: grab;
+.analysis-kpi-card,
+.cohorte-kpi-card {
+  position: relative;
+  overflow: hidden;
   min-height: 132px;
+  margin-bottom: 0;
   padding: 1rem;
   display: flex;
   flex-direction: column;
@@ -1290,62 +1295,90 @@ body.sidebar-open .tabs-nav {
   border-radius: var(--radius-lg);
   border-width: 1px;
   border-style: solid;
-  border-color: color-mix(in srgb, var(--color-border) 72%, transparent);
+  border-color: color-mix(in srgb, var(--color-border) 78%, transparent);
+  border-left-width: 4px;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-surface-elevated) 78%, transparent) 0%, color-mix(in srgb, var(--color-surface) 88%, transparent) 100%);
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface-elevated) 76%, transparent) 0%, color-mix(in srgb, var(--card-bg) 94%, transparent) 100%);
+  box-shadow: 0 6px 18px rgba(2, 6, 23, 0.08);
 }
 
-.analysis-kpi-card .kpi-card-title {
+.analysis-kpi-card::before,
+.cohorte-kpi-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.025) 0%, transparent 34%),
+    radial-gradient(560px 180px at 120% -10%, color-mix(in srgb, var(--color-primary) 6%, transparent), transparent 58%);
+}
+
+.analysis-kpi-card > *,
+.cohorte-kpi-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.analysis-kpi-card .kpi-card-title,
+.cohorte-kpi-card .kpi-card-title {
   font-size: 0.86rem;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--color-text-muted);
 }
 
-.analysis-kpi-card .kpi-card-value {
+.analysis-kpi-card .kpi-card-value,
+.cohorte-kpi-card .kpi-card-value {
   font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
-  font-size: clamp(1.2rem, 1.6vw, 1.75rem);
-  letter-spacing: 0;
-  line-height: 1.14;
+  font-size: clamp(1.35rem, 2.1vw, 2.35rem);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.12;
   white-space: normal;
-  overflow-wrap: break-word;
-  word-break: normal;
+  overflow-wrap: anywhere;
   max-width: 100%;
 }
 
-.analysis-kpi-card .chart-card-header {
+.analysis-kpi-card .chart-card-header,
+.cohorte-kpi-card .chart-card-header {
   margin-bottom: 0.3rem;
 }
 
 .analysis-kpi-primary {
   box-shadow: var(--shadow-kpi-primary);
   border-color: var(--border-kpi-primary);
+  border-left-color: var(--border-kpi-primary);
 }
 
 .analysis-kpi-gold {
   box-shadow: var(--shadow-kpi-gold);
   border-color: var(--border-kpi-gold);
+  border-left-color: var(--border-kpi-gold);
 }
 
 .analysis-kpi-emerald {
   box-shadow: var(--shadow-kpi-emerald);
   border-color: var(--border-kpi-emerald);
+  border-left-color: var(--border-kpi-emerald);
 }
 
 .analysis-kpi-violet {
   box-shadow: var(--shadow-kpi-violet);
   border-color: var(--border-kpi-violet);
+  border-left-color: var(--border-kpi-violet);
 }
 
 .analysis-kpi-cyan {
   box-shadow: var(--shadow-kpi-cyan);
   border-color: var(--border-kpi-cyan);
+  border-left-color: var(--border-kpi-cyan);
 }
 
 .analysis-kpi-amber {
   box-shadow: var(--shadow-kpi-amber);
   border-color: var(--border-kpi-amber);
+  border-left-color: var(--border-kpi-amber);
 }
 
 .analysis-kpi-note {
@@ -1366,8 +1399,10 @@ body.sidebar-open .tabs-nav {
 .analysis-table-wrap {
   max-height: 360px;
   border-radius: var(--radius-md);
-  border-color: color-mix(in srgb, var(--color-border) 70%, transparent);
-  box-shadow: var(--shadow-md);
+  border-color: color-mix(in srgb, var(--color-border) 74%, transparent);
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.1);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--table-bg) 82%, transparent) 0%, color-mix(in srgb, var(--table-bg) 96%, transparent) 100%);
 }
 
 .analysis-table-wrap-annual {
@@ -1563,10 +1598,6 @@ body.sidebar-open .tabs-nav {
   z-index: 5;
 }
 
-.rendimiento-filters-panel:has(.multi-select-filter.is-open) {
-  padding-bottom: 15rem;
-}
-
 @media (max-width: 1280px) {
   .analysis-filters-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1657,9 +1688,35 @@ body.sidebar-open .tabs-nav {
 }
 
 .chart-card {
+  position: relative;
+  overflow: hidden;
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  border-color: color-mix(in srgb, var(--color-border) 82%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface-elevated) 76%, transparent) 0%, color-mix(in srgb, var(--card-bg) 94%, transparent) 100%);
+  box-shadow: 0 8px 22px rgba(2, 6, 23, 0.1);
+  transition: transform 0.18s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chart-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.025) 0%, transparent 34%),
+    radial-gradient(620px 220px at 112% -10%, color-mix(in srgb, var(--color-primary) 7%, transparent), transparent 58%);
+}
+
+.chart-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.chart-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(2, 6, 23, 0.14);
+  border-color: color-mix(in srgb, var(--color-primary) 24%, var(--color-border));
 }
 
 :root[data-theme='light'] .chart-card {
@@ -1800,6 +1857,16 @@ body.sidebar-open .tabs-nav {
   gap: 0.5rem;
 }
 
+.chart-section-heading {
+  display: grid;
+  gap: 0.24rem;
+}
+
+.chart-card-hint {
+  cursor: default;
+  opacity: 0.85;
+}
+
 .chart-drag-handle {
   border: 1px dashed var(--color-border);
   background: rgba(255, 255, 255, 0.06);
@@ -1860,11 +1927,13 @@ body.sidebar-open .tabs-nav {
 
 .analysis-empty {
   margin: 0.75rem 0 1rem;
-  padding: 0.9rem 1rem;
-  border: 1px dashed var(--color-border);
+  padding: 1rem 1.1rem;
+  border: 1px dashed color-mix(in srgb, var(--color-border) 82%, transparent);
   border-radius: var(--radius-md);
   color: var(--color-text-muted);
-  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface-elevated) 72%, transparent) 0%, color-mix(in srgb, var(--card-bg) 96%, transparent) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .toast-stack {
@@ -1962,6 +2031,16 @@ body.sidebar-open .tabs-nav {
 
 .summary-grid-loading {
   opacity: 0.78;
+}
+
+.analysis-inline-note {
+  margin: 0 0 1rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-state-warn) 28%, var(--color-border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-state-warn) 8%, var(--card-bg));
+  color: var(--color-text);
+  font-size: 0.92rem;
 }
 
 @media (max-width: 1279px) {
@@ -2275,72 +2354,40 @@ body.sidebar-open .tabs-nav {
   margin-bottom: 0.95rem;
 }
 
-.cohorte-kpi-card {
-  cursor: grab;
-  min-height: 132px;
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  border-radius: var(--radius-lg);
-  border-width: 1px;
-  border-style: solid;
-  border-color: color-mix(in srgb, var(--color-border) 72%, transparent);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-surface-elevated) 78%, transparent) 0%, color-mix(in srgb, var(--color-surface) 88%, transparent) 100%);
-}
-
-.cohorte-kpi-card .kpi-card-title {
-  font-size: 0.86rem;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-
 .cohorte-kpi-primary {
   box-shadow: var(--shadow-kpi-primary);
   border-color: var(--border-kpi-primary);
+  border-left-color: var(--border-kpi-primary);
 }
 
 .cohorte-kpi-gold {
   box-shadow: var(--shadow-kpi-gold);
   border-color: var(--border-kpi-gold);
+  border-left-color: var(--border-kpi-gold);
 }
 
 .cohorte-kpi-emerald {
   box-shadow: var(--shadow-kpi-emerald);
   border-color: var(--border-kpi-emerald);
+  border-left-color: var(--border-kpi-emerald);
 }
 
 .cohorte-kpi-violet {
   box-shadow: var(--shadow-kpi-violet);
   border-color: var(--border-kpi-violet);
+  border-left-color: var(--border-kpi-violet);
 }
 
 .cohorte-kpi-cyan {
   box-shadow: var(--shadow-kpi-cyan);
   border-color: var(--border-kpi-cyan);
+  border-left-color: var(--border-kpi-cyan);
 }
 
 .cohorte-kpi-amber {
   box-shadow: var(--shadow-kpi-amber);
   border-color: var(--border-kpi-amber);
-}
-
-.cohorte-kpi-card .kpi-card-value {
-  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
-  font-variant-numeric: tabular-nums;
-  font-size: clamp(1.2rem, 1.6vw, 1.75rem);
-  letter-spacing: 0;
-  line-height: 1.14;
-  white-space: normal;
-  overflow-wrap: break-word;
-  word-break: normal;
-  max-width: 100%;
-}
-
-.cohorte-kpi-card .chart-card-header {
-  margin-bottom: 0.3rem;
+  border-left-color: var(--border-kpi-amber);
 }
 
 .cohorte-kpi-note {
@@ -2361,8 +2408,10 @@ body.sidebar-open .tabs-nav {
 .cohorte-table-wrap {
   max-height: 360px;
   border-radius: var(--radius-md);
-  border-color: color-mix(in srgb, var(--color-border) 70%, transparent);
-  box-shadow: var(--shadow-md);
+  border-color: color-mix(in srgb, var(--color-border) 74%, transparent);
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.1);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--table-bg) 82%, transparent) 0%, color-mix(in srgb, var(--table-bg) 96%, transparent) 100%);
 }
 
 .cohorte-table-wrap-annual {
@@ -2951,6 +3000,11 @@ label.input-label {
   color: var(--color-text-muted);
   max-width: 28rem;
   text-align: center;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--color-border) 82%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface-elevated) 72%, transparent) 0%, color-mix(in srgb, var(--card-bg) 96%, transparent) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
 }
 
 .cohorte-detail-more-wrap {
@@ -3363,9 +3417,16 @@ label.input-label {
   overflow-x: auto;
   border-radius: var(--radius);
   border: 1px solid var(--glass-border);
-  background: var(--table-bg);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--table-bg) 84%, transparent) 0%, color-mix(in srgb, var(--table-bg) 98%, transparent) 100%);
   overflow: hidden;
-  transition: opacity 0.22s ease;
+  box-shadow: 0 8px 22px rgba(2, 6, 23, 0.1);
+  transition: opacity 0.22s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.table-wrap:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 18%, var(--glass-border));
+  box-shadow: 0 12px 26px rgba(2, 6, 23, 0.13);
 }
 
 .table-wrap tbody tr {
@@ -3392,6 +3453,8 @@ label.input-label {
   color: var(--text-secondary);
   text-transform: uppercase;
   font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  backdrop-filter: blur(8px);
 }
 
 .table-wrap tr:last-child td {
