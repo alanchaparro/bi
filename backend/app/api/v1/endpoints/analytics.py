@@ -244,6 +244,56 @@ def rendimiento_options(
     return _decorate_meta(db, result, cache_hit=False)
 
 
+_RENDIMIENTO_V2_REQUIRED_KPI_KEYS = {
+    'monto_a_cobrar_total',
+    'cobrado_total',
+    'rendimiento_monto_pct',
+    'contratos_por_cobrar',
+    'contratos_con_cobro',
+    'rendimiento_cantidad_pct',
+}
+
+
+def _normalize_rendimiento_v2_summary_payload(result: dict | None) -> dict:
+    payload = dict(result or {})
+    stats = payload.get('stats') if isinstance(payload.get('stats'), dict) else None
+    if stats:
+        if 'kpis' not in payload and isinstance(stats.get('kpis'), dict):
+            payload['kpis'] = dict(stats.get('kpis') or {})
+        if 'charts' not in payload:
+            payload['charts'] = {
+                'trend': dict(stats.get('trendStats') or {}),
+                'tramo': dict(stats.get('tramoStats') or {}),
+                'un': dict(stats.get('unStats') or {}),
+                'via_cobro': dict(stats.get('viaCStats') or {}),
+                'gestor': dict(stats.get('gestorStats') or {}),
+                'matrix': dict(stats.get('matrixStats') or {}),
+            }
+    kpis = dict(payload.get('kpis') or {})
+    debt = float(payload.get('totalDebt') or 0.0)
+    paid = float(payload.get('totalPaid') or 0.0)
+    contracts = int(payload.get('totalContracts') or 0)
+    contracts_paid = int(payload.get('totalContractsPaid') or 0)
+    if not kpis or not _RENDIMIENTO_V2_REQUIRED_KPI_KEYS.issubset(kpis.keys()):
+        if debt or paid or contracts or contracts_paid:
+            kpis.setdefault('monto_a_cobrar_total', debt)
+            kpis.setdefault('cobrado_total', paid)
+            kpis.setdefault('rendimiento_monto_pct', round((paid / debt) * 100.0, 4) if debt > 0.0 else 0.0)
+            kpis.setdefault('contratos_por_cobrar', contracts)
+            kpis.setdefault('contratos_con_cobro', contracts_paid)
+            kpis.setdefault('rendimiento_cantidad_pct', round((contracts_paid / contracts) * 100.0, 4) if contracts > 0 else 0.0)
+    payload['kpis'] = kpis
+    payload.setdefault('charts', {})
+    return payload
+
+
+def _has_complete_rendimiento_v2_kpis(payload: dict | None) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    kpis = payload.get('kpis')
+    return isinstance(kpis, dict) and _RENDIMIENTO_V2_REQUIRED_KPI_KEYS.issubset(kpis.keys())
+
+
 @router.post('/rendimiento-v2/summary')
 def rendimiento_summary_v2(
     filters: AnalyticsFilters,
@@ -252,10 +302,13 @@ def rendimiento_summary_v2(
 ):
     cached = cache_get('rendimiento-v2/summary', filters)
     if cached is not None:
-        return _decorate_meta(db, cached, cache_hit=True, source_table='analytics_rendimiento_agg')
+        normalized = _normalize_rendimiento_v2_summary_payload(cached)
+        if _has_complete_rendimiento_v2_kpis(normalized):
+            return _decorate_meta(db, normalized, cache_hit=True, source_table='analytics_rendimiento_agg')
     result = AnalyticsService.fetch_rendimiento_summary_v2(db, filters)
-    cache_set('rendimiento-v2/summary', filters, result, ttl_seconds=RENDIMIENTO_V2_SUMMARY_CACHE_TTL)
-    return _decorate_meta(db, result, cache_hit=False, source_table='analytics_rendimiento_agg')
+    normalized = _normalize_rendimiento_v2_summary_payload(result)
+    cache_set('rendimiento-v2/summary', filters, normalized, ttl_seconds=RENDIMIENTO_V2_SUMMARY_CACHE_TTL)
+    return _decorate_meta(db, normalized, cache_hit=False, source_table='analytics_rendimiento_agg')
 
 
 @router.post('/rendimiento-v2/first-paint')
