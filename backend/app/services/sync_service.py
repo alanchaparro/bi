@@ -49,6 +49,7 @@ from app.services.sync_extractors import (
     query_file_for,
     query_filename_for,
     query_path_for,
+    query_variant_for_domain,
 )
 from app.services.sync_normalizers import (
     dedupe_rows_in_chunk,
@@ -118,7 +119,21 @@ def _path_within(path: Path, parent: Path) -> bool:
 
 
 def _query_variant_for_domain(domain: str) -> str:
-    filename = query_filename_for(domain)
+    domain_key = str(domain or '').strip().lower()
+    if domain_key not in {'cartera', 'cobranzas', 'contratos', 'gestores'}:
+        return 'v1'
+    env_by_domain = {
+        'cartera': 'sync_query_variant_cartera',
+        'cobranzas': 'sync_query_variant_cobranzas',
+        'contratos': 'sync_query_variant_contratos',
+        'gestores': 'sync_query_variant_gestores',
+    }
+    attr = env_by_domain.get(domain_key)
+    raw = str(getattr(settings, attr, 'v1') if attr else 'v1').strip().lower()
+    if raw not in {'v1', 'v2'}:
+        logger.warning("[sync:%s] invalid query variant=%s, fallback=v1", domain_key, raw)
+        return 'v1'
+    filename = query_filename_for(domain_key)
     return 'v2' if str(filename).startswith('sql/v2/') else 'v1'
 
 

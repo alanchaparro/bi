@@ -2878,6 +2878,22 @@ class AnalyticsService:
             'totalPaid': float(totals_row.paid or 0.0),
             'totalContracts': int(totals_row.contracts or 0),
             'totalContractsPaid': int(totals_row.contracts_paid or 0),
+            'kpis': {
+                'monto_a_cobrar_total': float(totals_row.debt or 0.0),
+                'cobrado_total': float(totals_row.paid or 0.0),
+                'rendimiento_monto_pct': (
+                    round((float(totals_row.paid or 0.0) / float(totals_row.debt or 0.0)) * 100.0, 4)
+                    if float(totals_row.debt or 0.0) > 0.0
+                    else 0.0
+                ),
+                'contratos_por_cobrar': int(totals_row.contracts or 0),
+                'contratos_con_cobro': int(totals_row.contracts_paid or 0),
+                'rendimiento_cantidad_pct': (
+                    round((int(totals_row.contracts_paid or 0) / int(totals_row.contracts or 0)) * 100.0, 4)
+                    if int(totals_row.contracts or 0) > 0
+                    else 0.0
+                ),
+            },
             'tramoStats': {},
             'unStats': {},
             'viaCStats': {},
