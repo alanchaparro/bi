@@ -111,6 +111,7 @@
 - **Evidencia:** Traza reportada en CI apunta a `tests/test_sync_window_delete_scope.py` línea 24 durante `CobranzasFact.__table__.drop(...)`; en código `TEST_DATABASE_URL` por defecto es `sqlite:///./data/test_sync_window_delete_scope.db`.
 - **Dev (2026-03-23):** el test ahora usa ruta SQLite absoluta basada en `ROOT/data/test_sync_window_delete_scope.db` y crea el directorio padre de forma explícita antes de inicializar engine.
 - **Dev (2026-03-23, ajuste adicional):** hardening central en `backend/app/db/session.py`: para cualquier `DATABASE_URL` SQLite de archivo se asegura creación de carpeta padre antes de `create_engine(...)`; si la ruta no es escribible en CI/contenedor, se aplica fallback automático a un directorio temporal escribible del sistema.
+- **Dev (2026-03-23, ajuste adicional 2):** en `.github/workflows/docker-ci.yml` se fija `DATABASE_URL=sqlite:////tmp/bi_clone_ci_app_v1.db` dentro de `CI Environment Overrides` para que todo el job backend use una ruta escribible y estable en runner Linux.
 - **Validación (2026-03-23):** ejecución local de `tests.test_api_v1_sync` y `tests.test_api_v1_analytics_v2_smoke_endpoints` con `DATABASE_URL=sqlite:///./data/app_v1.db` en verde; ya no falla el import de `app.main` por apertura de SQLite.
 - **Criterio de cierre:** hacer el test independiente de cwd/FS (ej. `tempfile` + ruta absoluta garantizada o DB en memoria cuando aplique), y dejar `Backend Unit + Integration Tests` en verde en CI.
 
@@ -155,4 +156,5 @@
 | 2026-03-23 | Auditoría **audit**: añadidos **AUD-2026-03-23-36** (**Abierto**, **P1**) por falla de CI backend (`sqlite3.OperationalError: unable to open database file`) y **AUD-2026-03-23-37** (**Abierto**, **P3**) por deprecación Node 20 en actions. |
 | 2026-03-23 | Dev: **AUD-2026-03-23-36** y **AUD-2026-03-23-37** pasan a **Listo para verificar** tras fijar ruta SQLite absoluta en test CI y migrar workflows/actions a Node 24. |
 | 2026-03-23 | Dev (ajuste adicional): reforzado `backend/app/db/session.py` para crear ruta SQLite automáticamente y usar fallback temporal si el path no es escribible en CI/contenedor. |
+| 2026-03-23 | Dev (ajuste adicional 2): workflow `docker-ci` fija `DATABASE_URL` a SQLite en `/tmp` durante CI para eliminar dependencia de rutas relativas en `/app`. |
 | 2026-03-23 | Verificación final: **AUD-2026-03-23-36 Cerrado** y **AUD-2026-03-23-37 Cerrado** con tests de contrato/smoke backend en verde (`tests.test_api_v1_sync`, `tests.test_api_v1_analytics_v2_smoke_endpoints`) y workflows actualizados a Node 24/actions v5. |

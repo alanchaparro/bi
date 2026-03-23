@@ -31,6 +31,7 @@ jobs:
             echo "API_V1_WORKERS=1"
             echo "DB_BOOTSTRAP_ON_START=false"
             echo "DB_DEMO_PROBE_ON_START=false"
+            echo "DATABASE_URL=sqlite:////tmp/bi_clone_ci_app_v1.db"
           } >> .env
 
       - name: Docker Compose Version
