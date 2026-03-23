@@ -1,10 +1,44 @@
+from pathlib import Path
+from tempfile import gettempdir
+import warnings
+
 from sqlalchemy import create_engine, event
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
 
 
-is_sqlite = settings.database_url.startswith('sqlite')
+def _resolve_database_url(raw_url: str) -> str:
+    parsed = make_url(raw_url)
+    if not parsed.drivername.startswith('sqlite'):
+        return raw_url
+
+    db_path = parsed.database
+    if not db_path or db_path == ':memory:' or str(db_path).startswith('file:'):
+        return raw_url
+
+    target_path = Path(db_path)
+    if not target_path.is_absolute():
+        target_path = (Path.cwd() / target_path).resolve()
+
+    try:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        return str(parsed.set(database=str(target_path)))
+    except OSError:
+        fallback_dir = Path(gettempdir()) / 'bi-clone-nuevo-data'
+        fallback_dir.mkdir(parents=True, exist_ok=True)
+        fallback_path = fallback_dir / target_path.name
+        warnings.warn(
+            f'SQLite path not writable ({target_path.parent}); using fallback {fallback_path.parent}',
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return str(parsed.set(database=str(fallback_path)))
+
+
+database_url = _resolve_database_url(settings.database_url)
+is_sqlite = database_url.startswith('sqlite')
 connect_args = {'check_same_thread': False, 'timeout': 30} if is_sqlite else {}
 engine_kwargs = {
     'pool_pre_ping': True,
@@ -20,7 +54,7 @@ if not is_sqlite:
         }
     )
 
-engine = create_engine(settings.database_url, **engine_kwargs)
+engine = create_engine(database_url, **engine_kwargs)
 
 
 if is_sqlite:
