@@ -76,10 +76,34 @@
 - **Verificación (2026-03-23):** prueba real con `.env` ausente: `start_one_click.ps1` creó `.env`, ajustó `APP_ENV=prod` automáticamente y continuó el flujo sin requerir edición manual del archivo.
 - **Criterio de cierre:** completado.
 
+### AUD-2026-03-23-34 — `sync_service.py` mantiene lógica muerta por redefinición de funciones críticas
+- **Severidad:** Media
+- **Prioridad:** P2
+- **Estado:** Listo para verificar
+- **Área:** Backend sync (`backend/app/services/sync_service.py`)
+- **Descripción:** El módulo define `def _normalize_record(...)` y `def _fact_row_from_normalized(...)` dos veces. La segunda definición (wrapper a `sync_normalizers`) sobreescribe la primera, dejando un bloque grande de lógica anterior inalcanzable. Esto genera riesgo de mantenimiento: un dev puede “corregir” la primera función pensando que tiene efecto, pero en runtime no cambia nada.
+- **Evidencia:** `sync_service.py` contiene `_normalize_record` en dos posiciones (líneas ~480 y ~742) y `_fact_row_from_normalized` también en dos posiciones (líneas ~609 y ~746); las segundas versiones retornan directamente `normalize_record(...)`/`fact_row_from_normalized(...)`.
+- **Dev (2026-03-23):** se eliminaron las implementaciones duplicadas/inaccesibles de `_normalize_record` y `_fact_row_from_normalized`, manteniendo una única definición wrapper hacia `sync_normalizers`. Se añadió `tests/test_sync_service_delegation.py` para validar que exista una sola definición por función y que ambas deleguen a `normalize_record(...)`/`fact_row_from_normalized(...)`.
+- **Criterio de cierre:** eliminar las implementaciones duplicadas inalcanzables o moverlas explícitamente a un módulo legacy; dejar una única fuente de verdad por función y cobertura de test mínima para evitar regresión silenciosa.
+
+### AUD-2026-03-23-35 — Desacople incompleto entre frontend legacy y frontend nuevo
+- **Severidad:** Alta
+- **Prioridad:** P2
+- **Estado:** Abierto
+- **Área:** Frontend arquitectura/UI (`frontend/src/app/**`, `frontend/src/App.tsx`, navegación/layout, módulos brokers/cartera/config)
+- **Descripción:** Se detecta convivencia y regresión de patrones legacy dentro del flujo nuevo (ids de navegación legacy, `SectionHeader`, `window.confirm`, controles nativos `.input`), lo que rompe independencia entre dominios y causa drift recurrente entre código y auditoría visual.
+- **Canónico obligatorio:** `docs/CANON_DECOUPLE_LEGACY_NEW.md`.
+- **Criterio de cierre:**
+  1. Fronteras del canónico cumplidas (runtime, rutas, UI, estilos, contratos).
+  2. Módulos nuevos sin marcadores legacy en flujo principal.
+  3. `bugs_visual.md` sin V-* abiertos por mezcla legacy/nuevo.
+  4. Auditoría `verifica` confirma desacople sin drift.
+
 ## Backlog abierto
 | Orden | Prioridad | ID | Resumen |
 |---|---|---|---|
-| - | - | - | Sin hallazgos técnicos abiertos al cierre de esta pasada. |
+| 1 | P2 | AUD-2026-03-23-35 | Desacople incompleto entre frontend legacy y nuevo; canónico de fronteras no aplicado de punta a punta. |
+| 2 | P2 | AUD-2026-03-23-34 | `sync_service.py` en `Listo para verificar` tras eliminación de duplicados y cobertura anti-regresión. |
 
 ## Historial
 | Fecha | Acción |
@@ -94,4 +118,7 @@
 | 2026-03-23 | Verificación final: **AUD-32 Cerrado** tras limpieza elevada de residuos `tmp*` (conteo 0 en `sql/common` y `sql/v2`) y estado git sin warnings de acceso. |
 | 2026-03-23 | Verificación final: **AUD-33 Cerrado** tras prueba one-click con `.env` inexistente, creación automática de `.env` y ajuste automático a `APP_ENV=prod` sin edición manual. |
 | 2026-03-23 | Auditoría **audit**: sin hallazgos nuevos; se mantiene backlog técnico en cero y se confirma consistencia de launchers one-click (`start_one_click.ps1` / `iniciar.sh`) con hardening de `APP_ENV` y secretos por defecto. |
+| 2026-03-23 | Auditoría **audit**: añadido **AUD-2026-03-23-34** (**Abierto**, **P2**) por duplicación/redefinición de `_normalize_record` y `_fact_row_from_normalized` en `sync_service.py` (lógica muerta inalcanzable). |
 | 2026-03-23 | Auditoría **audit** adicional: sin hallazgos técnicos nuevos; verificado `tests/test_sync_sql_loader.py` (5/5), `frontend` typecheck OK y guardrails one-click/bootstraps (`APP_ENV=prod`, autogeneración de secretos y alineación de password PostgreSQL) vigentes en scripts Win/Linux. |
+| 2026-03-23 | Auditoría **audit**: añadido **AUD-2026-03-23-35** (**Abierto**, **P2**) por desacople incompleto legacy/nuevo en frontend. Se define canónico técnico en `docs/CANON_DECOUPLE_LEGACY_NEW.md` para handoff Auditor -> Dev. |
+| 2026-03-23 | Dev: **AUD-2026-03-23-34** pasa a **Listo para verificar** al eliminar duplicaciones de normalización en `sync_service.py`, mantener wrappers únicos y agregar test anti-regresión (`tests/test_sync_service_delegation.py`). |
