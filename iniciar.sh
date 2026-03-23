@@ -146,7 +146,7 @@ bash "$SCRIPT_DIR/scripts/prod_bootstrap_from_zero.sh"
 
 # --- 5) Activar admin one-shot ---
 step "4" "Activando usuario administrador..."
-if ! docker compose --profile prod run --rm dashboard python scripts/first_run_enable_admin_once.py --admin-user "$admin_user" --admin-password "$admin_password"; then
+if ! docker compose --profile prod run --rm api-v1 python scripts/first_run_enable_admin_once.py --admin-user "$admin_user" --admin-password "$admin_password"; then
   exit_code=$?
   # Codigo 3: one-shot ya consumido; continuar.
   [[ $exit_code -eq 3 ]] || exit "$exit_code"

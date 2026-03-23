@@ -18,36 +18,29 @@ function Assert-DockerHealthy {
 
 Assert-DockerHealthy
 
-docker compose --profile dev up -d dashboard api-v1
+docker compose --profile dev up -d api-v1
 Start-Sleep -Seconds 3
 
-$dashPort = if ($env:DASHBOARD_PORT) { $env:DASHBOARD_PORT } else { "5000" }
-$base = "http://localhost:$dashPort"
+$apiPort = if ($env:API_V1_PORT) { $env:API_V1_PORT } else { "8000" }
+$base = "http://localhost:$apiPort/api/v1"
 
-$check = Invoke-RestMethod -Uri "$base/api/check-files" -Method Get
+$check = Invoke-RestMethod -Uri "$base/health" -Method Get
 $check | ConvertTo-Json -Compress | Write-Output
 
-function Assert-FilterRequired {
+function Assert-PostReturnsJson {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Url
+        [string]$Url,
+        [Parameter(Mandatory = $true)]
+        [string]$Payload
     )
-    try {
-        Invoke-WebRequest -Uri $Url -Method Get -UseBasicParsing | Out-Null
-        throw "Se esperaba HTTP 400 con FILTER_REQUIRED en $Url"
-    } catch {
-        $resp = $_.Exception.Response
-        if (-not $resp) { throw }
-        $reader = New-Object System.IO.StreamReader($resp.GetResponseStream())
-        $body = $reader.ReadToEnd()
-        $reader.Close()
-        $json = $body | ConvertFrom-Json
-        if ($json.error_code -ne "FILTER_REQUIRED") {
-            throw "Respuesta inesperada en ${Url}: $body"
-        }
-        Write-Output "OK $Url -> FILTER_REQUIRED"
+    $response = Invoke-WebRequest -Uri $Url -Method Post -Body $Payload -ContentType "application/json" -UseBasicParsing
+    if (-not $response.Content) {
+        throw "Respuesta vacia en ${Url}"
     }
+    $null = $response.Content | ConvertFrom-Json
+    Write-Output "OK $Url"
 }
 
-Assert-FilterRequired -Url "$base/analytics/movement/moroso-trend"
-Assert-FilterRequired -Url "$base/analytics/anuales/summary"
+Assert-PostReturnsJson -Url "$base/analytics/portfolio-corte-v2/options" -Payload "{}"
+Assert-PostReturnsJson -Url "$base/analytics/rendimiento-v2/options" -Payload "{}"

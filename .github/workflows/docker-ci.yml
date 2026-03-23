@@ -37,19 +37,19 @@ jobs:
         run: docker compose version
 
       - name: Build Image
-        run: docker compose --profile dev build --no-cache dashboard api-v1
+        run: docker compose --profile dev build --no-cache api-v1
 
-      - name: Start Services (Legacy + API v1)
-        run: docker compose --profile dev up -d dashboard api-v1
+      - name: Start Services (API v1)
+        run: docker compose --profile dev up -d api-v1
 
       - name: Compile Check
-        run: docker compose --profile dev exec -T dashboard python -m py_compile start_dashboard.py
+        run: docker compose --profile dev exec -T api-v1 python -m py_compile backend/app/main.py
 
       - name: Unit Tests
         run: |
           set -euo pipefail
           set +e
-          docker compose --profile dev exec -T dashboard sh -lc "pwd && ls -la tests && python -m unittest discover -s tests -p 'test_*.py'" > /tmp/unit-tests.log 2>&1
+          docker compose --profile dev exec -T api-v1 sh -lc "pwd && ls -la tests && python -m unittest discover -s tests -p 'test_*.py'" > /tmp/unit-tests.log 2>&1
           rc=$?
           set -e
           cat /tmp/unit-tests.log
@@ -60,7 +60,7 @@ jobs:
           fi
 
       - name: API v1 Contract Tests
-        run: docker compose --profile dev exec -T dashboard python -m unittest tests.test_api_v1_brokers_config -v
+        run: docker compose --profile dev exec -T api-v1 python -m unittest tests.test_api_v1_brokers_config -v
 
       - name: Smoke - Health Endpoints
         shell: bash
@@ -77,14 +77,13 @@ jobs:
             done
             return 1
           }
-          retry_curl "http://localhost:5000/api/check-files" /tmp/check-files.json
-          retry_curl "http://localhost:5000/" /tmp/index.html
-          grep -q "dashboard.js" /tmp/index.html
           retry_curl "http://localhost:8000/api/v1/health" /tmp/v1-health.json
           grep -q "\"ok\":true" /tmp/v1-health.json
+          curl -fsS -X POST "http://localhost:8000/api/v1/analytics/portfolio-corte-v2/options" -H "Content-Type: application/json" -d "{}" > /tmp/portfolio-options.json
+          grep -q "\"meta\"" /tmp/portfolio-options.json
 
       - name: Export OpenAPI v1
-        run: docker compose --profile dev exec -T dashboard python scripts/export_openapi_v1.py
+        run: docker compose --profile dev exec -T api-v1 python scripts/export_openapi_v1.py
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -108,7 +107,6 @@ jobs:
       - name: Logs on Failure
         if: failure()
         run: |
-          docker compose logs dashboard --tail=400
           docker compose --profile dev logs api-v1 --tail=400
 
       - name: Cleanup

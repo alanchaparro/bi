@@ -35,8 +35,6 @@ class Settings(BaseSettings):
     write_rate_window_seconds: int = Field(default=60, alias='WRITE_RATE_WINDOW_SECONDS')
 
     cors_origins: str = Field(default='*', alias='CORS_ORIGINS')
-    analytics_legacy_base_url: str = Field(default='http://dashboard:5000', alias='ANALYTICS_LEGACY_BASE_URL')
-    analytics_legacy_timeout_seconds: int = Field(default=120, alias='ANALYTICS_LEGACY_TIMEOUT_SECONDS')
 
     demo_admin_user: str = Field(default='admin', alias='DEMO_ADMIN_USER')
     demo_admin_password: str = Field(default='change_me_demo_admin_password', alias='DEMO_ADMIN_PASSWORD')

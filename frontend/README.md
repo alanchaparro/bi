@@ -36,7 +36,7 @@ Crear `.env.local` (o usar `.env.example` como referencia):
 
 - `NEXT_PUBLIC_API_BASE_URL` – URL base de la API (default: `http://localhost:8000/api/v1`)
 
-Opcionales: `NEXT_PUBLIC_USE_FRONTEND_PERF_TELEMETRY`, `NEXT_PUBLIC_APP_VERSION`, `NEXT_PUBLIC_LEGACY_DASHBOARD_URL`.
+Opcionales: `NEXT_PUBLIC_USE_FRONTEND_PERF_TELEMETRY`, `NEXT_PUBLIC_APP_VERSION`.
 
 ## Tipos OpenAPI
 

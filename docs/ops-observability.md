@@ -41,7 +41,7 @@ Additional structured fields now include:
   - `avg_ms`, `p95_ms`, `last_ms`, `last_ts`
 
 ## Recommended checks
-- `docker compose logs dashboard --tail=200`
+- `docker compose logs api-v1 --tail=200`
 - Validate analytics endpoint latency under repeated requests (cache hit).
 - Track fallback-rate in frontend (API errors that switch to local compute).
 - Check `p95_ms` and `error_rate_pct` in `/analytics/ops/metrics` before/after rollout.

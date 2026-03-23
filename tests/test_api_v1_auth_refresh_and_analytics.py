@@ -261,10 +261,9 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
         token = login.json()['access_token']
         headers = {'Authorization': f'Bearer {token}'}
 
-        with patch('app.services.analytics_service.AnalyticsService.fetch_legacy', side_effect=RuntimeError('legacy down')):
-            r = self.client.post('/api/v1/analytics/brokers/summary', json={'supervisor': ['FVBROKEREASCDE']}, headers=headers)
-            self.assertEqual(r.status_code, 200)
-            self.assertIsInstance(r.json().get('rows'), list)
+        r = self.client.post('/api/v1/analytics/brokers/summary', json={'supervisor': ['FVBROKEREASCDE']}, headers=headers)
+        self.assertEqual(r.status_code, 200)
+        self.assertIsInstance(r.json().get('rows'), list)
 
     def test_invalid_payload_includes_trace_id(self):
         login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})

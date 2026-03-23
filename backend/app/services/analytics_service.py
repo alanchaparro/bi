@@ -9,8 +9,6 @@ from collections import defaultdict
 from datetime import datetime
 from threading import Lock
 from urllib.parse import urlencode
-
-import httpx
 from sqlalchemy import Integer, Numeric, String, and_, case, cast, func, literal
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
@@ -48,23 +46,9 @@ from app.schemas.analytics import (
 _COHORTE_BASE_CACHE_TTL_SEC = 900
 _COHORTE_BASE_CACHE: dict[str, tuple[float, list[dict]]] = {}
 _COHORTE_BASE_CACHE_LOCK = Lock()
-_LEGACY_CLIENT_LOCK = Lock()
-_LEGACY_CLIENT: httpx.Client | None = None
 ANALYTICS_PIPELINE_VERSION = '2026.03.v2'
 STANDARD_GESTION_CALENDAR_START = '01/2021'
 STANDARD_CONTRACT_CALENDAR_START = '01/2014'
-
-
-def _legacy_http_client() -> httpx.Client:
-    global _LEGACY_CLIENT
-    with _LEGACY_CLIENT_LOCK:
-        timeout = float(max(5, int(settings.analytics_legacy_timeout_seconds)))
-        if _LEGACY_CLIENT is None:
-            _LEGACY_CLIENT = httpx.Client(timeout=timeout)
-        elif float(_LEGACY_CLIENT.timeout.connect or 0) != timeout:
-            _LEGACY_CLIENT.close()
-            _LEGACY_CLIENT = httpx.Client(timeout=timeout)
-        return _LEGACY_CLIENT
 
 
 def _cohorte_base_cache_get(cache_key: str) -> list[dict] | None:
@@ -365,18 +349,6 @@ def _is_mora_3m(sale_month: str, close_month: str, tramo: int) -> bool:
 
 
 class AnalyticsService:
-    @staticmethod
-    def fetch_legacy(endpoint: str, filters: AnalyticsFilters) -> dict:
-        base = settings.analytics_legacy_base_url.rstrip('/')
-        query = _filters_to_query(filters)
-        url = f'{base}{endpoint}'
-        if query:
-            url = f'{url}?{query}'
-        client = _legacy_http_client()
-        res = client.get(url)
-        res.raise_for_status()
-        return res.json()
-
     @staticmethod
     def _latest_timestamp_for_source(db: Session, source_table: str) -> datetime | None:
         source = str(source_table or '').strip().lower()

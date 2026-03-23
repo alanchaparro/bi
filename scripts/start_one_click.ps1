@@ -159,7 +159,7 @@ Write-Step "[3] Ejecutando bootstrap (PostgreSQL, migraciones, usuarios, verific
 
 # --- 5) Activar admin one-shot ---
 Write-Step "[4] Activando usuario administrador..."
-& docker compose --profile prod run --rm dashboard python scripts/first_run_enable_admin_once.py --admin-user $adminUser --admin-password $adminPassword
+& docker compose --profile prod run --rm api-v1 python scripts/first_run_enable_admin_once.py --admin-user $adminUser --admin-password $adminPassword
 if ($LASTEXITCODE -eq 3) {
   Write-Host "    One-shot ya ejecutado previamente; se continua sin error."
 } elseif ($LASTEXITCODE -ne 0) {

@@ -1,4 +1,4 @@
-﻿# Arquitectura Técnica Objetivo
+# Arquitectura Técnica Objetivo
 
 ## Capas
 - `api`: routers y contratos HTTP.
@@ -14,12 +14,11 @@ Frontend -> API v1 -> Service -> Repository -> DB
 
 ## Fuente de Verdad de Reglas
 - Reglas semánticas compartidas viven en `backend/app/domain/`.
-- `sync_service.py`, `analytics_service.py` y `start_dashboard.py` deben reutilizar esas funciones y no reimplementar reglas.
+- `sync_service.py` y `analytics_service.py` deben reutilizar esas funciones y no reimplementar reglas.
 - SQL queda para extracción, joins pesados y agregados técnicos; no debe introducir nuevas reglas de negocio.
 
 ## Compatibilidad
-- Legacy (`start_dashboard.py`) permanece operativo durante migración.
-- Legacy usa helpers canónicos Python cuando la regla ya fue extraída.
+- El runtime canónico es API v1 + frontend nuevo.
 - v1 expone contratos versionados `/api/v1/*`.
 
 ## Errores

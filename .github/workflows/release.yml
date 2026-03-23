@@ -36,16 +36,16 @@ jobs:
         run: docker compose --profile dev build --no-cache
 
       - name: Start Services
-        run: docker compose --profile dev up -d dashboard api-v1
+        run: docker compose --profile dev up -d api-v1
 
       - name: Backend Lint (compile/static)
-        run: docker compose --profile dev exec -T dashboard python -m py_compile start_dashboard.py backend/app/main.py
+        run: docker compose --profile dev exec -T api-v1 python -m py_compile backend/app/main.py
 
       - name: Backend Unit + Integration Tests
         run: |
           set -euo pipefail
           set +e
-          docker compose --profile dev exec -T dashboard sh -lc "pwd && ls -la tests && python -m unittest discover -s tests -p 'test_*.py'" > /tmp/unit-tests.log 2>&1
+          docker compose --profile dev exec -T api-v1 sh -lc "pwd && ls -la tests && python -m unittest discover -s tests -p 'test_*.py'" > /tmp/unit-tests.log 2>&1
           rc=$?
           set -e
           cat /tmp/unit-tests.log
@@ -57,7 +57,7 @@ jobs:
 
       - name: Backend Coverage
         run: |
-          docker compose --profile dev run --rm -v ${{ github.workspace }}:/workspace dashboard sh -c "
+          docker compose --profile dev run --rm -v ${{ github.workspace }}:/workspace api-v1 sh -c "
             pip install --quiet coverage &&
             cd /app && coverage run -m unittest discover -s tests -p 'test_*.py' &&
             coverage xml -o /workspace/coverage.xml &&
@@ -72,11 +72,11 @@ jobs:
           path: coverage.xml
 
       - name: Bootstrap Auth Users
-        run: docker compose --profile dev run --rm dashboard python scripts/bootstrap_auth_users.py
+        run: docker compose --profile dev run --rm api-v1 python scripts/bootstrap_auth_users.py
 
       - name: Bootstrap Analytics Schema (Postgres)
         run: |
-          docker compose --profile dev run --rm dashboard python -c "
+          docker compose --profile dev run --rm api-v1 python -c "
           import sys
           from pathlib import Path
           sys.path.insert(0, str(Path('/app/backend')))
@@ -89,23 +89,20 @@ jobs:
 
       - name: Verify Legacy Config Migration
         run: |
-          docker compose --profile dev run --rm dashboard python scripts/migrate_legacy_config_to_db.py
-          docker compose --profile dev run --rm dashboard python scripts/verify_legacy_config_migration.py
+          docker compose --profile dev run --rm api-v1 python scripts/migrate_legacy_config_to_db.py
+          docker compose --profile dev run --rm api-v1 python scripts/verify_legacy_config_migration.py
 
       - name: E2E Brokers Critical Flow
-        run: docker compose --profile dev run --rm -e E2E_API_BASE=http://api-v1:8000/api/v1 dashboard python scripts/e2e_brokers_critical.py
+        run: docker compose --profile dev run --rm -e E2E_API_BASE=http://api-v1:8000/api/v1 api-v1 python scripts/e2e_brokers_critical.py
 
       - name: Perf Smoke API v1
-        run: docker compose --profile dev run --rm -e PERF_API_BASE=http://api-v1:8000/api/v1 -e PERF_ANALYTICS_P95_BUDGET_MS=1200 dashboard python scripts/perf_smoke_api_v1.py
-
-      - name: Parity Check Analytics v1 vs Legacy
-        run: docker compose --profile dev run --rm -e PARITY_API_V1_BASE=http://api-v1:8000/api/v1 -e PARITY_LEGACY_BASE=http://dashboard:5000 dashboard python scripts/parity_check_analytics_v1.py
+        run: docker compose --profile dev run --rm -e PERF_API_BASE=http://api-v1:8000/api/v1 -e PERF_ANALYTICS_P95_BUDGET_MS=1200 api-v1 python scripts/perf_smoke_api_v1.py
 
       - name: Smoke Deploy
-        run: docker compose --profile dev run --rm -e SMOKE_API_V1_BASE=http://api-v1:8000/api/v1 -e SMOKE_LEGACY_BASE=http://dashboard:5000 dashboard python scripts/smoke_deploy_v1.py
+        run: docker compose --profile dev run --rm -e SMOKE_API_V1_BASE=http://api-v1:8000/api/v1 api-v1 python scripts/smoke_deploy_v1.py
 
       - name: Export OpenAPI
-        run: docker compose --profile dev run --rm dashboard python scripts/export_openapi_v1.py
+        run: docker compose --profile dev run --rm api-v1 python scripts/export_openapi_v1.py
 
       - name: Setup Node
         uses: actions/setup-node@v4

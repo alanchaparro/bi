@@ -12,7 +12,7 @@
 
 ## ✅ Funciona correctamente
 
-- **Entorno Docker:** `docker compose ps` muestra todos los servicios Up (api-v1, frontend-prod, postgres, sync-worker, dashboard). Frontend en 8080, API en 8000.
+- **Entorno Docker:** `docker compose ps` muestra servicios del stack nuevo Up (api-v1, frontend-prod, postgres, sync-worker). Frontend en 8080, API en 8000.
 - **API health:** `GET /api/v1/health` responde correctamente.
 - **Smoke tests v2:** Los 4 tests de `test_api_v1_analytics_v2_smoke_endpoints.py` pasan:
   - `portfolio-corte-v2/options` devuelve `options.uns` y `options.gestion_months` (listas).

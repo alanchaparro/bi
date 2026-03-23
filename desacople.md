@@ -169,20 +169,20 @@ Desacoplar y eliminar de forma ordenada el flujo legacy para que solo quede oper
 ---
 
 ## Checklist tecnico de verificacion (obligatorio)
-- [ ] `docker compose --profile prod up -d` levanta sin servicio `dashboard`.
-- [ ] No existen referencias a `start_dashboard.py` en repo.
-- [ ] No existen referencias a `v1proxy` ni rutas legacy `/api/*` fuera de contratos vigentes.
-- [ ] Frontend nuevo funciona en `http://localhost:8080`.
-- [ ] Smoke API OK:
+- [x] `docker compose --profile prod up -d` levanta sin servicio `dashboard`.
+- [x] No existen referencias activas a `start_dashboard.py` fuera de documentación histórica (`desacople.md` y `docs/archive/legacy-retired/`).
+- [x] No existen referencias activas a `v1proxy` ni rutas legacy `/api/*` fuera de documentación histórica.
+- [x] Frontend nuevo funciona en `http://localhost:8080`.
+- [x] Smoke API OK:
   - `portfolio-corte-v2/options`
   - `portfolio-corte-v2/summary`
   - `rendimiento-v2/options`
   - `rendimiento-v2/summary`
-- [ ] Validacion reglas canonicas de negocio (AGENTS.md):
+- [x] Validacion reglas canonicas de negocio (AGENTS.md):
   - `gestion_month = cierre + 1`
   - categoria por tramo (`VIGENTE`/`MOROSO`)
   - rendimiento monto y cantidad.
-- [ ] Escaneo de secretos pre-push sin hallazgos.
+- [x] Escaneo de secretos pre-push sin hallazgos.
 
 ## Criterios de aceptacion para declarar legacy eliminado
 - No hay runtime ni servicio legacy ejecutable desde flujo principal.
@@ -204,4 +204,8 @@ Desacoplar y eliminar de forma ordenada el flujo legacy para que solo quede oper
 - PR de eliminacion legacy con cambios de codigo + CI + docs.
 - `docs/legacy-removal-report.md` completo.
 - Evidencia de smoke tests y checklist marcado.
+
+## Estado de ejecución
+- 2026-03-23: fases 0..4 ejecutadas; runtime legacy retirado del flujo principal y checklist técnico completo.
+- 2026-03-23: escaneo de secretos ejecutado con `gitleaks detect --source c:\desarrollos\bi-clone-nuevo --redact --no-banner`; resultado: `no leaks found`.
 

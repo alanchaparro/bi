@@ -19,7 +19,7 @@ function Assert-DockerHealthy {
 Assert-DockerHealthy
 
 docker compose --profile dev build --no-cache
-docker compose --profile dev up -d dashboard api-v1
-docker compose --profile dev run --rm dashboard python -m py_compile start_dashboard.py
-docker compose --profile dev run --rm dashboard python -m unittest discover -s tests -p "test_*.py"
+docker compose --profile dev up -d api-v1
+docker compose --profile dev run --rm api-v1 python -m py_compile backend/app/main.py
+docker compose --profile dev run --rm api-v1 python -m unittest discover -s tests -p "test_*.py"
 powershell -ExecutionPolicy Bypass -File .\scripts\docker-smoke.ps1

@@ -1,1 +1,1 @@
-docker compose run --rm dashboard python -m py_compile start_dashboard.py
+docker compose run --rm api-v1 python -m py_compile backend/app/main.py

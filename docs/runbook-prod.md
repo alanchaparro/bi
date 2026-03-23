@@ -63,7 +63,7 @@ Este script realiza:
 Despues del primer deploy, ejecutar una sola vez:
 
 ```bash
-docker compose --profile prod run --rm dashboard python scripts/first_run_enable_admin_once.py
+docker compose --profile prod run --rm api-v1 python scripts/first_run_enable_admin_once.py
 ```
 
 Que hace este comando:
@@ -74,7 +74,7 @@ Que hace este comando:
 Ejemplo re-ejecucion controlada:
 
 ```bash
-docker compose --profile prod run --rm dashboard python scripts/first_run_enable_admin_once.py --force
+docker compose --profile prod run --rm api-v1 python scripts/first_run_enable_admin_once.py --force
 ```
 
 ## 4) Sync dual (nuevo flujo)

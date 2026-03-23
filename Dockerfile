@@ -16,8 +16,8 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Copy the rest of the application
 COPY . .
 
-# Expose the dashboard port
-EXPOSE 5000
+# Expose API v1 port
+EXPOSE 8000
 
-# Start the dashboard server
-CMD ["python", "start_dashboard.py"]
+# Default entrypoint for API v1 runtime
+CMD ["uvicorn", "app.main:app", "--app-dir", "/app/backend", "--host", "0.0.0.0", "--port", "8000"]

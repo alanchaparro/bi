@@ -30,15 +30,13 @@ python scripts/verify_mysql_connectivity.py
 ```
    Exit 0 = OK. Si falla, revise .env y que mysql-connector-python esté instalado (`pip install -r requirements/runtime.txt`).
 
-## Run Dashboard
+## Run Stack
 ```powershell
-python start_dashboard.py
+docker compose --profile prod up -d postgres api-v1 frontend-prod
 ```
-- Open `http://localhost:5000`.
+- Open `http://localhost:8080`.
 - Use Config tab to run SQL exports or sync local files.
-- Analytics API is enabled by default in frontend (`USE_ANALYTICS_API=true` implicit).
-- If analytics endpoint fails, critical tabs fallback to local computation.
-- Debug traces: append `?debug=1` to URL.
+- API health: `http://localhost:8000/api/v1/health`.
 
 ## Auth (Frontend v1)
 - Login: `POST /api/v1/auth/login` con `username`/`password`; respuesta incluye `access_token`, `refresh_token`, `role`, `permissions`.
@@ -130,7 +128,7 @@ If your environment has `make`:
 ## CI (GitHub Actions)
 - Workflow: `.github/workflows/docker-ci.yml`
 - Runs on `push`, `pull_request`, and manual trigger (`workflow_dispatch`).
-- Pipeline: `docker compose build` + `up` + `py_compile` + `unittest` + smoke HTTP checks.
+- Pipeline: `docker compose build` + `up` + `py_compile` + `unittest` + smoke HTTP checks sobre API v1.
 
 ## Safe Push (No Sensitive Data)
 1. Run safety check before push:
