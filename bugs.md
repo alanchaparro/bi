@@ -68,17 +68,18 @@
 ### AUD-2026-03-23-33 — Regresión de despliegue un clic: `INICIAR` falla en instalación limpia por `APP_ENV=dev` por defecto
 - **Severidad:** Alta
 - **Prioridad:** P1
-- **Estado:** Listo para verificar
+- **Estado:** Cerrado
 - **Área:** launchers/operación (`scripts/start_one_click.ps1`, `iniciar.sh`, `.env.example`)
 - **Descripción:** En una máquina limpia, `INICIAR.bat`/`iniciar.sh` crea `.env` desde `.env.example` y acto seguido falla por guardrail (`APP_ENV` debe ser `prod`). Eso introduce un paso manual previo (editar `.env`) y rompe el contrato de despliegue “un clic”.
 - **Evidencia:** `start_one_click.ps1` aborta si `APP_ENV != prod`; `iniciar.sh` hace el mismo `fail`; `.env.example` mantiene `APP_ENV=dev`.
 - **Dev (2026-03-23):** los launchers canónicos de prod ahora fuerzan `APP_ENV=prod` en `.env` antes del bootstrap (`Set-EnvValue` en PowerShell y `set_env_value` en Bash), y validan post-escritura para fallar solo ante problemas reales de permisos/escritura.
-- **Criterio de cierre:** validar en entorno limpio que `INICIAR`/`iniciar.sh` ya no piden edición manual de `.env` y continúan el flujo one-click manteniendo perfil `prod`.
+- **Verificación (2026-03-23):** prueba real con `.env` ausente: `start_one_click.ps1` creó `.env`, ajustó `APP_ENV=prod` automáticamente y continuó el flujo sin requerir edición manual del archivo.
+- **Criterio de cierre:** completado.
 
 ## Backlog abierto
 | Orden | Prioridad | ID | Resumen |
 |---|---|---|---|
-| 1 | P1 | AUD-2026-03-23-33 | **Listo para verificar**: launcher one-click fuerza `APP_ENV=prod` y preserva guardrail. |
+| - | - | - | Sin hallazgos técnicos abiertos al cierre de esta pasada. |
 
 ## Historial
 | Fecha | Acción |
@@ -90,3 +91,4 @@
 | 2026-03-23 | Auditoría **audit**: añadido **AUD-2026-03-23-33** (**Abierto**, **P1**) por regresión de “un clic” en `INICIAR`/`iniciar.sh` (guardrail `APP_ENV=prod` + `.env.example` en `dev`). |
 | 2026-03-23 | Auditoría **audit**: sin hallazgos técnicos nuevos en esta pasada; se mantiene el backlog en **Listo para verificar** para **AUD-32** y **AUD-33**. |
 | 2026-03-23 | Verificación final: **AUD-32 Cerrado** tras limpieza elevada de residuos `tmp*` (conteo 0 en `sql/common` y `sql/v2`) y estado git sin warnings de acceso. |
+| 2026-03-23 | Verificación final: **AUD-33 Cerrado** tras prueba one-click con `.env` inexistente, creación automática de `.env` y ajuste automático a `APP_ENV=prod` sin edición manual. |
