@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Button } from '@heroui/react'
-import { SectionHeader } from '../../components/layout/SectionHeader'
+import { Button, Checkbox } from '@heroui/react'
+import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
+import { ErrorState } from '../../components/feedback/ErrorState'
 import { getApiErrorMessage } from '../../shared/apiErrors'
 
 type Props = {
@@ -42,16 +43,24 @@ export function BrokersSupervisorsView({ allSupervisors, enabledSupervisors, can
   }
 
   return (
-    <section className="card">
-      <SectionHeader title="Supervisores habilitados" subtitle="Selecciona los supervisores que pueden acceder al sistema." />
-      {error ? <div className="alert-error">{error}</div> : null}
+    <section className="analysis-panel-card">
+      <AnalyticsPageHeader
+        title="Supervisores habilitados"
+        subtitle="Seleccioná los supervisores que pueden acceder al sistema."
+      />
+      {error ? <ErrorState message={error} /> : null}
       <div className="table-wrap supervisors-checkbox-wrap">
         <div className="supervisors-grid">
           {options.map((v) => (
-            <label key={v} className="supervisors-label">
-              <input type="checkbox" checked={selected.includes(v)} disabled={!canEdit} onChange={() => toggle(v)} />
-              <span>{v}</span>
-            </label>
+            <Checkbox
+              key={v}
+              className="supervisors-label"
+              isSelected={selected.includes(v)}
+              isDisabled={!canEdit}
+              onChange={() => toggle(v)}
+            >
+              {v}
+            </Checkbox>
           ))}
         </div>
       </div>

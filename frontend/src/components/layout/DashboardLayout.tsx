@@ -90,7 +90,7 @@ function SidebarIcon({ id }: { id: string }) {
       </svg>
     );
   }
-  if (id === "analisisCarteraRendimientoLegacy") {
+  if (id === "analisisCarteraRendimiento") {
     return (
       <svg {...common} aria-hidden>
         <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
@@ -317,7 +317,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 {items.map((item) => {
                   const isActive = isActivePath(pathname, item.href);
                   const showChildren = Boolean(item.children?.length);
-                  const isRendimiento = item.id === "analisisCarteraRendimientoLegacy";
+                  const isRendimiento = item.id === "analisisCarteraRendimiento";
                   return (
                     <div key={item.id} className="dashboard-sidebar-item-block">
                       <Link

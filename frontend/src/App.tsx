@@ -179,7 +179,7 @@ export default function App() {
     const routeMap: Record<string, 'cartera' | 'cohorte' | 'rendimiento' | 'anuales' | 'brokers'> = {
       analisisCartera: 'cartera',
       analisisCobranzaCohorte: 'cohorte',
-      analisisCarteraRendimientoLegacy: 'rendimiento',
+      analisisCarteraRendimiento: 'rendimiento',
       analisisCarteraAnuales: 'anuales',
       config: 'brokers',
     }
@@ -286,7 +286,7 @@ export default function App() {
             <AnalisisAnualesView />
           </section>
 
-          <section id="analisisCarteraRendimientoLegacy" className={`app-section ${activeSectionId === 'analisisCarteraRendimientoLegacy' ? '' : 'hidden'}`}>
+          <section id="analisisCarteraRendimiento" className={`app-section ${activeSectionId === 'analisisCarteraRendimiento' ? '' : 'hidden'}`}>
             <AnalisisRendimientoView />
           </section>
 
