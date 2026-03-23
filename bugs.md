@@ -126,3 +126,4 @@
 | 2026-03-23 | Dev: **AUD-2026-03-23-34** pasa a **Listo para verificar** al eliminar duplicaciones de normalización en `sync_service.py`, mantener wrappers únicos y agregar test anti-regresión (`tests/test_sync_service_delegation.py`). |
 | 2026-03-23 | Dev: **AUD-2026-03-23-35** pasa a **Listo para verificar** tras desacople de IDs/rutas legacy en navegación principal y normalización de `BrokersSupervisorsView` al stack HeroUI canónico. |
 | 2026-03-23 | Verificación final: **AUD-2026-03-23-34 Cerrado** y **AUD-2026-03-23-35 Cerrado** tras evidencia en tests/backend sync y build/typecheck + barrido de marcadores legacy en frontend principal. |
+| 2026-03-23 | Verificación canónica de `desacople.md`: normalización adicional en `ConfigView` para eliminar marcadores `className=\"input\"` del flujo nuevo; checklist de desacople actualizado a cumplido. |

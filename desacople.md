@@ -42,12 +42,12 @@ Separar por completo el flujo **legacy** del flujo **nuevo** para evitar depende
 - Cualquier excepcion visual en `legacy` debe quedar encapsulada bajo clases namespace legacy (sin contaminar vistas nuevas).
 
 ## Checklist de cierre para dev
-- [ ] No hay referencias `*Legacy*` en navegacion del shell nuevo.
-- [ ] No hay imports de `SidebarNav`/`App.tsx` legacy en runtime nuevo.
-- [ ] Modulos nuevos (brokers/cartera/config) sin `SectionHeader`, sin `window.confirm`, sin `input/select` legacy.
-- [ ] Vistas usan `AnalyticsPageHeader` + estados `LoadingState/ErrorState`.
-- [ ] Hallazgos V-* en `bugs_visual.md` cerrados y alineados con este canonico.
-- [ ] Hallazgo tecnico de desacople en `bugs.md` pasa a `Cerrado`.
+- [x] No hay referencias `*Legacy*` en navegacion del shell nuevo.
+- [x] No hay imports de `SidebarNav`/`App.tsx` legacy en runtime nuevo.
+- [x] Modulos nuevos (brokers/cartera/config) sin `SectionHeader`, sin `window.confirm`, sin `input/select` legacy.
+- [x] Vistas usan `AnalyticsPageHeader` + estados `LoadingState/ErrorState`.
+- [x] Hallazgos V-* en `bugs_visual.md` cerrados y alineados con este canonico.
+- [x] Hallazgo tecnico de desacople en `bugs.md` pasa a `Cerrado`.
 
 ## Criterio de auditoria
 - Si reaparece un marcador legacy en modulos nuevos, se considera **regresion de desacople** y se reabre el hallazgo tecnico.

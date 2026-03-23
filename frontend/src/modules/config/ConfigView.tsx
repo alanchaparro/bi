@@ -1435,7 +1435,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               <label className="config-label-col">
                 <span className="config-label-caption">Host</span>
                 <input
-                  className="input"
+                  className="input-heroui-tokens"
                   value={mysqlConfig.host}
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, host: e.target.value }))}
                   placeholder="192.168.0.10"
@@ -1445,7 +1445,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               <label className="config-label-col">
                 <span className="config-label-caption">Puerto</span>
                 <input
-                  className="input"
+                  className="input-heroui-tokens"
                   type="number"
                   value={mysqlConfig.port}
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, port: Number(e.target.value || 3306) }))}
@@ -1456,7 +1456,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               <label className="config-label-col">
                 <span className="config-label-caption">Base</span>
                 <input
-                  className="input"
+                  className="input-heroui-tokens"
                   value={mysqlConfig.database}
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, database: e.target.value }))}
                   placeholder="epem"
@@ -1466,7 +1466,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               <label className="config-label-col">
                 <span className="config-label-caption">Usuario</span>
                 <input
-                  className="input"
+                  className="input-heroui-tokens"
                   value={mysqlConfig.user}
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, user: e.target.value }))}
                   placeholder="bi"
@@ -1476,7 +1476,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               <label className="config-label-col">
                 <span className="config-label-caption">Contraseña</span>
                 <input
-                  className="input"
+                  className="input-heroui-tokens"
                   type="password"
                   value={mysqlConfig.password}
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, password: e.target.value }))}
@@ -1525,7 +1525,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
             <label className="config-label-col">
               <span className="config-label-caption">Username</span>
               <input
-                className="input"
+                className="input-heroui-tokens"
                 value={newUsername}
                 placeholder="ej: operador1"
                 onChange={(e) => setNewUsername(e.target.value.toLowerCase())}
@@ -1536,7 +1536,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
             <label className="config-label-col">
               <span className="config-label-caption">Contraseña</span>
               <input
-                className="input"
+                className="input-heroui-tokens"
                 type="password"
                 value={newPassword}
                 placeholder="min. 6 caracteres"
@@ -1547,7 +1547,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
 
             <label className="config-label-col">
               <span className="config-label-caption">Rol</span>
-              <select className="input" value={newRole} onChange={(e) => setNewRole((e.target.value as RoleType) || 'viewer')} disabled={usersBusy}>
+              <select className="input-heroui-tokens" value={newRole} onChange={(e) => setNewRole((e.target.value as RoleType) || 'viewer')} disabled={usersBusy}>
                 {ROLE_OPTIONS.map((r) => (
                   <option key={r} value={r}>{r}</option>
                 ))}
@@ -1581,10 +1581,10 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
             ) : (
               users.map((u) => (
                 <div key={u.username} className="config-grid-3 config-items-center">
-                  <input className="input" value={u.username} readOnly />
+                  <input className="input-heroui-tokens" value={u.username} readOnly />
 
                   <select
-                    className="input"
+                    className="input-heroui-tokens"
                     value={u.role}
                     onChange={(e) => {
                       const role = (e.target.value as RoleType) || 'viewer'
@@ -1611,7 +1611,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                       <span>Activo</span>
                     </label>
                     <input
-                      className="input"
+                      className="input-heroui-tokens"
                       type="password"
                       placeholder="Nueva contraseña (opcional)"
                       value={rowPasswordDraft[u.username] || ''}
@@ -1640,7 +1640,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
             <label className="config-label-col">
               <span className="config-label-caption">Unidad de Negocio</span>
               <input
-                className="input"
+                className="input-heroui-tokens"
                 list="un-options"
                 placeholder="Ej: MEDICINA ESTETICA"
                 value={ruleUn}
@@ -1656,7 +1656,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
 
             <label className="config-label-col">
               <span className="config-label-caption">Categoria</span>
-              <select className="input" value={ruleCategory} onChange={(e) => setRuleCategory(e.target.value === 'MOROSO' ? 'MOROSO' : 'VIGENTE')}>
+              <select className="input-heroui-tokens" value={ruleCategory} onChange={(e) => setRuleCategory(e.target.value === 'MOROSO' ? 'MOROSO' : 'VIGENTE')}>
                 <option value="VIGENTE">VIGENTE</option>
                 <option value="MOROSO">MOROSO</option>
               </select>
@@ -1710,8 +1710,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   .sort((a, b) => (a.un + a.category).localeCompare(b.un + b.category))
                   .map((r) => (
                     <div key={`${r.un}-${r.category}`} className="config-grid-3">
-                      <input className="input" value={r.un} readOnly />
-                      <input className="input" value={`${r.category}: ${r.tramos.join(', ') || '-'}`} readOnly />
+                      <input className="input-heroui-tokens" value={r.un} readOnly />
+                      <input className="input-heroui-tokens" value={`${r.category}: ${r.tramos.join(', ') || '-'}`} readOnly />
                       <button type="button" className="btn btn-secondary config-full-mobile" onClick={() => removeRule(r.un, r.category)} disabled={configBusy}>
                         Quitar
                       </button>
@@ -1749,7 +1749,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               <label className="config-label-col config-minw-140">
                 <span className="config-label-caption">Mes cierre desde (cartera)</span>
                 <input
-                  className="input"
+                  className="input-heroui-tokens"
                   type="text"
                   inputMode="numeric"
                   maxLength={2}
@@ -1761,7 +1761,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               <label className="config-label-col config-minw-140">
                 <span className="config-label-caption">Mes cierre hasta (cartera)</span>
                 <input
-                  className="input"
+                  className="input-heroui-tokens"
                   type="text"
                   inputMode="numeric"
                   maxLength={2}
@@ -1775,7 +1775,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               <label className="config-label-col config-minw-140">
                 <span className="config-label-caption">Año cierre desde (cartera)</span>
                 <input
-                  className="input"
+                  className="input-heroui-tokens"
                   type="text"
                   inputMode="numeric"
                   maxLength={4}
@@ -1787,7 +1787,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               <label className="config-label-col config-minw-140">
                 <span className="config-label-caption">Año cierre hasta (cartera)</span>
                 <input
-                  className="input"
+                  className="input-heroui-tokens"
                   type="text"
                   inputMode="numeric"
                   maxLength={4}
@@ -2131,7 +2131,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               <label className="config-label-col">
                 <span className="config-label-caption">Unidad</span>
                 <select
-                  className="input"
+                  className="input-heroui-tokens"
                   value={scheduleFormIntervalUnit}
                   onChange={(e) => setScheduleFormIntervalUnit(e.target.value as 'minute' | 'hour' | 'day' | 'month')}
                   disabled={scheduleSaving}
