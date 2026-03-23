@@ -10,6 +10,9 @@
 *.xlsx
 analytics_meta.json
 
+# Temp files under repo (Windows: puede bloquear build context con Permission denied)
+**/tmp*
+
 # Cache/artifacts
 .cache
 __pycache__

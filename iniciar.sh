@@ -8,6 +8,19 @@ cd "$SCRIPT_DIR"
 
 step() { printf '\033[0;36m[%s]\033[0m %s\n' "$1" "$2"; }
 fail() { echo "$1" >&2; exit 1; }
+set_env_value() {
+  local key="$1"
+  local value="$2"
+  local tmp_env
+  tmp_env="$(mktemp)"
+  awk -F= -v key="$key" -v value="$value" '
+    BEGIN { replaced=0 }
+    $1 == key { print key "=" value; replaced=1; next }
+    { print $0 }
+    END { if (!replaced) print key "=" value }
+  ' .env > "$tmp_env"
+  mv "$tmp_env" .env
+}
 
 # --- 1) Comprobar Docker y Docker Compose ---
 step "1" "Comprobando Docker y Docker Compose..."
@@ -28,6 +41,16 @@ if [[ ! -f .env ]]; then
   echo "    Creado .env desde .env.example."
 else
   echo "    .env ya existe."
+fi
+
+app_env="$(awk -F= '/^APP_ENV=/{print $2; exit}' .env 2>/dev/null || true)"
+if [[ "${app_env:-}" != "prod" ]]; then
+  set_env_value "APP_ENV" "prod"
+  echo "    APP_ENV ajustado automaticamente a prod para launcher one-click."
+fi
+app_env="$(awk -F= '/^APP_ENV=/{print $2; exit}' .env 2>/dev/null || true)"
+if [[ "${app_env:-}" != "prod" ]]; then
+  fail "No se pudo dejar APP_ENV=prod en .env. Corrija permisos del archivo e intente nuevamente."
 fi
 
 # --- 3) Configuracion opcional de credenciales admin ---

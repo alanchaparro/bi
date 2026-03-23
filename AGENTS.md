@@ -57,6 +57,26 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
 3. Guardrail obligatorio:
    - Si `rows_upserted > 0` y `agg_rows_written == 0`, ejecutar fallback de refresh.
 4. `cartera` usa estrategia estable de upsert compatible con particionado (sin depender de UNIQUE runtime en parent con expresiones).
+5. **Seguridad operativa en limpieza local (obligatoria)**:
+   - Prohibido ejecutar comandos de borrado masivo ambiguos (`rd /s /q`, `del /s`, `rm -rf`, `Remove-Item -Recurse -Force`) fuera de una ruta validada y acotada.
+   - Antes de limpiar temporales, validar la ruta exacta y usar un script/loop con allowlist explicita de carpetas objetivo.
+   - Si hay `Permission denied` en temporales de `sql/*`, no escalar a borrados globales; registrar hallazgo y resolver con procedimiento controlado.
+   - **Lista negra (nunca ejecutar):** comandos `cmd /c` con borrado recursivo interpolando rutas entre comillas escapadas (riesgo de expansión vacía o path truncado).  
+     Ejemplo prohibido que causó incidente: `cmd /c "rd /s /q \"$d\""` dentro de una cadena con variables PowerShell.
+   - Para limpieza de `tmp*` usar solo iteración segura con `Get-ChildItem` + `Remove-Item -LiteralPath` sobre rutas absolutas validadas una por una, sin pasar por `cmd /c`.
+
+## Despliegue canonico (un clic)
+1. **Entrada oficial** para levantar stack:
+   - Windows: `INICIAR.bat` (raiz) -> `scripts/start_one_click.ps1`.
+   - Linux/macOS: `iniciar.sh` (raiz).
+2. **Bajar stack**:
+   - Windows: `DETENER.bat` -> `scripts/stop_stack.ps1` -> `docker compose --profile "*" down --remove-orphans`.
+   - Linux/macOS: `detener.sh` -> mismo comando con `--profile "*"`.
+3. **Reinicio limpio (rebuild)**:
+   - Windows: `REINICIAR.bat` -> `scripts/restart_stack_fresh.ps1`.
+   - Linux/macOS: `reiniciar.sh`.
+   - Flujo: down con `--rmi local`, `docker builder prune -f`, `build --pull --no-cache`, `up -d` perfil prod.
+4. Estos launchers son contrato operativo: cambios en compose/bootstrap/env no deben romperlos.
 
 ## Contratos y UX
 1. Frontend analytics consume rutas v2 por defecto.
@@ -114,6 +134,7 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
    - escaneo de secretos sin hallazgos
    - confirmacion de que no hay credenciales reales en diffs
    - confirmacion de que `.env`/llaves no forman parte del commit
+7. Si el cambio toca Docker/compose/bootstrap/scripts: validar `INICIAR.bat`/`iniciar.sh`, `DETENER.bat`/`detener.sh` y `REINICIAR.bat`/`reiniciar.sh`.
 
 ## Cuando actualizar este archivo
 Actualizar inmediatamente si cambia:

@@ -2,13 +2,31 @@ $ErrorActionPreference = "Stop"
 
 Set-Location -Path (Join-Path $PSScriptRoot "..")
 
-Write-Host "[1/7] Levantando PostgreSQL..."
+function Get-EnvValue {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Key
+  )
+  if (-not (Test-Path $Path)) { return $null }
+  $line = Get-Content -Path $Path -Encoding UTF8 | Where-Object { $_ -match "^\s*$Key\s*=" } | Select-Object -First 1
+  if (-not $line) { return $null }
+  return (($line -split "=", 2)[1]).Trim()
+}
+
+$envFile = Join-Path (Get-Location) ".env"
+$appEnv = (Get-EnvValue -Path $envFile -Key "APP_ENV")
+if ([string]::IsNullOrWhiteSpace($appEnv)) { $appEnv = "dev" }
+if ($appEnv.Trim().ToLowerInvariant() -ne "prod") {
+  throw "APP_ENV actual es '$appEnv'. Este bootstrap usa perfil prod y requiere APP_ENV=prod en .env."
+}
+
+Write-Host "[1/8] Levantando PostgreSQL..."
 docker compose --profile prod up -d postgres
 
-Write-Host "[2/7] Esperando readiness de PostgreSQL..."
+Write-Host "[2/8] Esperando readiness de PostgreSQL..."
 $maxAttempts = 60
 for ($i = 0; $i -lt $maxAttempts; $i++) {
-  $ready = docker compose --profile prod exec -T postgres sh -lc "pg_isready -U $env:POSTGRES_USER -d $env:POSTGRES_DB" 2>$null
+  $ready = docker compose --profile prod exec -T postgres sh -lc 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' 2>$null
   if ($LASTEXITCODE -eq 0) {
     break
   }
@@ -18,19 +36,19 @@ if ($LASTEXITCODE -ne 0) {
   throw "PostgreSQL no esta listo despues de esperar."
 }
 
-Write-Host "[3/7] Ejecutando migraciones..."
+Write-Host "[3/8] Ejecutando migraciones..."
 docker compose --profile prod run --rm api-v1 sh -lc "cd /app && PYTHONPATH=/app/backend alembic -c backend/alembic.ini upgrade head"
 
-Write-Host "[4/7] Bootstrap usuarios auth..."
+Write-Host "[4/8] Bootstrap usuarios auth..."
 docker compose --profile prod run --rm api-v1 sh -lc "cd /app && python scripts/bootstrap_auth_users.py"
 
-Write-Host "[5/7] Migrando configuracion legacy..."
+Write-Host "[5/8] Migrando configuracion legacy..."
 docker compose --profile prod run --rm api-v1 sh -lc "cd /app && python scripts/migrate_legacy_config_to_db.py"
 
-Write-Host "[6/7] Verificando migracion de configuracion..."
+Write-Host "[6/8] Verificando migracion de configuracion..."
 docker compose --profile prod run --rm api-v1 sh -lc "cd /app && python scripts/verify_legacy_config_migration.py"
 
-Write-Host "[7/7] Smoke de API (health + login)..."
+Write-Host "[7/8] Smoke de API (health + login)..."
 docker compose --profile prod up -d api-v1
 Write-Host "    Esperando que la API este lista (hasta 60s)..."
 $waitOutFile = Join-Path $env:TEMP "wait_for_api_health.out.log"

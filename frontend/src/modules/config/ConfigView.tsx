@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
-import { Button, Input, Tabs } from '@heroui/react'
+import { Button, Input, Modal, Tabs, useOverlayState } from '@heroui/react'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
 import {
   api,
@@ -297,6 +297,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   const [scheduleFormDomains, setScheduleFormDomains] = useState<SyncDomain[]>(['cobranzas'])
   const [scheduleSaving, setScheduleSaving] = useState(false)
   const [scheduleActionLoading, setScheduleActionLoading] = useState<number | 'emergency' | null>(null)
+  const emergencyStopConfirm = useOverlayState()
 
   const hasCarteraSelected = selectedDomains.includes('cartera')
   const closeMonthFromValue = useMemo(() => {
@@ -512,6 +513,19 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
       setSchedulesLoading(false)
     }
   }, [refreshScheduleRuntime])
+
+  const confirmEmergencyStop = useCallback(async () => {
+    setScheduleActionLoading('emergency')
+    try {
+      await emergencyStopSchedules()
+      await loadSchedules()
+      emergencyStopConfirm.close()
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setScheduleActionLoading(null)
+    }
+  }, [emergencyStopConfirm, loadSchedules])
 
   useEffect(() => {
     void loadSchedules()
@@ -1965,17 +1979,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
             <button
               type="button"
               className="btn btn-primary"
-              onClick={async () => {
-                setScheduleActionLoading('emergency')
-                try {
-                  await emergencyStopSchedules()
-                  await loadSchedules()
-                } catch (e) {
-                  console.error(e)
-                } finally {
-                  setScheduleActionLoading(null)
-                }
-              }}
+              onClick={() => emergencyStopConfirm.open()}
               disabled={scheduleActionLoading === 'emergency'}
             >
               {scheduleActionLoading === 'emergency' ? 'Parando...' : 'Parar todo (emergencia)'}
@@ -2210,6 +2214,35 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
         </div>
         )}
       </div>
+      <Modal state={emergencyStopConfirm}>
+        <Modal.Backdrop />
+        <Modal.Container size="sm" placement="center">
+          <Modal.Dialog>
+            <Modal.Header>
+              <Modal.Heading>Confirmar parada de emergencia</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              Esta acción detiene todas las programaciones y cancela jobs pendientes. ¿Seguro que querés continuar?
+            </Modal.Body>
+            <Modal.Footer className="config-actions-row">
+              <Button
+                variant="outline"
+                onPress={() => emergencyStopConfirm.close()}
+                isDisabled={scheduleActionLoading === 'emergency'}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="danger"
+                onPress={confirmEmergencyStop}
+                isDisabled={scheduleActionLoading === 'emergency'}
+              >
+                {scheduleActionLoading === 'emergency' ? 'Parando...' : 'Parar todo'}
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal>
     </section>
   )
 }

@@ -10,6 +10,32 @@ Set-Location -Path $ProjectRoot
 
 function Write-Step { param($Message) Write-Host $Message -ForegroundColor Cyan }
 function Write-Fail { param($Message) Write-Host $Message -ForegroundColor Red; exit 1 }
+function Get-EnvValue {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Key
+  )
+  if (-not (Test-Path $Path)) { return $null }
+  $line = Get-Content -Path $Path -Encoding UTF8 | Where-Object { $_ -match "^\s*$Key\s*=" } | Select-Object -First 1
+  if (-not $line) { return $null }
+  return (($line -split "=", 2)[1]).Trim()
+}
+function Set-EnvValue {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Key,
+    [Parameter(Mandatory = $true)][string]$Value
+  )
+  if (-not (Test-Path $Path)) { throw "No se encontro el archivo de entorno: $Path" }
+  $raw = Get-Content -Path $Path -Raw -Encoding UTF8
+  if ($raw -match "(?m)^\s*$Key\s*=") {
+    $raw = $raw -replace "(?m)^\s*$Key\s*=.*$", "$Key=$Value"
+  } else {
+    if ($raw.Length -gt 0 -and -not $raw.EndsWith("`n")) { $raw += "`r`n" }
+    $raw += "$Key=$Value`r`n"
+  }
+  Set-Content -Path $Path -Value $raw -NoNewline -Encoding UTF8
+}
 
 # --- 1) Comprobar Docker y Docker Compose ---
 Write-Step "[1] Comprobando Docker y Docker Compose..."
@@ -36,6 +62,16 @@ if (-not (Test-Path $envFile)) {
   Write-Host "    Creado .env desde .env.example."
 } else {
   Write-Host "    .env ya existe."
+}
+
+$appEnvBefore = [string](Get-EnvValue -Path $envFile -Key "APP_ENV")
+if ($appEnvBefore.Trim().ToLowerInvariant() -ne "prod") {
+  Set-EnvValue -Path $envFile -Key "APP_ENV" -Value "prod"
+  Write-Host "    APP_ENV ajustado automaticamente a prod para launcher one-click."
+}
+$appEnv = [string](Get-EnvValue -Path $envFile -Key "APP_ENV")
+if ($appEnv.Trim().ToLowerInvariant() -ne "prod") {
+  Write-Fail "No se pudo dejar APP_ENV=prod en .env. Corrija permisos del archivo e intente nuevamente."
 }
 
 # --- 3) Pregunta opcional: configurar usuario y contraseña admin ---

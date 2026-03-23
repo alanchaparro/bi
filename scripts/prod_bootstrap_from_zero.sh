@@ -6,6 +6,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+app_env="$(awk -F= '/^APP_ENV=/{print $2; exit}' .env 2>/dev/null || true)"
+app_env="${app_env:-dev}"
+if [[ "$app_env" != "prod" ]]; then
+  echo "APP_ENV actual es '$app_env'. Este bootstrap usa perfil prod y requiere APP_ENV=prod en .env." >&2
+  exit 1
+fi
+
 echo "[1/8] Levantando PostgreSQL..."
 docker compose --profile prod up -d postgres
 
