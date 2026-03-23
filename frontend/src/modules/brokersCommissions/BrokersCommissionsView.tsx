@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { Button, Input } from '@heroui/react'
-import { SectionHeader } from '../../components/layout/SectionHeader'
+import { Button, Input, Modal, useOverlayState } from '@heroui/react'
+import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
+import { ErrorState } from '../../components/feedback/ErrorState'
+import { LoadingState } from '../../components/feedback/LoadingState'
 import { getApiErrorMessage } from '../../shared/apiErrors'
 
 type CommissionRule = {
@@ -25,6 +27,8 @@ export function BrokersCommissionsView({ rules, canEdit, loading, error, onSave 
   const [draft, setDraft] = useState<CommissionRule[]>([])
   const [saving, setSaving] = useState(false)
   const [localError, setLocalError] = useState('')
+  const deleteConfirm = useOverlayState()
+  const [pendingDeleteIdx, setPendingDeleteIdx] = useState<number | null>(null)
 
   useEffect(() => {
     setDraft(Array.isArray(rules) ? rules : [])
@@ -41,6 +45,16 @@ export function BrokersCommissionsView({ rules, canEdit, loading, error, onSave 
 
   const addRule = () => setDraft([...draft, { ...EMPTY_RULE }])
   const removeRule = (idx: number) => setDraft(draft.filter((_, i) => i !== idx))
+  const requestRemoveRule = (idx: number) => {
+    setPendingDeleteIdx(idx)
+    deleteConfirm.open()
+  }
+  const confirmRemoveRule = () => {
+    if (pendingDeleteIdx === null) return
+    removeRule(pendingDeleteIdx)
+    setPendingDeleteIdx(null)
+    deleteConfirm.close()
+  }
 
   const save = async () => {
     setLocalError('')
@@ -55,11 +69,14 @@ export function BrokersCommissionsView({ rules, canEdit, loading, error, onSave 
   }
 
   return (
-    <section className="card">
-      <SectionHeader title="Configuración de Comisiones" subtitle="Reglas de comisión por supervisores, UN, vías y meses." />
-      {loading ? <p className="text-muted">Cargando…</p> : null}
-      {error ? <div className="alert-error">{error}</div> : null}
-      {localError ? <div className="alert-error">{localError}</div> : null}
+    <section className="analysis-panel-card">
+      <AnalyticsPageHeader
+        title="Configuración de comisiones"
+        subtitle="Reglas por supervisores, UN, vías y meses. Definí tasa por segmento con confirmación antes de eliminar."
+      />
+      {loading ? <LoadingState message="Cargando reglas de comisiones..." /> : null}
+      {error ? <ErrorState message={error} /> : null}
+      {localError ? <ErrorState message={localError} /> : null}
       <div className="table-wrap">
       <table>
         <thead>
@@ -122,7 +139,7 @@ export function BrokersCommissionsView({ rules, canEdit, loading, error, onSave 
                 />
               </td>
               <td>
-                <Button size="sm" variant="danger" onPress={() => removeRule(idx)} isDisabled={!canEdit}>Eliminar</Button>
+                <Button size="sm" variant="danger" onPress={() => requestRemoveRule(idx)} isDisabled={!canEdit}>Eliminar</Button>
               </td>
             </tr>
           ))}
@@ -133,6 +150,27 @@ export function BrokersCommissionsView({ rules, canEdit, loading, error, onSave 
         <Button variant="outline" onPress={addRule} isDisabled={!canEdit}>Agregar regla</Button>
         <Button variant="primary" onPress={save} isDisabled={!canEdit || saving}>{saving ? 'Guardando…' : 'Guardar comisiones'}</Button>
       </div>
+      <Modal state={deleteConfirm}>
+        <Modal.Backdrop />
+        <Modal.Container size="sm" placement="center">
+          <Modal.Dialog>
+            <Modal.Header>
+              <Modal.Heading>Confirmar eliminación</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              Esta acción elimina la regla de comisiones seleccionada y no se puede deshacer. ¿Deseás continuar?
+            </Modal.Body>
+            <Modal.Footer className="brokers-rule-delete-modal__footer">
+              <Button variant="outline" onPress={() => deleteConfirm.close()}>
+                Cancelar
+              </Button>
+              <Button variant="danger" onPress={confirmRemoveRule}>
+                Eliminar
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal>
     </section>
   )
 }

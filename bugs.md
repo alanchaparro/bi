@@ -93,3 +93,4 @@
 | 2026-03-23 | Auditoría **audit**: sin hallazgos técnicos nuevos; precondiciones de recovery presentes (`RECUPERAR_DEV.bat`, `scripts/recovery_dev_execute.ps1`, `RECUPERACION_DEV_PLAN.md`) y sin residuos `tmp*` en `sql/common` ni `sql/v2`. |
 | 2026-03-23 | Verificación final: **AUD-32 Cerrado** tras limpieza elevada de residuos `tmp*` (conteo 0 en `sql/common` y `sql/v2`) y estado git sin warnings de acceso. |
 | 2026-03-23 | Verificación final: **AUD-33 Cerrado** tras prueba one-click con `.env` inexistente, creación automática de `.env` y ajuste automático a `APP_ENV=prod` sin edición manual. |
+| 2026-03-23 | Auditoría **audit**: sin hallazgos nuevos; se mantiene backlog técnico en cero y se confirma consistencia de launchers one-click (`start_one_click.ps1` / `iniciar.sh`) con hardening de `APP_ENV` y secretos por defecto. |

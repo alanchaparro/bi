@@ -1,4 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { Button } from '@heroui/react'
+import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
+import { ErrorState } from '../../components/feedback/ErrorState'
+import { LoadingState } from '../../components/feedback/LoadingState'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
 import { api } from '../../shared/api'
 import { getApiErrorMessage } from '../../shared/apiErrors'
@@ -24,6 +28,7 @@ const formatCount = (value: number) => Math.round(Number(value || 0)).toLocaleSt
 
 export function CarteraView() {
   const [filters, setFilters] = useState<BrokersFilters>(EMPTY_BROKERS_FILTERS)
+  const [draftFilters, setDraftFilters] = useState<BrokersFilters>(EMPTY_BROKERS_FILTERS)
   const [rows, setRows] = useState<PortfolioRow[]>([])
   const [summary, setSummary] = useState<Record<string, unknown>>({})
   const [options, setOptions] = useState<{
@@ -81,16 +86,18 @@ export function CarteraView() {
         const pref = await loadCarteraPreferences()
         const next = pref.filters || EMPTY_BROKERS_FILTERS
         setFilters(next)
+        setDraftFilters(next)
         await loadSummary(next)
       } catch {
         setFilters(EMPTY_BROKERS_FILTERS)
+        setDraftFilters(EMPTY_BROKERS_FILTERS)
         await loadSummary(EMPTY_BROKERS_FILTERS)
       }
     }
     void boot()
   }, [loadSummary])
 
-  const handleFilters = useCallback(
+  const applyFilters = useCallback(
     async (next: BrokersFilters) => {
       setFilters(next)
       await persistCarteraPreferences({ filters: next })
@@ -99,6 +106,11 @@ export function CarteraView() {
     [loadSummary]
   )
 
+  const resetFilters = useCallback(async () => {
+    setDraftFilters(EMPTY_BROKERS_FILTERS)
+    await applyFilters(EMPTY_BROKERS_FILTERS)
+  }, [applyFilters])
+
   const summaryCards = useMemo(() => {
     const totalContracts = Number(summary.total_contracts || 0)
     const totalRows = Number(summary.total_rows || 0)
@@ -106,27 +118,37 @@ export function CarteraView() {
     const expiredTotal = Number(summary.expired_total || 0)
     return [
       { label: 'Contratos', value: formatCount(totalContracts) },
-      { label: 'Filas', value: formatCount(totalRows) },
+      { label: 'Registros de detalle', value: formatCount(totalRows) },
       { label: 'Saldo Total', value: formatGs(debtTotal) },
       { label: 'Vencido', value: formatGs(expiredTotal) },
     ]
   }, [summary])
 
   return (
-    <section className="card">
-      <h2>Cartera</h2>
-      <p className="text-muted mt-0">Resumen operativo de cartera (fuente: sync_records).</p>
+    <section className="analysis-panel-card">
+      <AnalyticsPageHeader
+        title="Cartera"
+        subtitle="Resumen operativo de cartera con filtros manuales por supervisor, UN, vía y período."
+      />
 
       <div className="filters-grid mb-1">
-        <MultiSelectFilter label="Supervisor" options={options.supervisors} selected={filters.supervisors} onChange={(values) => void handleFilters({ ...filters, supervisors: values })} />
-        <MultiSelectFilter label="UN" options={options.uns} selected={filters.uns} onChange={(values) => void handleFilters({ ...filters, uns: values })} />
-        <MultiSelectFilter label="Vía" options={options.vias} selected={filters.vias} onChange={(values) => void handleFilters({ ...filters, vias: values })} />
-        <MultiSelectFilter label="Año" options={options.years} selected={filters.years} onChange={(values) => void handleFilters({ ...filters, years: values })} />
-        <MultiSelectFilter label="Mes" options={options.months} selected={filters.months} onChange={(values) => void handleFilters({ ...filters, months: values })} />
+        <MultiSelectFilter label="Supervisor" options={options.supervisors} selected={draftFilters.supervisors} onChange={(values) => setDraftFilters((prev) => ({ ...prev, supervisors: values }))} />
+        <MultiSelectFilter label="UN" options={options.uns} selected={draftFilters.uns} onChange={(values) => setDraftFilters((prev) => ({ ...prev, uns: values }))} />
+        <MultiSelectFilter label="Vía" options={options.vias} selected={draftFilters.vias} onChange={(values) => setDraftFilters((prev) => ({ ...prev, vias: values }))} />
+        <MultiSelectFilter label="Año" options={options.years} selected={draftFilters.years} onChange={(values) => setDraftFilters((prev) => ({ ...prev, years: values }))} />
+        <MultiSelectFilter label="Mes" options={options.months} selected={draftFilters.months} onChange={(values) => setDraftFilters((prev) => ({ ...prev, months: values }))} />
+      </div>
+      <div className="flex-actions">
+        <Button variant="primary" onPress={() => void applyFilters(draftFilters)} isDisabled={loading}>
+          {loading ? 'Aplicando…' : 'Aplicar filtros'}
+        </Button>
+        <Button variant="outline" onPress={() => void resetFilters()} isDisabled={loading}>
+          Restablecer
+        </Button>
       </div>
 
-      {loading && <p>Cargando...</p>}
-      {!loading && error && <div className="alert-error">{error}</div>}
+      {loading && <LoadingState message="Cargando resumen de cartera..." />}
+      {!loading && error && <ErrorState message={error} onRetry={() => void loadSummary(filters)} />}
       {!loading && !error && rows.length === 0 && <p className="text-muted">Sin datos para los filtros seleccionados.</p>}
 
       {!loading && !error && summaryCards.length > 0 && (

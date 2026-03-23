@@ -1,6 +1,8 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { Button } from '@heroui/react'
-import { SectionHeader } from '../../components/layout/SectionHeader'
+import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
+import { ErrorState } from '../../components/feedback/ErrorState'
+import { LoadingState } from '../../components/feedback/LoadingState'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
 
 type Row = {
@@ -78,14 +80,19 @@ export function BrokersView(props: Props) {
     props.onFiltersChange(empty)
   }
 
+  const formatGs = (value: number) => `Gs. ${Math.round(Number(value || 0)).toLocaleString('es-PY')}`
+
   return (
-    <section className="card">
-      <SectionHeader title="Resumen Brokers" subtitle="Filtros y resumen de brokers por supervisor, UN, vía y período." />
+    <section className="analysis-panel-card">
+      <AnalyticsPageHeader
+        title="Resumen de brokers"
+        subtitle="Vista operativa por supervisor, UN, vía y período de gestión."
+      />
       <div className="kpi-row">
         <span>Contratos: <strong>{totals.contracts}</strong></span>
         <span>Mora 3M: <strong>{totals.mora3m}</strong></span>
-        <span>Monto cuota: <strong>{totals.montoCuota.toFixed(2)}</strong></span>
-        <span>Comisiones: <strong>{totals.commission.toFixed(2)}</strong></span>
+        <span>Monto cuota: <strong>{formatGs(totals.montoCuota)}</strong></span>
+        <span>Comisiones: <strong>{formatGs(totals.commission)}</strong></span>
       </div>
 
       <div className="grid-cards">
@@ -129,8 +136,8 @@ export function BrokersView(props: Props) {
         </Button>
       </div>
 
-      {props.loading ? <p className="text-muted">Cargando…</p> : null}
-      {props.error ? <div className="alert-error">{props.error}</div> : null}
+      {props.loading ? <LoadingState message="Cargando resumen de brokers..." /> : null}
+      {props.error ? <ErrorState message={props.error} /> : null}
 
       <div className="table-wrap">
         <table>
