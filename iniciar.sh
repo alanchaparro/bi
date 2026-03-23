@@ -8,6 +8,18 @@ cd "$SCRIPT_DIR"
 
 step() { printf '\033[0;36m[%s]\033[0m %s\n' "$1" "$2"; }
 fail() { echo "$1" >&2; exit 1; }
+random_token() {
+  local len="${1:-48}"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - <<PY
+import secrets
+print(secrets.token_urlsafe($len)[:$len])
+PY
+  else
+    tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$len"
+    echo ""
+  fi
+}
 set_env_value() {
   local key="$1"
   local value="$2"
@@ -51,6 +63,43 @@ fi
 app_env="$(awk -F= '/^APP_ENV=/{print $2; exit}' .env 2>/dev/null || true)"
 if [[ "${app_env:-}" != "prod" ]]; then
   fail "No se pudo dejar APP_ENV=prod en .env. Corrija permisos del archivo e intente nuevamente."
+fi
+
+jwt_secret="$(awk -F= '/^JWT_SECRET_KEY=/{print $2; exit}' .env 2>/dev/null || true)"
+if [[ -z "${jwt_secret:-}" || "${jwt_secret}" == change_me* ]]; then
+  set_env_value "JWT_SECRET_KEY" "$(random_token 64)"
+  echo "    JWT_SECRET_KEY generado automaticamente para prod."
+fi
+
+jwt_refresh_secret="$(awk -F= '/^JWT_REFRESH_SECRET_KEY=/{print $2; exit}' .env 2>/dev/null || true)"
+if [[ -z "${jwt_refresh_secret:-}" || "${jwt_refresh_secret}" == change_me* ]]; then
+  set_env_value "JWT_REFRESH_SECRET_KEY" "$(random_token 64)"
+  echo "    JWT_REFRESH_SECRET_KEY generado automaticamente para prod."
+fi
+
+pg_password="$(awk -F= '/^POSTGRES_PASSWORD=/{print $2; exit}' .env 2>/dev/null || true)"
+if [[ -z "${pg_password:-}" || "${pg_password}" == change_me* ]]; then
+  pg_password="$(random_token 32)"
+  set_env_value "POSTGRES_PASSWORD" "$pg_password"
+  echo "    POSTGRES_PASSWORD generado automaticamente para prod."
+fi
+
+pg_user="$(awk -F= '/^POSTGRES_USER=/{print $2; exit}' .env 2>/dev/null || true)"
+if [[ -z "${pg_user:-}" ]]; then
+  pg_user="cobranzas_user"
+  set_env_value "POSTGRES_USER" "$pg_user"
+fi
+
+pg_db="$(awk -F= '/^POSTGRES_DB=/{print $2; exit}' .env 2>/dev/null || true)"
+if [[ -z "${pg_db:-}" ]]; then
+  pg_db="cobranzas_prod"
+  set_env_value "POSTGRES_DB" "$pg_db"
+fi
+
+database_url="$(awk -F= '/^DATABASE_URL=/{print $2; exit}' .env 2>/dev/null || true)"
+if [[ -z "${database_url:-}" || "${database_url}" == *change_me* ]]; then
+  set_env_value "DATABASE_URL" "postgresql+psycopg2://${pg_user}:${pg_password}@postgres:5432/${pg_db}"
+  echo "    DATABASE_URL ajustado automaticamente para prod."
 fi
 
 # --- 3) Configuracion opcional de credenciales admin ---

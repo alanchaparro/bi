@@ -36,6 +36,56 @@ function Set-EnvValue {
   }
   Set-Content -Path $Path -Value $raw -NoNewline -Encoding UTF8
 }
+function New-RandomToken {
+  param([int]$Length = 48)
+  $chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+  $sb = New-Object System.Text.StringBuilder
+  for ($i = 0; $i -lt $Length; $i++) {
+    [void]$sb.Append($chars[(Get-Random -Minimum 0 -Maximum $chars.Length)])
+  }
+  return $sb.ToString()
+}
+function Ensure-ProdSecrets {
+  param([Parameter(Mandatory = $true)][string]$EnvPath)
+
+  $jwtSecret = [string](Get-EnvValue -Path $EnvPath -Key "JWT_SECRET_KEY")
+  if ([string]::IsNullOrWhiteSpace($jwtSecret) -or $jwtSecret.Trim().ToLowerInvariant().StartsWith("change_me")) {
+    Set-EnvValue -Path $EnvPath -Key "JWT_SECRET_KEY" -Value (New-RandomToken -Length 64)
+    Write-Host "    JWT_SECRET_KEY generado automaticamente para prod."
+  }
+
+  $jwtRefresh = [string](Get-EnvValue -Path $EnvPath -Key "JWT_REFRESH_SECRET_KEY")
+  if ([string]::IsNullOrWhiteSpace($jwtRefresh) -or $jwtRefresh.Trim().ToLowerInvariant().StartsWith("change_me")) {
+    Set-EnvValue -Path $EnvPath -Key "JWT_REFRESH_SECRET_KEY" -Value (New-RandomToken -Length 64)
+    Write-Host "    JWT_REFRESH_SECRET_KEY generado automaticamente para prod."
+  }
+
+  $pgPassword = [string](Get-EnvValue -Path $EnvPath -Key "POSTGRES_PASSWORD")
+  if ([string]::IsNullOrWhiteSpace($pgPassword) -or $pgPassword.Trim().ToLowerInvariant().StartsWith("change_me")) {
+    $pgPassword = New-RandomToken -Length 32
+    Set-EnvValue -Path $EnvPath -Key "POSTGRES_PASSWORD" -Value $pgPassword
+    Write-Host "    POSTGRES_PASSWORD generado automaticamente para prod."
+  }
+
+  $pgUser = [string](Get-EnvValue -Path $EnvPath -Key "POSTGRES_USER")
+  if ([string]::IsNullOrWhiteSpace($pgUser)) {
+    $pgUser = "cobranzas_user"
+    Set-EnvValue -Path $EnvPath -Key "POSTGRES_USER" -Value $pgUser
+  }
+
+  $pgDb = [string](Get-EnvValue -Path $EnvPath -Key "POSTGRES_DB")
+  if ([string]::IsNullOrWhiteSpace($pgDb)) {
+    $pgDb = "cobranzas_prod"
+    Set-EnvValue -Path $EnvPath -Key "POSTGRES_DB" -Value $pgDb
+  }
+
+  $databaseUrl = [string](Get-EnvValue -Path $EnvPath -Key "DATABASE_URL")
+  if ([string]::IsNullOrWhiteSpace($databaseUrl) -or $databaseUrl.Trim().ToLowerInvariant().Contains("change_me")) {
+    $databaseUrl = ("postgresql+psycopg2://{0}:{1}@postgres:5432/{2}" -f $pgUser, $pgPassword, $pgDb)
+    Set-EnvValue -Path $EnvPath -Key "DATABASE_URL" -Value $databaseUrl
+    Write-Host "    DATABASE_URL ajustado automaticamente para prod."
+  }
+}
 
 # --- 1) Comprobar Docker y Docker Compose ---
 Write-Step "[1] Comprobando Docker y Docker Compose..."
@@ -73,6 +123,7 @@ $appEnv = [string](Get-EnvValue -Path $envFile -Key "APP_ENV")
 if ($appEnv.Trim().ToLowerInvariant() -ne "prod") {
   Write-Fail "No se pudo dejar APP_ENV=prod en .env. Corrija permisos del archivo e intente nuevamente."
 }
+Ensure-ProdSecrets -EnvPath $envFile
 
 # --- 3) Pregunta opcional: configurar usuario y contraseña admin ---
 $adminUser = $null

@@ -31,6 +31,16 @@ if [[ "$ready" -ne 1 ]]; then
   exit 1
 fi
 
+echo "[2b/8] Alineando password del rol PostgreSQL con .env..."
+pg_user="$(awk -F= '/^POSTGRES_USER=/{print $2; exit}' .env 2>/dev/null || true)"
+pg_db="$(awk -F= '/^POSTGRES_DB=/{print $2; exit}' .env 2>/dev/null || true)"
+pg_password="$(awk -F= '/^POSTGRES_PASSWORD=/{print $2; exit}' .env 2>/dev/null || true)"
+if [[ -z "${pg_user:-}" || -z "${pg_db:-}" || -z "${pg_password:-}" ]]; then
+  echo "ADVERTENCIA: variables POSTGRES_* incompletas en .env; se omite alineacion de password." >&2
+elif ! docker compose --profile prod exec -T postgres psql -U "$pg_user" -d "$pg_db" -c "ALTER ROLE $pg_user PASSWORD '$pg_password';" >/dev/null 2>&1; then
+  echo "ADVERTENCIA: no se pudo alinear password de PostgreSQL; se continua y se verificara en migraciones." >&2
+fi
+
 echo "[3/8] Ejecutando migraciones..."
 docker compose --profile prod run --rm api-v1 sh -lc "cd /app && PYTHONPATH=/app/backend alembic -c backend/alembic.ini upgrade head"
 
