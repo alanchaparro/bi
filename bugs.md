@@ -58,11 +58,12 @@
 ### AUD-2026-03-25-32 — Residuos tmp* con Permission denied en sql/*
 - **Severidad:** Media
 - **Prioridad:** P2
-- **Estado:** Listo para verificar
+- **Estado:** Cerrado
 - **Área:** tests/tooling (`tests/test_sync_sql_loader.py`, árbol `sql/*`)
 - **Descripción:** el origen en tests quedó corregido para no crear temporales bajo `sql/*`; quedan residuos históricos `sql/common/tmp*` y `sql/v2/tmp*` con ACL bloqueada en Windows.
 - **Dev (2026-03-23):** `tests/test_sync_sql_loader.py` dejó de usar `TemporaryDirectory(dir=sql/*)` y ahora usa `mkstemp` en `sql/common` / `sql/v2` con limpieza explícita de archivos. Se añadió `scripts/cleanup_sql_tmp_safe.ps1` con allowlist estricta (`sql/common`, `sql/v2`) y borrado por `LiteralPath` sin comandos masivos; soporta `-RepairAcl` para intentar `takeown/icacls` de forma acotada.
-- **Criterio de cierre:** verificar que nuevas corridas no dejen `tmp*` en `sql/*`; ejecutar `cleanup_sql_tmp_safe.ps1 -RepairAcl` en terminal elevada para limpiar residuos históricos.
+- **Verificación (2026-03-23):** limpieza elevada ejecutada con éxito; conteo final `tmp*` en `sql/common` y `sql/v2` en `0`, y `git status` sin warnings de `Permission denied`.
+- **Criterio de cierre:** completado.
 
 ### AUD-2026-03-23-33 — Regresión de despliegue un clic: `INICIAR` falla en instalación limpia por `APP_ENV=dev` por defecto
 - **Severidad:** Alta
@@ -78,7 +79,6 @@
 | Orden | Prioridad | ID | Resumen |
 |---|---|---|---|
 | 1 | P1 | AUD-2026-03-23-33 | **Listo para verificar**: launcher one-click fuerza `APP_ENV=prod` y preserva guardrail. |
-| 2 | P2 | AUD-2026-03-25-32 | **Listo para verificar**: mitigación en tests + script de limpieza segura; validar limpieza final en host con permisos suficientes. |
 
 ## Historial
 | Fecha | Acción |
@@ -89,3 +89,4 @@
 | 2026-03-23 | Dev: AUD-33 pasa a **Listo para verificar** al forzar `APP_ENV=prod` en launchers one-click (`scripts/start_one_click.ps1`, `iniciar.sh`) con validación posterior de escritura. |
 | 2026-03-23 | Auditoría **audit**: añadido **AUD-2026-03-23-33** (**Abierto**, **P1**) por regresión de “un clic” en `INICIAR`/`iniciar.sh` (guardrail `APP_ENV=prod` + `.env.example` en `dev`). |
 | 2026-03-23 | Auditoría **audit**: sin hallazgos técnicos nuevos en esta pasada; se mantiene el backlog en **Listo para verificar** para **AUD-32** y **AUD-33**. |
+| 2026-03-23 | Verificación final: **AUD-32 Cerrado** tras limpieza elevada de residuos `tmp*` (conteo 0 en `sql/common` y `sql/v2`) y estado git sin warnings de acceso. |
