@@ -196,6 +196,20 @@ function formatScheduleRuntimeLabel(
   return 'Programado'
 }
 
+type ScheduleRuntimeTone = 'paused' | 'running' | 'failed' | 'ok' | 'idle'
+
+function scheduleRuntimeTone(
+  paused: boolean,
+  lastRunStatus: string | null | undefined,
+  runtime: ScheduleRuntimeState | undefined,
+): ScheduleRuntimeTone {
+  if (paused) return 'paused'
+  if (runtime?.running) return 'running'
+  if (lastRunStatus === 'failed') return 'failed'
+  if (lastRunStatus === 'ok') return 'ok'
+  return 'idle'
+}
+
 function formatScheduleLastRunSummary(summary: SyncScheduleOut['last_run_summary']): string {
   if (!summary || Array.isArray(summary) || typeof summary !== 'object') return 'Sin ejecucion previa'
   const data = summary as Record<string, unknown>
@@ -298,6 +312,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   const [scheduleSaving, setScheduleSaving] = useState(false)
   const [scheduleActionLoading, setScheduleActionLoading] = useState<number | 'emergency' | null>(null)
   const emergencyStopConfirm = useOverlayState()
+  const deleteScheduleConfirm = useOverlayState()
+  const [schedulePendingDeleteId, setSchedulePendingDeleteId] = useState<number | null>(null)
 
   const hasCarteraSelected = selectedDomains.includes('cartera')
   const closeMonthFromValue = useMemo(() => {
@@ -526,6 +542,21 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
       setScheduleActionLoading(null)
     }
   }, [emergencyStopConfirm, loadSchedules])
+
+  const confirmDeleteSchedule = useCallback(async () => {
+    if (schedulePendingDeleteId === null) return
+    setScheduleActionLoading(schedulePendingDeleteId)
+    try {
+      await deleteSyncSchedule(schedulePendingDeleteId)
+      await loadSchedules()
+      setSchedulePendingDeleteId(null)
+      deleteScheduleConfirm.close()
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setScheduleActionLoading(null)
+    }
+  }, [deleteScheduleConfirm, loadSchedules, schedulePendingDeleteId])
 
   useEffect(() => {
     void loadSchedules()
@@ -1884,22 +1915,10 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               <div className="config-meta">
                 Avance general
               </div>
-              <div
-                style={{
-                  width: '100%',
-                  height: '10px',
-                  background: 'var(--glass-border)',
-                  borderRadius: '999px',
-                  overflow: 'hidden',
-                }}
-              >
+              <div className="config-progress-track">
                 <div
-                  style={{
-                    width: `${syncPercent}%`,
-                    height: '100%',
-                    background: 'var(--color-primary)',
-                    transition: 'width 300ms ease',
-                  }}
+                  className="config-progress-bar"
+                  style={{ width: `${syncPercent}%` }}
                 />
               </div>
 
@@ -1927,33 +1946,13 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
             </p>
             {displayError && (
               <div
-                className="alert-error"
+                className="alert-error config-import-log-alert"
                 role="alert"
-                style={{
-                  marginBottom: '0.75rem',
-                  padding: '0.75rem',
-                  borderRadius: '8px',
-                  fontSize: '0.9rem',
-                  whiteSpace: 'pre-wrap',
-                }}
               >
                 <strong>Error:</strong> {displayError}
               </div>
             )}
-            <pre
-              className="sync-logs-pre"
-              style={{
-                marginBottom: '0.75rem',
-                padding: '0.75rem',
-                background: 'var(--table-head-bg)',
-                border: '1px solid var(--color-border)',
-                borderRadius: '8px',
-                fontSize: '0.8rem',
-                whiteSpace: 'pre-wrap',
-                maxHeight: '280px',
-                overflow: 'auto',
-              }}
-            >
+            <pre className="sync-logs-pre">
               {displayLog.length > 0 ? displayLog.join('\n') : 'No hay entradas de log aún. Ejecuta una carga para ver el registro aquí.'}
             </pre>
             <button
@@ -2007,24 +2006,21 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
             </button>
           </div>
 
-          <div className="config-stack-md" style={{ marginBottom: '1.5rem' }}>
+          <div className="config-stack-md config-stack-md--schedule-list">
             {schedules.length === 0 && !schedulesLoading && (
               <p className="config-muted-text">No hay programaciones. Cree una abajo.</p>
             )}
             {schedules.map((s) => (
               <div key={s.id} className="schedule-card">
+                {(() => {
+                  const runtime = scheduleRuntime[s.id]
+                  const runtimeLabel = formatScheduleRuntimeLabel(s.paused, s.last_run_status, runtime)
+                  const tone = scheduleRuntimeTone(s.paused, s.last_run_status, runtime)
+                  return (
+                    <>
                 <span
-                  className="schedule-dot"
-                  style={{
-                    background: s.paused
-                      ? 'var(--color-state-warn)'
-                      : (scheduleRuntime[s.id]?.running
-                        ? 'var(--color-state-ok)'
-                        : (s.last_run_status === 'failed'
-                          ? 'var(--color-error)'
-                          : (s.last_run_status === 'ok' ? 'var(--color-primary)' : 'var(--color-text-muted)'))),
-                  }}
-                  title={formatScheduleRuntimeLabel(s.paused, s.last_run_status, scheduleRuntime[s.id])}
+                  className={`schedule-dot schedule-dot--${tone}`}
+                  title={runtimeLabel}
                   aria-hidden
                 />
                 <span className="schedule-name">{s.name}</span>
@@ -2040,20 +2036,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                 <span className="config-inline-meta">
                   Próxima: {s.next_run_at ? formatSyncTimestamp(s.next_run_at) : '-'}
                 </span>
-                <span
-                  style={{
-                    color: s.paused
-                      ? 'var(--color-state-warn)'
-                      : (scheduleRuntime[s.id]?.running
-                        ? 'var(--color-state-ok)'
-                        : (s.last_run_status === 'failed'
-                          ? 'var(--color-error)'
-                          : (s.last_run_status === 'ok' ? 'var(--color-primary)' : 'var(--color-text-muted)'))),
-                    fontSize: '0.82rem',
-                    fontWeight: 600,
-                  }}
-                >
-                  {formatScheduleRuntimeLabel(s.paused, s.last_run_status, scheduleRuntime[s.id])}
+                <span className={`schedule-runtime-label schedule-runtime-label--${tone}`}>
+                  {runtimeLabel}
                 </span>
                 <span className="config-inline-meta">
                   {formatScheduleLastRunSummary(s.last_run_summary)}
@@ -2101,22 +2085,17 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                     variant="danger"
                     isDisabled={scheduleActionLoading !== null}
                     aria-label="Eliminar esta programación"
-                    onPress={async () => {
-                      if (!window.confirm('¿Eliminar esta programación?')) return
-                      setScheduleActionLoading(s.id)
-                      try {
-                        await deleteSyncSchedule(s.id)
-                        await loadSchedules()
-                      } catch (e) {
-                        console.error(e)
-                      } finally {
-                        setScheduleActionLoading(null)
-                      }
+                    onPress={() => {
+                      setSchedulePendingDeleteId(s.id)
+                      deleteScheduleConfirm.open()
                     }}
                   >
                     Eliminar
                   </Button>
                 </div>
+                    </>
+                  )
+                })()}
               </div>
             ))}
           </div>
@@ -2238,6 +2217,38 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                 isDisabled={scheduleActionLoading === 'emergency'}
               >
                 {scheduleActionLoading === 'emergency' ? 'Parando...' : 'Parar todo'}
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal>
+      <Modal state={deleteScheduleConfirm}>
+        <Modal.Backdrop />
+        <Modal.Container size="sm" placement="center">
+          <Modal.Dialog>
+            <Modal.Header>
+              <Modal.Heading>Confirmar eliminación</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              Esta acción elimina la programación seleccionada y no se puede deshacer. ¿Deseás continuar?
+            </Modal.Body>
+            <Modal.Footer className="config-actions-row">
+              <Button
+                variant="outline"
+                onPress={() => {
+                  setSchedulePendingDeleteId(null)
+                  deleteScheduleConfirm.close()
+                }}
+                isDisabled={typeof scheduleActionLoading === 'number'}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="danger"
+                onPress={confirmDeleteSchedule}
+                isDisabled={schedulePendingDeleteId === null || typeof scheduleActionLoading === 'number'}
+              >
+                {typeof scheduleActionLoading === 'number' ? 'Eliminando...' : 'Eliminar programación'}
               </Button>
             </Modal.Footer>
           </Modal.Dialog>
