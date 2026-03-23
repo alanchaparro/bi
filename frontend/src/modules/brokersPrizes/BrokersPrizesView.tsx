@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { Button } from '@heroui/react'
-import { SectionHeader } from '../../components/layout/SectionHeader'
+import { Button, Input, Modal, useOverlayState } from '@heroui/react'
+import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
 import { getApiErrorMessage } from '../../shared/apiErrors'
 
 type PrizeScale = {
@@ -28,6 +28,8 @@ export function BrokersPrizesView({ rules, canEdit, loading, error, onSave }: Pr
   const [draft, setDraft] = useState<PrizeRule[]>([])
   const [saving, setSaving] = useState(false)
   const [localError, setLocalError] = useState('')
+  const deleteConfirm = useOverlayState()
+  const [pendingDeleteIdx, setPendingDeleteIdx] = useState<number | null>(null)
 
   useEffect(() => {
     setDraft(Array.isArray(rules) ? rules : [])
@@ -60,6 +62,16 @@ export function BrokersPrizesView({ rules, canEdit, loading, error, onSave }: Pr
 
   const addRule = () => setDraft([...draft, { ...EMPTY_RULE }])
   const removeRule = (idx: number) => setDraft(draft.filter((_, i) => i !== idx))
+  const requestRemoveRule = (idx: number) => {
+    setPendingDeleteIdx(idx)
+    deleteConfirm.open()
+  }
+  const confirmRemoveRule = () => {
+    if (pendingDeleteIdx === null) return
+    removeRule(pendingDeleteIdx)
+    setPendingDeleteIdx(null)
+    deleteConfirm.close()
+  }
 
   const save = async () => {
     setLocalError('')
@@ -74,45 +86,89 @@ export function BrokersPrizesView({ rules, canEdit, loading, error, onSave }: Pr
   }
 
   return (
-    <section className="card">
-      <SectionHeader title="Configuración de Premios" subtitle="Escalas formato: meta:premio, meta:premio. Se unifica FVBROKERS en backend legacy." />
-      {loading ? <p className="text-muted">Cargando…</p> : null}
+    <section className="analysis-panel-card">
+      <AnalyticsPageHeader
+        title="Configuración de premios"
+        subtitle="Escalas en formato meta:premio. Ejemplo: 1:50000, 3:150000."
+      />
+      {loading ? <p className="config-muted-text">Cargando...</p> : null}
       {error ? <div className="alert-error">{error}</div> : null}
       {localError ? <div className="alert-error">{localError}</div> : null}
       <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Supervisores (csv)</th>
-            <th>UNs (csv)</th>
-            <th>Escalas</th>
-            <th>Acción</th>
-          </tr>
-        </thead>
-        <tbody>
-          {draft.map((rule, idx) => (
-            <tr key={idx}>
-              <td>
-                <input className="input" aria-label={`prize-supervisors-${idx}`} value={(rule.supervisors || []).join(', ')} onChange={(e) => updateText(idx, 'supervisors', e.target.value)} disabled={!canEdit} style={{ width: '100%', minWidth: 120 }} />
-              </td>
-              <td>
-                <input className="input" aria-label={`prize-uns-${idx}`} value={(rule.uns || []).join(', ')} onChange={(e) => updateText(idx, 'uns', e.target.value)} disabled={!canEdit} style={{ width: '100%', minWidth: 100 }} />
-              </td>
-              <td>
-                <input className="input" aria-label={`prize-scales-${idx}`} value={(rule.scales || []).map((s) => `${Number(s.threshold || 0)}:${Number(s.prize || 0)}`).join(', ')} onChange={(e) => updateScales(idx, e.target.value)} disabled={!canEdit} style={{ width: '100%', minWidth: 160 }} />
-              </td>
-              <td>
-                <Button size="sm" variant="danger" onPress={() => removeRule(idx)} isDisabled={!canEdit}>Eliminar</Button>
-              </td>
+        <table>
+          <thead>
+            <tr>
+              <th>Supervisores (csv)</th>
+              <th>UNs (csv)</th>
+              <th>Escalas</th>
+              <th>Acción</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {draft.map((rule, idx) => (
+              <tr key={idx}>
+                <td>
+                  <Input
+                    className="brokers-prizes-input"
+                    aria-label={`prize-supervisors-${idx}`}
+                    value={(rule.supervisors || []).join(', ')}
+                    onChange={(e) => updateText(idx, 'supervisors', e.target.value)}
+                    disabled={!canEdit}
+                  />
+                </td>
+                <td>
+                  <Input
+                    className="brokers-prizes-input"
+                    aria-label={`prize-uns-${idx}`}
+                    value={(rule.uns || []).join(', ')}
+                    onChange={(e) => updateText(idx, 'uns', e.target.value)}
+                    disabled={!canEdit}
+                  />
+                </td>
+                <td>
+                  <Input
+                    className="brokers-prizes-input"
+                    aria-label={`prize-scales-${idx}`}
+                    value={(rule.scales || []).map((s) => `${Number(s.threshold || 0)}:${Number(s.prize || 0)}`).join(', ')}
+                    onChange={(e) => updateScales(idx, e.target.value)}
+                    disabled={!canEdit}
+                  />
+                </td>
+                <td>
+                  <Button size="sm" variant="danger" onPress={() => requestRemoveRule(idx)} isDisabled={!canEdit}>
+                    Eliminar
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
       <div className="flex-actions flex-actions--top">
         <Button variant="outline" onPress={addRule} isDisabled={!canEdit}>Agregar regla</Button>
         <Button variant="primary" onPress={save} isDisabled={!canEdit || saving}>{saving ? 'Guardando…' : 'Guardar premios'}</Button>
       </div>
+      <Modal state={deleteConfirm}>
+        <Modal.Backdrop />
+        <Modal.Container size="sm" placement="center">
+          <Modal.Dialog>
+            <Modal.Header>
+              <Modal.Heading>Confirmar eliminación</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              Esta acción elimina la regla de premios seleccionada y no se puede deshacer. ¿Deseás continuar?
+            </Modal.Body>
+            <Modal.Footer className="brokers-rule-delete-modal__footer">
+              <Button variant="outline" onPress={() => deleteConfirm.close()}>
+                Cancelar
+              </Button>
+              <Button variant="danger" onPress={confirmRemoveRule}>
+                Eliminar
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal>
     </section>
   )
 }

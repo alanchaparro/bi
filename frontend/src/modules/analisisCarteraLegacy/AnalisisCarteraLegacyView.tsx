@@ -1,4 +1,6 @@
 import React, { useMemo } from 'react'
+import { Button } from '@heroui/react'
+import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
 import { LEGACY_DASHBOARD_URL as ENV_LEGACY_URL } from '../../shared/env'
 
 const DEFAULT_LEGACY_URL = 'http://localhost:5000/?tab=rendimiento'
@@ -12,15 +14,17 @@ export function AnalisisCarteraLegacyView() {
   return (
     <div className="legacy-report-view">
       <div className="card legacy-report-header">
-        <div>
-          <h2 style={{ marginBottom: 6 }}>Rendimiento de Cartera (Legacy)</h2>
-          <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-            Informe heredado embebido desde <code>{legacyUrl}</code>.
-          </p>
-        </div>
-        <a href={legacyUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] bg-transparent px-4 py-2 text-sm font-medium hover:bg-[var(--sidebar-active-bg)]">
+        <AnalyticsPageHeader
+          title="Rendimiento de cartera (legacy)"
+          subtitle={`Informe heredado embebido desde ${legacyUrl}.`}
+        />
+        <Button
+          variant="outline"
+          className="legacy-report-open-btn"
+          onPress={() => window.open(legacyUrl, '_blank', 'noopener,noreferrer')}
+        >
           Abrir en nueva pestaña
-        </a>
+        </Button>
       </div>
 
       <div className="card legacy-report-frame-wrap">

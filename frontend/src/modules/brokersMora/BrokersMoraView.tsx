@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from 'react'
+import { Input } from '@heroui/react'
+import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
 
 type Row = {
   year: string
@@ -38,62 +40,86 @@ export function BrokersMoraView({ rows }: Props) {
   }, [rows, supervisor, un, via])
 
   return (
-    <section className="card">
-      <h2>Mora Brokers</h2>
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-        <select className="input" aria-label="mora-supervisor" value={supervisor} onChange={(e) => setSupervisor(e.target.value)}>
-          <option value="">Todos los supervisores</option>
+    <section className="analysis-panel-card">
+      <AnalyticsPageHeader
+        title="Mora de brokers"
+        subtitle="Filtrá por supervisor, UN o vía para revisar contratos con mora a 3 meses."
+      />
+      <div className="brokers-mora-filters">
+        <Input
+          className="brokers-mora-input"
+          aria-label="mora-supervisor"
+          value={supervisor}
+          onChange={(e) => setSupervisor(e.target.value)}
+          placeholder="Supervisor"
+          list="mora-supervisors-list"
+        />
+        <Input
+          className="brokers-mora-input"
+          aria-label="mora-un"
+          value={un}
+          onChange={(e) => setUn(e.target.value)}
+          placeholder="UN"
+          list="mora-uns-list"
+        />
+        <Input
+          className="brokers-mora-input"
+          aria-label="mora-via"
+          value={via}
+          onChange={(e) => setVia(e.target.value)}
+          placeholder="Vía"
+          list="mora-vias-list"
+        />
+        <datalist id="mora-supervisors-list">
           {options.supervisors.map((s) => (
-            <option key={s} value={s}>{s}</option>
+            <option key={s} value={s} />
           ))}
-        </select>
-        <select className="input" aria-label="mora-un" value={un} onChange={(e) => setUn(e.target.value)}>
-          <option value="">Todas las UN</option>
+        </datalist>
+        <datalist id="mora-uns-list">
           {options.uns.map((s) => (
-            <option key={s} value={s}>{s}</option>
+            <option key={s} value={s} />
           ))}
-        </select>
-        <select className="input" aria-label="mora-via" value={via} onChange={(e) => setVia(e.target.value)}>
-          <option value="">Todas las vías</option>
+        </datalist>
+        <datalist id="mora-vias-list">
           {options.vias.map((s) => (
-            <option key={s} value={s}>{s}</option>
+            <option key={s} value={s} />
           ))}
-        </select>
+        </datalist>
       </div>
       <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Anio</th>
-            <th>Mes</th>
-            <th>Supervisor</th>
-            <th>UN</th>
-            <th>Via</th>
-            <th>Contratos</th>
-            <th>Mora3M</th>
-            <th>Monto Cuota</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filtered.map((r, idx) => (
-            <tr key={`${r.month}-${r.supervisor}-${r.un}-${idx}`}>
-              <td>{r.year}</td>
-              <td>{r.month}</td>
-              <td>{r.supervisor}</td>
-              <td>{r.un}</td>
-              <td>{r.via}</td>
-              <td>{r.count}</td>
-              <td>{r.mora3m}</td>
-              <td>{Number(r.montoCuota || 0).toFixed(2)}</td>
-            </tr>
-          ))}
-          {filtered.length === 0 ? (
+        <table>
+          <thead>
             <tr>
-              <td colSpan={8}>Sin filas de mora para los filtros seleccionados.</td>
+              <th>Año</th>
+              <th>Mes</th>
+              <th>Supervisor</th>
+              <th>UN</th>
+              <th>Vía</th>
+              <th>Contratos</th>
+              <th>Mora 3M</th>
+              <th>Monto cuota</th>
             </tr>
-          ) : null}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {filtered.map((r, idx) => (
+              <tr key={`${r.month}-${r.supervisor}-${r.un}-${idx}`}>
+                <td>{r.year}</td>
+                <td>{r.month}</td>
+                <td>{r.supervisor}</td>
+                <td>{r.un}</td>
+                <td>{r.via}</td>
+                <td>{r.count}</td>
+                <td>{r.mora3m}</td>
+                <td>{Number(r.montoCuota || 0).toFixed(2)}</td>
+              </tr>
+            ))}
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={8}>Sin filas de mora para los filtros seleccionados.</td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
       </div>
     </section>
   )

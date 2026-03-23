@@ -4075,6 +4075,32 @@ label.input-label {
   background: #0b1329;
 }
 
+.legacy-report-open-btn {
+  white-space: nowrap;
+}
+
+.brokers-prizes-input {
+  min-width: 140px;
+}
+
+.brokers-mora-filters {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.brokers-mora-input {
+  min-width: 180px;
+  max-width: 260px;
+}
+
+.brokers-rule-delete-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 .rendimiento-card {
   display: grid;
   gap: 0.9rem;

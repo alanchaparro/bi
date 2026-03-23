@@ -19,10 +19,7 @@
 - V-055: **Cerrado** en recovery (confirmación explícita HeroUI para "Parar todo (emergencia)").
 
 ## Hallazgos visuales activos
-- **V-054 (reabierto, P3):** `ConfigView` volvió a `window.confirm('¿Eliminar esta programación?')` en borrado, rompiendo el patrón HeroUI de confirmaciones.
-- **V-057 (P2):** `BrokersPrizesView` regresó a shell legacy (`section.card` + `SectionHeader`, `<input className="input">`, `alert-error`, borrado sin confirmación), perdiendo consistencia con HeroUI/canon.
-- **V-058 (P2):** `BrokersMoraView` usa patrón legacy (`<h2>`, `<select className="input">`, `style` inline, tabla sin formato operativo) y no sigue el contrato visual de `AnalyticsPageHeader` + `analysis-panel-card`.
-- **V-059 (P3):** `AnalisisCarteraLegacyView` volvió a estilos inline en cabecera y CTA `<a>` con utilidades, en lugar de `Button` HeroUI + clases compartidas.
+Actualmente no hay V-* abiertos pendientes de recuperar desde la última verificación consolidada.
 
 ## Checklist visual para próximas pasadas
 - Coherencia de jerarquía visual (`AnalyticsPageHeader`, títulos, subtítulos)
@@ -42,3 +39,4 @@
 | 2026-03-23 | Dev: V-054 y V-056 cerrados en `ConfigView` (confirmación de borrado con `Modal` HeroUI y migración de estilos inline a clases CSS reutilizables). |
 | 2026-03-23 | Auditoría incremental II: se detectan regresiones en `BrokersPrizesView`, `BrokersMoraView` y `AnalisisCarteraLegacyView` (V-057, V-058, V-059). |
 | 2026-03-23 | Verifica/audit: V-054 se reabre nuevamente por retorno de `window.confirm` en borrado de programación. |
+| 2026-03-23 | Dev: V-054, V-057, V-058 y V-059 cerrados (confirmaciones HeroUI y migración de vistas legacy al patrón canónico `AnalyticsPageHeader` + componentes HeroUI). |
