@@ -79,21 +79,23 @@
 ### AUD-2026-03-23-34 — `sync_service.py` mantiene lógica muerta por redefinición de funciones críticas
 - **Severidad:** Media
 - **Prioridad:** P2
-- **Estado:** Listo para verificar
+- **Estado:** Cerrado
 - **Área:** Backend sync (`backend/app/services/sync_service.py`)
 - **Descripción:** El módulo define `def _normalize_record(...)` y `def _fact_row_from_normalized(...)` dos veces. La segunda definición (wrapper a `sync_normalizers`) sobreescribe la primera, dejando un bloque grande de lógica anterior inalcanzable. Esto genera riesgo de mantenimiento: un dev puede “corregir” la primera función pensando que tiene efecto, pero en runtime no cambia nada.
 - **Evidencia:** `sync_service.py` contiene `_normalize_record` en dos posiciones (líneas ~480 y ~742) y `_fact_row_from_normalized` también en dos posiciones (líneas ~609 y ~746); las segundas versiones retornan directamente `normalize_record(...)`/`fact_row_from_normalized(...)`.
 - **Dev (2026-03-23):** se eliminaron las implementaciones duplicadas/inaccesibles de `_normalize_record` y `_fact_row_from_normalized`, manteniendo una única definición wrapper hacia `sync_normalizers`. Se añadió `tests/test_sync_service_delegation.py` para validar que exista una sola definición por función y que ambas deleguen a `normalize_record(...)`/`fact_row_from_normalized(...)`.
+- **Verificación (2026-03-23):** `tests/test_sync_service_delegation.py` + suite `test_sync*.py` en verde (25 passed); confirmado una sola definición de wrappers en `sync_service.py` y delegación efectiva a `sync_normalizers`.
 - **Criterio de cierre:** eliminar las implementaciones duplicadas inalcanzables o moverlas explícitamente a un módulo legacy; dejar una única fuente de verdad por función y cobertura de test mínima para evitar regresión silenciosa.
 
 ### AUD-2026-03-23-35 — Desacople incompleto entre frontend legacy y frontend nuevo
 - **Severidad:** Alta
 - **Prioridad:** P2
-- **Estado:** Listo para verificar
+- **Estado:** Cerrado
 - **Área:** Frontend arquitectura/UI (`frontend/src/app/**`, `frontend/src/App.tsx`, navegación/layout, módulos brokers/cartera/config)
 - **Descripción:** Se detecta convivencia y regresión de patrones legacy dentro del flujo nuevo (ids de navegación legacy, `SectionHeader`, `window.confirm`, controles nativos `.input`), lo que rompe independencia entre dominios y causa drift recurrente entre código y auditoría visual.
 - **Canónico obligatorio:** `docs/CANON_DECOUPLE_LEGACY_NEW.md`.
 - **Dev (2026-03-23):** se retiró el sufijo `Legacy` del flujo principal de navegación/routing (`analisisCarteraRendimientoLegacy` -> `analisisCarteraRendimiento`) en `navSections.ts`, `routes.ts`, `App.tsx` y `DashboardLayout.tsx`. Además, se normalizó `BrokersSupervisorsView` al patrón canónico (`AnalyticsPageHeader` + `ErrorState` + `Checkbox` HeroUI), eliminando `SectionHeader` y controles nativos en el módulo.
+- **Verificación (2026-03-23):** `frontend` typecheck/build en verde y barrido de marcadores (`analisisCarteraRendimientoLegacy`, `window.confirm`, `SectionHeader` en módulos activos) sin hallazgos en flujo principal; `bugs_visual.md` mantiene cero V-* abiertos.
 - **Criterio de cierre:**
   1. Fronteras del canónico cumplidas (runtime, rutas, UI, estilos, contratos).
   2. Módulos nuevos sin marcadores legacy en flujo principal.
@@ -103,8 +105,7 @@
 ## Backlog abierto
 | Orden | Prioridad | ID | Resumen |
 |---|---|---|---|
-| 1 | P2 | AUD-2026-03-23-35 | `Listo para verificar`: desacople de navegación/routing y normalización de UI en flujo nuevo. |
-| 2 | P2 | AUD-2026-03-23-34 | `Listo para verificar`: `sync_service.py` sin duplicados + cobertura anti-regresión. |
+| - | - | - | Sin hallazgos técnicos abiertos al cierre de esta pasada. |
 
 ## Historial
 | Fecha | Acción |
@@ -124,3 +125,4 @@
 | 2026-03-23 | Auditoría **audit**: añadido **AUD-2026-03-23-35** (**Abierto**, **P2**) por desacople incompleto legacy/nuevo en frontend. Se define canónico técnico en `docs/CANON_DECOUPLE_LEGACY_NEW.md` para handoff Auditor -> Dev. |
 | 2026-03-23 | Dev: **AUD-2026-03-23-34** pasa a **Listo para verificar** al eliminar duplicaciones de normalización en `sync_service.py`, mantener wrappers únicos y agregar test anti-regresión (`tests/test_sync_service_delegation.py`). |
 | 2026-03-23 | Dev: **AUD-2026-03-23-35** pasa a **Listo para verificar** tras desacople de IDs/rutas legacy en navegación principal y normalización de `BrokersSupervisorsView` al stack HeroUI canónico. |
+| 2026-03-23 | Verificación final: **AUD-2026-03-23-34 Cerrado** y **AUD-2026-03-23-35 Cerrado** tras evidencia en tests/backend sync y build/typecheck + barrido de marcadores legacy en frontend principal. |
