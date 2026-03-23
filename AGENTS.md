@@ -4,6 +4,10 @@
 Fuente unica de verdad para reglas de negocio y criterios operativos del proyecto **EPEM - Cartera de Cobranzas**.
 Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
 
+## Canonico transversal de desacople
+- El desacople entre frontend **nuevo** y **legacy** se rige por `desacople.md`.
+- Si el cambio toca navegacion, routing, layout o UI de modulos analiticos, validar obligatoriamente contra `desacople.md`.
+
 ## Reglas de negocio obligatorias
 1. **Fecha de cierre != fecha de gestion**.
    - En cartera, `gestion_month` se calcula como **cierre + 1 mes**.
@@ -135,6 +139,7 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
    - confirmacion de que no hay credenciales reales en diffs
    - confirmacion de que `.env`/llaves no forman parte del commit
 7. Si el cambio toca Docker/compose/bootstrap/scripts: validar `INICIAR.bat`/`iniciar.sh`, `DETENER.bat`/`detener.sh` y `REINICIAR.bat`/`reiniciar.sh`.
+8. Si el cambio toca frontend de analytics, validar fronteras de `desacople.md` (sin marcadores legacy en flujo nuevo).
 
 ## Cuando actualizar este archivo
 Actualizar inmediatamente si cambia:
@@ -146,3 +151,4 @@ Actualizar inmediatamente si cambia:
 6. Definicion de rendimiento de cartera (monto/cantidad) o sus dimensiones de corte.
 7. Politicas de seguridad de repositorio, CI/CD o manejo de secretos.
 8. Esquema de hashing de contraseñas o validacion de tipo de token JWT.
+9. Fronteras de desacople entre frontend nuevo y legacy (`desacople.md`).

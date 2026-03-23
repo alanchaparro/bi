@@ -9,6 +9,7 @@
    - Windows doble clic: `RECUPERAR_DEV.bat`
    - Sin fetch remoto: `RECUPERAR_DEV.bat nofetch`
 2. Seguir el plan: `RECUPERACION_DEV_PLAN.md`.
+2.1. Si hay mezcla legacy/nuevo, aplicar canónico técnico transversal: `desacople.md`.
 3. Completar checklist generado: `RECOVERY_EXECUTION_CHECKLIST.txt`.
 4. Al cerrar una pasada, dejar `bugs_visual.md` sin drift con el codigo y con estados V-* consistentes.
 

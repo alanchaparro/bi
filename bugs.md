@@ -93,7 +93,7 @@
 - **Estado:** Cerrado
 - **Área:** Frontend arquitectura/UI (`frontend/src/app/**`, `frontend/src/App.tsx`, navegación/layout, módulos brokers/cartera/config)
 - **Descripción:** Se detecta convivencia y regresión de patrones legacy dentro del flujo nuevo (ids de navegación legacy, `SectionHeader`, `window.confirm`, controles nativos `.input`), lo que rompe independencia entre dominios y causa drift recurrente entre código y auditoría visual.
-- **Canónico obligatorio:** `docs/CANON_DECOUPLE_LEGACY_NEW.md`.
+- **Canónico obligatorio:** `desacople.md`.
 - **Dev (2026-03-23):** se retiró el sufijo `Legacy` del flujo principal de navegación/routing (`analisisCarteraRendimientoLegacy` -> `analisisCarteraRendimiento`) en `navSections.ts`, `routes.ts`, `App.tsx` y `DashboardLayout.tsx`. Además, se normalizó `BrokersSupervisorsView` al patrón canónico (`AnalyticsPageHeader` + `ErrorState` + `Checkbox` HeroUI), eliminando `SectionHeader` y controles nativos en el módulo.
 - **Verificación (2026-03-23):** `frontend` typecheck/build en verde y barrido de marcadores (`analisisCarteraRendimientoLegacy`, `window.confirm`, `SectionHeader` en módulos activos) sin hallazgos en flujo principal; `bugs_visual.md` mantiene cero V-* abiertos.
 - **Criterio de cierre:**
@@ -122,7 +122,7 @@
 | 2026-03-23 | Auditoría **audit**: sin hallazgos nuevos; se mantiene backlog técnico en cero y se confirma consistencia de launchers one-click (`start_one_click.ps1` / `iniciar.sh`) con hardening de `APP_ENV` y secretos por defecto. |
 | 2026-03-23 | Auditoría **audit**: añadido **AUD-2026-03-23-34** (**Abierto**, **P2**) por duplicación/redefinición de `_normalize_record` y `_fact_row_from_normalized` en `sync_service.py` (lógica muerta inalcanzable). |
 | 2026-03-23 | Auditoría **audit** adicional: sin hallazgos técnicos nuevos; verificado `tests/test_sync_sql_loader.py` (5/5), `frontend` typecheck OK y guardrails one-click/bootstraps (`APP_ENV=prod`, autogeneración de secretos y alineación de password PostgreSQL) vigentes en scripts Win/Linux. |
-| 2026-03-23 | Auditoría **audit**: añadido **AUD-2026-03-23-35** (**Abierto**, **P2**) por desacople incompleto legacy/nuevo en frontend. Se define canónico técnico en `docs/CANON_DECOUPLE_LEGACY_NEW.md` para handoff Auditor -> Dev. |
+| 2026-03-23 | Auditoría **audit**: añadido **AUD-2026-03-23-35** (**Abierto**, **P2**) por desacople incompleto legacy/nuevo en frontend. Se define canónico técnico en `desacople.md` para handoff Auditor -> Dev. |
 | 2026-03-23 | Dev: **AUD-2026-03-23-34** pasa a **Listo para verificar** al eliminar duplicaciones de normalización en `sync_service.py`, mantener wrappers únicos y agregar test anti-regresión (`tests/test_sync_service_delegation.py`). |
 | 2026-03-23 | Dev: **AUD-2026-03-23-35** pasa a **Listo para verificar** tras desacople de IDs/rutas legacy en navegación principal y normalización de `BrokersSupervisorsView` al stack HeroUI canónico. |
 | 2026-03-23 | Verificación final: **AUD-2026-03-23-34 Cerrado** y **AUD-2026-03-23-35 Cerrado** tras evidencia en tests/backend sync y build/typecheck + barrido de marcadores legacy en frontend principal. |
