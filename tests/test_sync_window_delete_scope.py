@@ -10,7 +10,9 @@ from sqlalchemy.orm import sessionmaker
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "sqlite:///./data/test_sync_window_delete_scope.db")
+DEFAULT_DB_PATH = (ROOT / "data" / "test_sync_window_delete_scope.db").resolve()
+DEFAULT_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH.as_posix()}")
 
 from app.models.brokers import CobranzasFact, SyncRecord  # noqa: E402
 from app.services.sync_service import _delete_target_window, _delete_target_window_fact  # noqa: E402

@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: CI Environment Overrides
         shell: bash
@@ -86,9 +86,9 @@ jobs:
         run: docker compose --profile dev exec -T api-v1 python scripts/export_openapi_v1.py
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Frontend Install
         working-directory: frontend

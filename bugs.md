@@ -102,6 +102,26 @@
   3. `bugs_visual.md` sin V-* abiertos por mezcla legacy/nuevo.
   4. Auditoría `verifica` confirma desacople sin drift.
 
+### AUD-2026-03-23-36 — Falla de CI en tests backend por SQLite con ruta relativa no garantizada
+- **Severidad:** Alta
+- **Prioridad:** P1
+- **Estado:** Listo para verificar
+- **Área:** Tests backend / CI (`tests/test_sync_window_delete_scope.py`, `.github/workflows/docker-ci.yml`)
+- **Descripción:** El job `Backend Unit + Integration Tests` falla con `sqlite3.OperationalError: unable to open database file`. El test `test_sync_window_delete_scope.py` usa por defecto `sqlite:///./data/test_sync_window_delete_scope.db`; en CI/contenedor esa ruta relativa puede no existir o no ser escribible.
+- **Evidencia:** Traza reportada en CI apunta a `tests/test_sync_window_delete_scope.py` línea 24 durante `CobranzasFact.__table__.drop(...)`; en código `TEST_DATABASE_URL` por defecto es `sqlite:///./data/test_sync_window_delete_scope.db`.
+- **Dev (2026-03-23):** el test ahora usa ruta SQLite absoluta basada en `ROOT/data/test_sync_window_delete_scope.db` y crea el directorio padre de forma explícita antes de inicializar engine.
+- **Criterio de cierre:** hacer el test independiente de cwd/FS (ej. `tempfile` + ruta absoluta garantizada o DB en memoria cuando aplique), y dejar `Backend Unit + Integration Tests` en verde en CI.
+
+### AUD-2026-03-23-37 — Riesgo de ruptura futura en CI por deprecación Node.js 20
+- **Severidad:** Media
+- **Prioridad:** P3
+- **Estado:** Listo para verificar
+- **Área:** CI/CD (`.github/workflows/docker-ci.yml`)
+- **Descripción:** El run reporta deprecación de Node.js 20 para actions; desde 2026-06-02 los runners forzarán Node 24 por defecto. Hoy es warning, pero puede romper pipeline si alguna action no es compatible.
+- **Evidencia:** Mensaje en run `quality-gates`: “Node.js 20 actions are deprecated… forced to run with Node.js 24…”.
+- **Dev (2026-03-23):** workflows actualizados a `actions/checkout@v5`, `actions/setup-node@v5` y `actions/upload-artifact@v5` (release), con `node-version: 24` en jobs frontend.
+- **Criterio de cierre:** actualizar actions/workflow a versiones compatibles con Node 24 y eliminar warning de deprecación en CI.
+
 ## Backlog abierto
 | Orden | Prioridad | ID | Resumen |
 |---|---|---|---|
@@ -130,3 +150,5 @@
 | 2026-03-23 | Verificación estricta de desacople: eliminado módulo no usado `AnalisisCarteraLegacyView`, limpieza de estilos/variables legacy en frontend y renombre de `LegacyStackedColumnChart`; único residuo nominal queda en `shared/api-types.ts` por contrato OpenAPI generado con endpoint legacy aún publicado por backend. |
 | 2026-03-23 | Ejecución completa de retiro legacy (fases 0-4 de `desacople.md`): eliminado runtime `dashboard`/`start_dashboard.py`, limpieza de proxies `v1proxy`, CI/scripts migrados a `api-v1`, documentación archivada en `docs/archive/legacy-retired/` y reporte final `docs/legacy-removal-report.md`. |
 | 2026-03-23 | Auditoría **audit**: sin bugs nuevos tras validar desacople legacy en launchers/scripts (`.bat`/`.sh`), `docker compose --profile prod config --services` coherente y sin residuos `tmp*` en `sql/common`/`sql/v2`. |
+| 2026-03-23 | Auditoría **audit**: añadidos **AUD-2026-03-23-36** (**Abierto**, **P1**) por falla de CI backend (`sqlite3.OperationalError: unable to open database file`) y **AUD-2026-03-23-37** (**Abierto**, **P3**) por deprecación Node 20 en actions. |
+| 2026-03-23 | Dev: **AUD-2026-03-23-36** y **AUD-2026-03-23-37** pasan a **Listo para verificar** tras fijar ruta SQLite absoluta en test CI y migrar workflows/actions a Node 24. |
