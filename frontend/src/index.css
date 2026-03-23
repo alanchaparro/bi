@@ -1,4 +1,4 @@
-/* Variables legacy (dashboard.css) */
+/* Variables de dashboard */
 :root {
   --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Outfit', 'Inter', system-ui, sans-serif;
   --bg-color: #161a1d;
@@ -839,7 +839,7 @@ body.sidebar-open .tabs-nav {
   }
 }
 
-/* Legacy app-nav (horizontal) - hidden when using sidebar */
+/* app-nav horizontal oculto cuando se usa sidebar */
 .app-nav {
   display: none;
 }
@@ -4049,34 +4049,6 @@ label.input-label {
   .sync-safe-modal-row {
     grid-template-columns: 1fr 1fr;
   }
-}
-
-.legacy-report-view {
-  display: grid;
-  gap: 1rem;
-}
-
-.legacy-report-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.legacy-report-frame-wrap {
-  padding: 0.5rem;
-}
-
-.legacy-report-frame {
-  width: 100%;
-  min-height: 80vh;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: #0b1329;
-}
-
-.legacy-report-open-btn {
-  white-space: nowrap;
 }
 
 .brokers-prizes-input {

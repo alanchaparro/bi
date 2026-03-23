@@ -36,6 +36,7 @@ Separar por completo el flujo **legacy** del flujo **nuevo** para evitar depende
 - No mezclar payloads legacy y v2 en el mismo contenedor UI.
 - El frontend nuevo consume rutas v2 por defecto (segun `AGENTS.md`).
 - Si un endpoint legacy permanece, debe consumirse desde el dominio legacy aislado.
+- En artefactos generados de contrato (ej: `shared/api-types.ts`) pueden persistir nombres `legacy` mientras el backend exponga esos endpoints; esto no implica uso en runtime nuevo.
 
 ### 5) Estilos
 - `nuevo` usa tokens y clases compartidas (`globals.css`/`index.css`) del sistema visual.

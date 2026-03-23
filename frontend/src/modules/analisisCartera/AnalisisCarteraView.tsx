@@ -306,7 +306,7 @@ function BarChart({ data, isLight = false, colors = CHART_COLORS }: { data: Arra
   );
 }
 
-function LegacyStackedColumnChart({
+function StackedColumnChart({
   data,
   aLabel,
   bLabel,
@@ -699,8 +699,8 @@ export function AnalisisCarteraView() {
   }, []);
 
   const chartCards: Record<ChartId, { title: string; content: React.ReactElement }> = {
-    series_vig_mor_month: { title: "Cartera por Gestión: Vigente vs Moroso", content: <LegacyStackedColumnChart data={vigMorByMonth} aLabel="Vigente" bLabel="Moroso" aColor="var(--color-state-ok)" bColor="var(--color-state-warn)" isLight={isLightTheme} /> },
-    series_via_month: { title: "Cartera por Gestión: Cobrador vs Débito", content: <LegacyStackedColumnChart data={viaByMonth} aLabel="Cobrador" bLabel="Débito" aColor="var(--color-chart-1)" bColor="var(--color-chart-2)" isLight={isLightTheme} /> },
+    series_vig_mor_month: { title: "Cartera por Gestión: Vigente vs Moroso", content: <StackedColumnChart data={vigMorByMonth} aLabel="Vigente" bLabel="Moroso" aColor="var(--color-state-ok)" bColor="var(--color-state-warn)" isLight={isLightTheme} /> },
+    series_via_month: { title: "Cartera por Gestión: Cobrador vs Débito", content: <StackedColumnChart data={viaByMonth} aLabel="Cobrador" bLabel="Débito" aColor="var(--color-chart-1)" bColor="var(--color-chart-2)" isLight={isLightTheme} /> },
     by_un: { title: "Contratos por Unidad de Negocio", content: <BarChart data={byUn} isLight={isLightTheme} colors={chartPalette} /> },
     by_tramo: { title: "Contratos por Tramo", content: <DonutChart data={byTramo} isLight={isLightTheme} colors={chartPalette} /> },
     by_via: { title: "Contratos por Via de Cobro", content: <BarChart data={byVia} isLight={isLightTheme} colors={chartPalette} /> },

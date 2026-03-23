@@ -127,3 +127,4 @@
 | 2026-03-23 | Dev: **AUD-2026-03-23-35** pasa a **Listo para verificar** tras desacople de IDs/rutas legacy en navegación principal y normalización de `BrokersSupervisorsView` al stack HeroUI canónico. |
 | 2026-03-23 | Verificación final: **AUD-2026-03-23-34 Cerrado** y **AUD-2026-03-23-35 Cerrado** tras evidencia en tests/backend sync y build/typecheck + barrido de marcadores legacy en frontend principal. |
 | 2026-03-23 | Verificación canónica de `desacople.md`: normalización adicional en `ConfigView` para eliminar marcadores `className=\"input\"` del flujo nuevo; checklist de desacople actualizado a cumplido. |
+| 2026-03-23 | Verificación estricta de desacople: eliminado módulo no usado `AnalisisCarteraLegacyView`, limpieza de estilos/variables legacy en frontend y renombre de `LegacyStackedColumnChart`; único residuo nominal queda en `shared/api-types.ts` por contrato OpenAPI generado con endpoint legacy aún publicado por backend. |
