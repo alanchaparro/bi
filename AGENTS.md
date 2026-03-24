@@ -8,6 +8,12 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
 - El desacople entre frontend **nuevo** y **legacy** se rige por `desacople.md`.
 - Si el cambio toca navegacion, routing, layout o UI de modulos analiticos, validar obligatoriamente contra `desacople.md`.
 
+## Canonicos operativos de seguimiento (obligatorios)
+- `bugs.md`: backlog tecnico/operativo y estado AUD-*.
+- `bugs_visual.md`: backlog UX/UI visual y estado V-*.
+- `optimo.md`: backlog/criterios de optimizacion continua (hardware + UX) y evidencia antes/despues.
+- Todo ciclo de trabajo debe revisar y mantener alineados estos tres canónicos, sin drift entre codigo y documentos.
+
 ## Reglas de negocio obligatorias
 1. **Fecha de cierre != fecha de gestion**.
    - En cartera, `gestion_month` se calcula como **cierre + 1 mes**.
@@ -140,6 +146,7 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
    - confirmacion de que `.env`/llaves no forman parte del commit
 7. Si el cambio toca Docker/compose/bootstrap/scripts: validar `INICIAR.bat`/`iniciar.sh`, `DETENER.bat`/`detener.sh` y `REINICIAR.bat`/`reiniciar.sh`.
 8. Si el cambio toca frontend de analytics, validar fronteras de `desacople.md` (sin marcadores legacy en flujo nuevo).
+9. Validar `optimo.md` como canónico de pendientes: registrar impacto en hardware/UX, evidencia antes/despues y estado consistente con `bugs.md`/`bugs_visual.md`.
 
 ## Cuando actualizar este archivo
 Actualizar inmediatamente si cambia:
@@ -152,3 +159,4 @@ Actualizar inmediatamente si cambia:
 7. Politicas de seguridad de repositorio, CI/CD o manejo de secretos.
 8. Esquema de hashing de contraseñas o validacion de tipo de token JWT.
 9. Fronteras de desacople entre frontend nuevo y legacy (`desacople.md`).
+10. Criterios de optimizacion continua y politica de seguimiento de pendientes en `optimo.md`.
