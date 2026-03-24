@@ -392,7 +392,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                     className="header-pill header-pill--warn"
                     title={`Actualizacion en progreso ${schedulePct > 0 ? `(${schedulePct}%)` : ""}`}
                   >
-                    <span>P</span>
+                    <span>Prog.</span>
                     <span>{schedulePct}%</span>
                   </Link>
                 )}
@@ -427,7 +427,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                   <ThemeIcon isDark={theme === "dark"} />
                 </Button>
                 <Button type="button" variant="outline" size="sm" onPress={logout} className="min-h-[var(--touch-min)]">
-                  Cerrar sesion
+                  Cerrar sesión
                 </Button>
               </div>
             </div>

@@ -190,7 +190,7 @@ body {
 .dashboard-header--full {
   height: var(--header-height);
   min-height: var(--header-height);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .dashboard-header-shell {
@@ -228,12 +228,12 @@ body {
 
 .dashboard-header-actions {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 0.75rem;
   min-width: 0;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .dashboard-toggle-button {

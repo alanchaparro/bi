@@ -172,10 +172,18 @@ def normalize_record(domain: str, row: dict, seq: int) -> dict:
 
 
 def fact_row_from_normalized(domain: str, normalized: dict) -> dict:
-    try:
-        payload = json.loads(normalized.get("payload_json") or "{}")
-    except Exception:
-        payload = {}
+    cached_payload = normalized.get("_sync_payload_parsed")
+    if isinstance(cached_payload, dict):
+        payload = cached_payload
+    else:
+        try:
+            payload = json.loads(normalized.get("payload_json") or "{}")
+        except Exception:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        # Cache parsed payload for repeated use in the same sync flow.
+        normalized["_sync_payload_parsed"] = payload
 
     gestion_month = str(normalized.get("gestion_month") or "")
     close_month = str(normalized.get("close_month") or "")

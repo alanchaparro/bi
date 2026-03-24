@@ -555,7 +555,7 @@ def _set_state(domain: str, updates: dict) -> None:
             'skipped_unchanged_chunks',
             'duplicates_detected',
         }
-        force_persist = bool(force_keys.intersection(set(updates.keys())))
+        force_persist = not force_keys.isdisjoint(updates)
         if previous.get('running') != current.get('running'):
             force_persist = True
     _persist_runtime_state_snapshot(domain, snapshot, force=force_persist)
@@ -2714,7 +2714,30 @@ def _execute_job(
         temp_rows_file = None
         temp_rows_by_month: dict[str, str] = {}
         temp_file_by_month: dict[str, Any] = {}
+        temp_rows_buffer: list[str] = []
+        temp_rows_buffer_by_month: dict[str, list[str]] = {}
         month_counts: dict[str, int] = {}
+        jsonl_flush_every = max(100, int(getattr(settings, 'sync_jsonl_flush_every_rows', 1000) or 1000))
+
+        def _jsonl_line(record: dict) -> str:
+            json_row = record if "_sync_payload_parsed" not in record else {k: v for k, v in record.items() if k != "_sync_payload_parsed"}
+            return json.dumps(json_row, ensure_ascii=False) + '\n'
+
+        def _flush_temp_rows(force: bool = False) -> None:
+            if temp_rows_file is None:
+                return
+            if temp_rows_buffer and (force or len(temp_rows_buffer) >= jsonl_flush_every):
+                temp_rows_file.writelines(temp_rows_buffer)
+                temp_rows_buffer.clear()
+
+        def _flush_temp_rows_month(month_key: str, force: bool = False) -> None:
+            month_file = temp_file_by_month.get(month_key)
+            month_buffer = temp_rows_buffer_by_month.get(month_key)
+            if month_file is None or not month_buffer:
+                return
+            if force or len(month_buffer) >= jsonl_flush_every:
+                month_file.writelines(month_buffer)
+                month_buffer.clear()
         # Stream large domains to disk to keep memory stable and show incremental progress.
         stream_to_disk_domains = {'cartera', 'cobranzas', 'contratos', 'gestores'}
         if low_impact_mode:
@@ -2805,9 +2828,12 @@ def _execute_job(
                                 os.close(fd)
                                 temp_rows_by_month[month_key] = path
                                 temp_file_by_month[month_key] = open(path, 'w', encoding='utf-8')
-                            temp_file_by_month[month_key].write(json.dumps(n, ensure_ascii=False) + '\n')
+                                temp_rows_buffer_by_month[month_key] = []
+                            temp_rows_buffer_by_month[month_key].append(_jsonl_line(n))
+                            _flush_temp_rows_month(month_key)
                     elif temp_rows_file is not None:
-                        temp_rows_file.write(json.dumps(n, ensure_ascii=False) + '\n')
+                        temp_rows_buffer.append(_jsonl_line(n))
+                        _flush_temp_rows()
                     else:
                         normalized_rows.append(n)
                 if source_rows % 50000 == 0:
@@ -2817,9 +2843,11 @@ def _execute_job(
                     )
         finally:
             if temp_rows_file is not None:
+                _flush_temp_rows(force=True)
                 temp_rows_file.close()
-            for f in temp_file_by_month.values():
+            for month_key, f in temp_file_by_month.items():
                 try:
+                    _flush_temp_rows_month(month_key, force=True)
                     f.close()
                 except Exception:
                     pass

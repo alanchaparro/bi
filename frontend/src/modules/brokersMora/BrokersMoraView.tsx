@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { Input } from '@heroui/react'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
+import { EmptyState } from '../../components/feedback/EmptyState'
 
 type Row = {
   year: string
@@ -86,41 +87,43 @@ export function BrokersMoraView({ rows }: Props) {
           ))}
         </datalist>
       </div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Año</th>
-              <th>Mes</th>
-              <th>Supervisor</th>
-              <th>UN</th>
-              <th>Vía</th>
-              <th>Contratos</th>
-              <th>Mora 3M</th>
-              <th>Monto cuota</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((r, idx) => (
-              <tr key={`${r.month}-${r.supervisor}-${r.un}-${idx}`}>
-                <td>{r.year}</td>
-                <td>{r.month}</td>
-                <td>{r.supervisor}</td>
-                <td>{r.un}</td>
-                <td>{r.via}</td>
-                <td>{r.count}</td>
-                <td>{r.mora3m}</td>
-                <td>{Number(r.montoCuota || 0).toFixed(2)}</td>
-              </tr>
-            ))}
-            {filtered.length === 0 ? (
+      {filtered.length === 0 ? (
+        <EmptyState
+          message="Sin filas de mora para los filtros seleccionados."
+          suggestion="Probá limpiar o ampliar los filtros por supervisor, UN o vía."
+        />
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
               <tr>
-                <td colSpan={8}>Sin filas de mora para los filtros seleccionados.</td>
+                <th>Año</th>
+                <th>Mes</th>
+                <th>Supervisor</th>
+                <th>UN</th>
+                <th>Vía</th>
+                <th>Contratos</th>
+                <th>Mora 3M</th>
+                <th>Monto cuota</th>
               </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {filtered.map((r, idx) => (
+                <tr key={`${r.month}-${r.supervisor}-${r.un}-${idx}`}>
+                  <td>{r.year}</td>
+                  <td>{r.month}</td>
+                  <td>{r.supervisor}</td>
+                  <td>{r.un}</td>
+                  <td>{r.via}</td>
+                  <td>{r.count}</td>
+                  <td>{r.mora3m}</td>
+                  <td>{Number(r.montoCuota || 0).toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   )
 }

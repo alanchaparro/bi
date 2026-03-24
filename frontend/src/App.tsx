@@ -19,6 +19,7 @@ import { getApiErrorMessage } from './shared/apiErrors'
 import { LoginView } from './modules/auth/LoginView'
 import { NAV_SECTIONS } from './config/navSections'
 import { SidebarNav } from './components/SidebarNav'
+import { ErrorState } from './components/feedback/ErrorState'
 import { ConfigView } from './modules/config/ConfigView'
 import { AnalisisCarteraView } from './modules/analisisCartera/AnalisisCarteraView'
 import { AnalisisCobranzasCohorteView } from './modules/analisisCobranzasCohorte/AnalisisCobranzasCohorteView'
@@ -231,7 +232,7 @@ export default function App() {
                 title={scheduleTooltip}
                 aria-label={scheduleTooltip}
               >
-                <span className="header-schedule-glyph" aria-hidden>P</span>
+                <span className="header-schedule-glyph" aria-hidden>Prog.</span>
                 <span className="header-schedule-pct">{`${schedulePct}%`}</span>
               </button>
             ) : null}
@@ -267,7 +268,7 @@ export default function App() {
               title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
               aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
             >
-              {theme === 'dark' ? '☀️' : '🌙'}
+              {theme === 'dark' ? 'L' : 'O'}
             </button>
             <button type="button" className="btn btn-secondary" onClick={handleLogout}>
               Cerrar sesión
@@ -276,7 +277,7 @@ export default function App() {
         </header>
 
         <main className="app-content">
-          {error ? <div className="alert-error">{error}</div> : null}
+          {error ? <ErrorState message={error} className="mb-3" /> : null}
 
           <section id="analisisCartera" className={`app-section ${activeSectionId === 'analisisCartera' ? '' : 'hidden'}`}>
             <AnalisisCarteraView />

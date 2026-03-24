@@ -21,9 +21,61 @@
 - V-055: **Cerrado** en recovery (confirmación explícita HeroUI para "Parar todo (emergencia)").
 
 ## Hallazgos visuales activos
-Actualmente no hay V-* abiertos pendientes de recuperar desde la última verificación consolidada.
+- **V-075 (Abierto | Alta):** `app/login/page.tsx` muestra error como texto plano (`<p className="text-sm text-[var(--color-error)]">`) en vez de patrón canónico de estado (`ErrorState` o equivalente de bloque).  
+  **Impacto:** feedback de error menos visible/consistente en una pantalla crítica de acceso.  
+  **Fix mínimo sugerido:** reutilizar `LoginView` o migrar el bloque de error a componente de estado visual consistente con el resto del frontend.
+- **V-076 (Abierto | Alta):** `BrokersView` usa fila de tabla para vacío con copy técnico (`analytics_contract_snapshot`, validación de supervisores) y mezcla semántica con error.  
+  **Impacto:** confunde al cliente operativo y rompe jerarquía visual de estados.  
+  **Fix mínimo sugerido:** mantener error en `ErrorState` y vacío en `EmptyState` con lenguaje de negocio (sin nombres de tablas internas).
+- **V-077 (Abierto | Media):** `SidebarNav` legacy usa glifos abreviados (`[]`, `AC`, `BM`, etc.) y menú hamburguesa como carácter `☰`.  
+  **Impacto:** iconografía poco semántica y percepción visual menos profesional frente a shell Next.  
+  **Fix mínimo sugerido:** reemplazar por iconos SVG o set de iconos consistente con labels legibles.
+- **V-078 (Abierto | Media):** pantallas base de carga usan texto plano (`DashboardLayout` y `app/page.tsx`) sin `LoadingState` canónico.  
+  **Impacto:** inconsistencia visual en el primer contacto (arranque/autenticación).  
+  **Fix mínimo sugerido:** unificar a `LoadingState` con copy corto y patrón visual consistente.
+- **V-079 (Abierto | Media):** objetivos táctiles menores al mínimo canónico (`--touch-min: 44px`) en controles frecuentes (`dashboard-sidebar-sublink` 36px, `theme-toggle` 38px, `multi-select-trigger` 42px).  
+  **Impacto:** menor usabilidad táctil y más errores de interacción en operación.  
+  **Fix mínimo sugerido:** normalizar alturas/tamaño a `>=44px` en esos controles.
+- **V-080 (Abierto | Media):** `BrokersSupervisorsView` no muestra estado vacío cuando no hay supervisores disponibles; queda panel sin contexto.  
+  **Impacto:** pantalla “en blanco” que genera duda operativa.  
+  **Fix mínimo sugerido:** agregar `EmptyState` con mensaje y acción sugerida.
+- **V-081 (Abierto | Baja):** `DashboardLayout` mantiene copy sin tildes en navegación/cabecera (`Menu`, `Navegacion`, `sincronizacion`, `menu lateral`).  
+  **Impacto:** detalle de calidad percibida en UI principal.  
+  **Fix mínimo sugerido:** corregir a `Menú`, `Navegación`, `sincronización`, `menú`.
+- **V-082 (Abierto | Baja):** `MultiSelectFilter` usa caret textual (`^`/`v`) en lugar de icono visual consistente.  
+  **Impacto:** se percibe como placeholder/legacy frente al resto de componentes pulidos.  
+  **Fix mínimo sugerido:** reemplazar por chevron SVG o icono del sistema UI.
+- **V-083 (Abierto | Baja):** `AnalisisAnualesView` muestra `EmptyState` sin `suggestion` accionable.  
+  **Impacto:** vacío correcto pero poco guiado para usuario operativo.  
+  **Fix mínimo sugerido:** incluir sugerencia breve de ajuste de filtros/período.
+- **V-084 (Abierto | Baja):** `ConfigView` mantiene textos sin tilde en sección sensible (`conexion`, `Comprobar conexion`, `Sin conexion`).  
+  **Impacto:** inconsistencia de copy en una pantalla operativa crítica.  
+  **Fix mínimo sugerido:** normalizar ortografía (`conexión`) en labels, botones y estados.
+- **V-085 (Abierto | Baja):** píldoras de estado de cabecera (`.header-pill`) tienen `min-height: 2rem`, por debajo del objetivo táctil móvil.  
+  **Impacto:** target reducido para interacción rápida en anchos chicos.  
+  **Fix mínimo sugerido:** elevar `min-height`/padding en móvil para cumplir objetivo táctil.
+
+### Aperturas de esta pasada
+- **V-075 (Abierto):** login Next sin bloque de error canónico.
+- **V-076 (Abierto):** vacío técnico/confuso en `BrokersView`.
+- **V-077 (Abierto):** iconografía legacy poco semántica en `SidebarNav`.
+- **V-078 (Abierto):** cargas base con texto plano, sin `LoadingState`.
+- **V-079 (Abierto):** targets táctiles por debajo de `44px` en controles clave.
+- **V-080 (Abierto):** falta `EmptyState` en `BrokersSupervisorsView` sin opciones.
+- **V-081 (Abierto):** copy sin tildes en cabecera/layout Next.
+- **V-082 (Abierto):** caret textual en `MultiSelectFilter`.
+- **V-083 (Abierto):** `EmptyState` sin sugerencia en `AnalisisAnualesView`.
+- **V-084 (Abierto):** ortografía inconsistente en textos de conexión (`ConfigView`).
+- **V-085 (Abierto):** píldoras de header con target táctil bajo.
 
 ### Cierres de esta pasada
+- **V-068 (Cerrado):** `LoginView` migra feedback de error a `ErrorState` y elimina uso de `alert-error` en login legacy.
+- **V-069 (Cerrado):** indicador de programación en cabecera migra de glifo ambiguo `"P"` a copy explícito `"Prog."`.
+- **V-070 (Cerrado):** appbar principal deja de clippear contenido al relajar `overflow` y `white-space` con wrap controlado en acciones.
+- **V-071 (Cerrado):** `ConfigView` unifica botones de acciones al sistema `Button` de HeroUI, eliminando mezcla con `btn btn-*` en flujo operativo.
+- **V-072 (Cerrado):** `CarteraView` y `BrokersMoraView` migran vacíos a `EmptyState` canónico con mensaje + sugerencia.
+- **V-073 (Cerrado):** CTA de sesión corrige copy a `"Cerrar sesión"` en shell Next.
+- **V-074 (Cerrado):** shell legacy `App.tsx` alinea feedback a `ErrorState` y retira toggle con emoji para reducir drift visual frente a shell Next.
 - **V-064 (Cerrado):** `BrokersPrizesView` migra feedback de carga/error al canónico `LoadingState`/`ErrorState` (sin `alert-error` ni texto plano de carga).
 - **V-065 (Cerrado):** `ConfigView` normaliza estado de error en health/import logs con `ErrorState`.
 - **V-066 (Cerrado):** `ConfigView` incorpora loading canónico para programación (`LoadingState`) y elimina feedback legacy en el flujo.
@@ -40,6 +92,10 @@ Actualmente no hay V-* abiertos pendientes de recuperar desde la última verific
 ## Historial
 | Fecha | Acción |
 |---|---|
+| 2026-03-24 | Auditoría visual estricta de segunda pasada: se abren V-075 a V-085 (feedback canónico en login, copy/empty state en brokers, iconografía/cargas legacy, targets táctiles <44px, consistencia de microcopy y accesibilidad táctil en header/filtros). |
+| 2026-03-24 | Verificación de continuidad (dev): barrido visual/UX sin reaperturas V-*; se mantiene backlog visual en cero y sin drift frente a `bugs.md`. |
+| 2026-03-24 | Dev/verifica: V-068 a V-074 pasan a **Cerrado** tras normalizar feedback login/shell (`ErrorState`), copy de programación/sesión, clipping de appbar, unificación de botones en `ConfigView` y estados vacíos canónicos en cartera/mora. |
+| 2026-03-24 | Auditoría visual completa (`audit`) sobre vistas y layout: se abren V-068 a V-074 por inconsistencias de feedback/login legacy, semántica de header, riesgo de clipping, mezcla de sistemas de botones, estados vacíos no canónicos y drift visual entre shell legacy/Next. |
 | 2026-03-23 | Recuperación post-incidente: recreado `bugs_visual.md` canónico con estado consolidado. |
 | 2026-03-23 | Recovery dev: V-055 cerrado en `ConfigView` con confirmación explícita en `Modal` HeroUI antes de detener programación global. |
 | 2026-03-23 | Se agregan instrucciones operativas para dev y launcher `RECUPERAR_DEV.bat`. |

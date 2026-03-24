@@ -12,6 +12,7 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
 - `bugs.md`: backlog tecnico/operativo y estado AUD-*.
 - `bugs_visual.md`: backlog UX/UI visual y estado V-*.
 - `optimo.md`: backlog/criterios de optimizacion continua (hardware + UX) y evidencia antes/despues.
+- La coordinacion entre agentes/equipo se realiza por handoffs en estos `.md`; no dejar decisiones operativas solo en conversaciones.
 - Todo ciclo de trabajo debe revisar y mantener alineados estos tres canónicos, sin drift entre codigo y documentos.
 
 ## Reglas de negocio obligatorias

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@heroui/react'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
+import { EmptyState } from '../../components/feedback/EmptyState'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { LoadingState } from '../../components/feedback/LoadingState'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
@@ -149,7 +150,12 @@ export function CarteraView() {
 
       {loading && <LoadingState message="Cargando resumen de cartera..." />}
       {!loading && error && <ErrorState message={error} onRetry={() => void loadSummary(filters)} />}
-      {!loading && !error && rows.length === 0 && <p className="text-muted">Sin datos para los filtros seleccionados.</p>}
+      {!loading && !error && rows.length === 0 && (
+        <EmptyState
+          message="Sin datos para los filtros seleccionados."
+          suggestion="Probá ajustar Supervisor, UN, Vía o período."
+        />
+      )}
 
       {!loading && !error && summaryCards.length > 0 && (
         <div className="summary-cards-grid">

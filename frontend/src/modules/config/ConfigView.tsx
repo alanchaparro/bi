@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
 import { Button, Input, Modal, Tabs, useOverlayState } from '@heroui/react'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
+import { ErrorState } from '../../components/feedback/ErrorState'
+import { LoadingState } from '../../components/feedback/LoadingState'
 import {
   api,
   createUser,
@@ -1405,9 +1407,9 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
           <div>
             <h3 className="config-section-title">Estado de conexion</h3>
             <div className="config-row-wrap-tight">
-              <button type="button" className="btn btn-secondary" onClick={checkHealth} disabled={healthLoading}>
+              <Button type="button" variant="outline" onPress={checkHealth} isDisabled={healthLoading}>
                 {healthLoading ? 'Comprobando...' : 'Comprobar conexion'}
-              </button>
+              </Button>
               {health && (
                 <div className="config-label-col">
                   <span className={health.ok ? 'status-ok' : 'status-error'}>
@@ -1416,11 +1418,14 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                     {health.mysql_ok !== undefined && health.mysql_ok !== null && ` (MySQL: ${health.mysql_ok ? 'OK' : 'Error'})`}
                     {health.mysql_ok === null && ' (MySQL: no configurado)'}
                   </span>
-                  {health.error && (
-                    <div className="alert-error config-alert-compact">
-                      {health.error}
-                    </div>
-                  )}
+                  {health.error ? (
+                    <ErrorState
+                      message={health.error}
+                      className="config-alert-compact"
+                      onRetry={() => void checkHealth()}
+                      disabled={healthLoading}
+                    />
+                  ) : null}
                 </div>
               )}
             </div>
@@ -1495,15 +1500,15 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               </label>
             </div>
             <div className="config-row-wrap-tight config-mt-sm">
-              <button type="button" className="btn btn-primary" onClick={() => void handleSaveMysqlConfig()} disabled={mysqlLoading || mysqlSaving || mysqlTesting}>
+              <Button type="button" variant="primary" onPress={() => void handleSaveMysqlConfig()} isDisabled={mysqlLoading || mysqlSaving || mysqlTesting}>
                 {mysqlSaving ? 'Guardando...' : 'Guardar MySQL'}
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={() => void handleTestMysqlConfig()} disabled={mysqlLoading || mysqlSaving || mysqlTesting}>
+              </Button>
+              <Button type="button" variant="outline" onPress={() => void handleTestMysqlConfig()} isDisabled={mysqlLoading || mysqlSaving || mysqlTesting}>
                 {mysqlTesting ? 'Probando...' : 'Probar MySQL'}
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={() => void loadMysqlConfig()} disabled={mysqlLoading || mysqlSaving || mysqlTesting}>
+              </Button>
+              <Button type="button" variant="outline" onPress={() => void loadMysqlConfig()} isDisabled={mysqlLoading || mysqlSaving || mysqlTesting}>
                 {mysqlLoading ? 'Cargando...' : 'Recargar MySQL'}
-              </button>
+              </Button>
               {mysqlMessage && (
                 <span className={mysqlMessage.ok ? 'status-ok' : 'status-error'}>
                   {mysqlMessage.text}
@@ -1560,12 +1565,12 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               <input type="checkbox" checked={newIsActive} onChange={(e) => setNewIsActive(e.target.checked)} disabled={usersBusy} />
               <span>Activo</span>
             </label>
-            <button type="button" className="btn btn-primary" onClick={() => void handleCreateUser()} disabled={usersBusy}>
+            <Button type="button" variant="primary" onPress={() => void handleCreateUser()} isDisabled={usersBusy}>
               {usersSaving ? 'Guardando...' : 'Crear usuario'}
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => void loadUsers()} disabled={usersBusy}>
+            </Button>
+            <Button type="button" variant="outline" onPress={() => void loadUsers()} isDisabled={usersBusy}>
               {usersLoading ? 'Cargando...' : 'Recargar usuarios'}
-            </button>
+            </Button>
             {usersMessage && (
               <span className={usersMessage.ok ? 'status-ok' : 'status-error'}>
                 {usersMessage.text}
@@ -1618,9 +1623,9 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                       onChange={(e) => setRowPasswordDraft((prev) => ({ ...prev, [u.username]: e.target.value }))}
                       disabled={usersBusy}
                     />
-                    <button type="button" className="btn btn-secondary" onClick={() => void handleUpdateUser(u)} disabled={usersBusy}>
+                    <Button type="button" variant="outline" onPress={() => void handleUpdateUser(u)} isDisabled={usersBusy}>
                       Guardar
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ))
@@ -1662,9 +1667,9 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               </select>
             </label>
 
-            <button type="button" className="btn btn-secondary config-full-mobile" onClick={upsertRule} disabled={configBusy}>
+            <Button type="button" variant="outline" className="config-full-mobile" onPress={upsertRule} isDisabled={configBusy}>
               Agregar/Actualizar
-            </button>
+            </Button>
           </div>
 
           <div className="config-mt-md">
@@ -1685,12 +1690,12 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
           </div>
 
           <div className="config-row-wrap-tight config-mt-md">
-            <button type="button" className="btn btn-primary" onClick={saveTramoRules} disabled={configBusy}>
+            <Button type="button" variant="primary" onPress={saveTramoRules} isDisabled={configBusy}>
               {tramoConfigSaving ? 'Guardando...' : 'Guardar reglas'}
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => void loadTramoConfig()} disabled={configBusy}>
+            </Button>
+            <Button type="button" variant="outline" onPress={() => void loadTramoConfig()} isDisabled={configBusy}>
               {tramoConfigLoading ? 'Cargando...' : 'Recargar reglas'}
-            </button>
+            </Button>
             {tramoConfigMessage && (
               <span className={tramoConfigMessage.ok ? 'status-ok' : 'status-error'}>
                 {tramoConfigMessage.text}
@@ -1712,9 +1717,9 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                     <div key={`${r.un}-${r.category}`} className="config-grid-3">
                       <input className="input-heroui-tokens" value={r.un} readOnly />
                       <input className="input-heroui-tokens" value={`${r.category}: ${r.tramos.join(', ') || '-'}`} readOnly />
-                      <button type="button" className="btn btn-secondary config-full-mobile" onClick={() => removeRule(r.un, r.category)} disabled={configBusy}>
+                      <Button type="button" variant="outline" className="config-full-mobile" onPress={() => removeRule(r.un, r.category)} isDisabled={configBusy}>
                         Quitar
-                      </button>
+                      </Button>
                     </div>
                   ))}
               </div>
@@ -1809,12 +1814,12 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
           )}
 
           <div className="config-row-wrap-tight">
-            <button type="button" className="btn btn-primary" onClick={handleSync} disabled={busy}>
+            <Button type="button" variant="primary" onPress={handleSync} isDisabled={busy}>
               {syncLoading ? 'Sincronizando...' : 'Ejecutar carga'}
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={handleReload} disabled={busy}>
+            </Button>
+            <Button type="button" variant="outline" onPress={handleReload} isDisabled={busy}>
               {reloadLoading ? 'Recargando...' : 'Recargar vista'}
-            </button>
+            </Button>
               {showSyncResult && syncResult && (
               <span className={syncResult.error ? 'status-error' : 'status-ok'}>
                 {syncResult.error
@@ -1849,12 +1854,12 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   ))}
                 </div>
                 <div className="sync-safe-modal-actions">
-                  <button type="button" className="btn btn-secondary" onClick={() => setMassiveConfirmOpen(false)} disabled={syncLoading}>
+                  <Button type="button" variant="outline" onPress={() => setMassiveConfirmOpen(false)} isDisabled={syncLoading}>
                     Cancelar
-                  </button>
-                  <button type="button" className="btn btn-primary" onClick={handleConfirmMassiveSync} disabled={syncLoading}>
+                  </Button>
+                  <Button type="button" variant="primary" onPress={handleConfirmMassiveSync} isDisabled={syncLoading}>
                     Confirmar y continuar
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1944,25 +1949,23 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
             <p className="config-section-subtitle config-mb-sm">
               Registro de la última ejecución. Si hubo errores, aparecen aquí. Puedes exportar todo a un archivo TXT.
             </p>
-            {displayError && (
-              <div
-                className="alert-error config-import-log-alert"
-                role="alert"
-              >
-                <strong>Error:</strong> {displayError}
-              </div>
-            )}
+            {displayError ? (
+              <ErrorState
+                message={`Error: ${displayError}`}
+                className="config-import-log-alert"
+              />
+            ) : null}
             <pre className="sync-logs-pre">
               {displayLog.length > 0 ? displayLog.join('\n') : 'No hay entradas de log aún. Ejecuta una carga para ver el registro aquí.'}
             </pre>
-            <button
+            <Button
               type="button"
-              className="btn btn-secondary"
-              onClick={handleExportLogTxt}
-              disabled={displayLog.length === 0 && !displayError}
+              variant="outline"
+              onPress={handleExportLogTxt}
+              isDisabled={displayLog.length === 0 && !displayError}
             >
               Exportar a TXT
-            </button>
+            </Button>
           </div>
         </div>
         )}
@@ -1975,18 +1978,18 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
           </p>
 
           <div className="config-actions-row">
-            <button
+            <Button
               type="button"
-              className="btn btn-primary"
-              onClick={() => emergencyStopConfirm.open()}
-              disabled={scheduleActionLoading === 'emergency'}
+              variant="primary"
+              onPress={() => emergencyStopConfirm.open()}
+              isDisabled={scheduleActionLoading === 'emergency'}
             >
               {scheduleActionLoading === 'emergency' ? 'Parando...' : 'Parar todo (emergencia)'}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="btn btn-secondary"
-              onClick={async () => {
+              variant="outline"
+              onPress={async () => {
                 setScheduleActionLoading('emergency')
                 try {
                   await emergencyResumeSchedules()
@@ -1997,19 +2000,22 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   setScheduleActionLoading(null)
                 }
               }}
-              disabled={scheduleActionLoading === 'emergency'}
+              isDisabled={scheduleActionLoading === 'emergency'}
             >
               {scheduleActionLoading === 'emergency' ? 'Reanudando...' : 'Reanudar todo'}
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={loadSchedules} disabled={schedulesLoading}>
+            </Button>
+            <Button type="button" variant="outline" onPress={loadSchedules} isDisabled={schedulesLoading}>
               {schedulesLoading ? 'Cargando...' : 'Actualizar lista'}
-            </button>
+            </Button>
           </div>
 
           <div className="config-stack-md config-stack-md--schedule-list">
-            {schedules.length === 0 && !schedulesLoading && (
+            {schedulesLoading ? (
+              <LoadingState message="Cargando programaciones..." className="config-mb-sm" />
+            ) : null}
+            {schedules.length === 0 && !schedulesLoading ? (
               <p className="config-muted-text">No hay programaciones. Cree una abajo.</p>
-            )}
+            ) : null}
             {schedules.map((s) => (
               <div key={s.id} className="schedule-card">
                 {(() => {
@@ -2043,11 +2049,12 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   {formatScheduleLastRunSummary(s.last_run_summary)}
                 </span>
                 <div className="schedule-actions">
-                  <button
+                  <Button
                     type="button"
-                    className="btn btn-secondary btn-small"
-                    disabled={scheduleActionLoading !== null}
-                    onClick={async () => {
+                    variant="outline"
+                    size="sm"
+                    isDisabled={scheduleActionLoading !== null}
+                    onPress={async () => {
                       setScheduleActionLoading(s.id)
                       try {
                         await runSyncScheduleNow(s.id)
@@ -2060,12 +2067,13 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                     }}
                   >
                     Ejecutar ahora
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
-                    className="btn btn-secondary btn-small"
-                    disabled={scheduleActionLoading !== null}
-                    onClick={async () => {
+                    variant="outline"
+                    size="sm"
+                    isDisabled={scheduleActionLoading !== null}
+                    onPress={async () => {
                       setScheduleActionLoading(s.id)
                       try {
                         if (s.paused) await resumeSyncSchedule(s.id)
@@ -2079,7 +2087,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                     }}
                   >
                     {s.paused ? 'Reanudar' : 'Pausar'}
-                  </button>
+                  </Button>
                   <Button
                     size="sm"
                     variant="danger"
@@ -2163,11 +2171,11 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                 ))}
               </div>
             </div>
-            <button
+            <Button
               type="button"
-              className="btn btn-primary"
-              disabled={scheduleSaving || !scheduleFormName.trim() || scheduleFormDomains.length === 0 || (scheduleFormIntervalUnit === 'minute' && scheduleFormIntervalValue < 10)}
-              onClick={async () => {
+              variant="primary"
+              isDisabled={scheduleSaving || !scheduleFormName.trim() || scheduleFormDomains.length === 0 || (scheduleFormIntervalUnit === 'minute' && scheduleFormIntervalValue < 10)}
+              onPress={async () => {
                 setScheduleSaving(true)
                 try {
                   await createSyncSchedule({
@@ -2188,7 +2196,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               }}
             >
               {scheduleSaving ? 'Creando...' : 'Crear programación'}
-            </button>
+            </Button>
           </div>
         </div>
         )}

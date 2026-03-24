@@ -11,6 +11,8 @@
   - CLI: `powershell -ExecutionPolicy Bypass -File ".\scripts\recovery_dev_execute.ps1"`
 - Seguir el runbook: `RECUPERACION_DEV_PLAN.md`.
 - Para hallazgos visuales UX/UI, el registro canónico es `bugs_visual.md`.
+- Para optimizacion continua (hardware + UX) y su evidencia, el canónico adicional obligatorio es `optimo.md`.
+- Todo cierre/reapertura debe mantener consistencia entre `bugs.md`, `bugs_visual.md` y `optimo.md`.
 
 ### Leyenda de estado
 - `Abierto`
@@ -97,6 +99,8 @@
 - **Dev (2026-03-23):** se retiró el sufijo `Legacy` del flujo principal de navegación/routing (`analisisCarteraRendimientoLegacy` -> `analisisCarteraRendimiento`) en `navSections.ts`, `routes.ts`, `App.tsx` y `DashboardLayout.tsx`. Además, se normalizó `BrokersSupervisorsView` al patrón canónico (`AnalyticsPageHeader` + `ErrorState` + `Checkbox` HeroUI), eliminando `SectionHeader` y controles nativos en el módulo.
 - **Verificación (2026-03-23):** `frontend` typecheck/build en verde y barrido de marcadores (`analisisCarteraRendimientoLegacy`, `window.confirm`, `SectionHeader` en módulos activos) sin hallazgos en flujo principal; `bugs_visual.md` mantiene cero V-* abiertos.
 - **Verificación (2026-03-24):** pasada de verificación sobre módulos activos (`frontend/src/modules/**`) sin hallazgos de marcadores legacy canónicos (`SectionHeader`, `window.confirm`, `className="input"`, ids `*Legacy*`) y con filtros segmentados `Categoria` / `Via de cobro` en patrón canónico. Se normaliza el drift documental entre `bugs.md` y `bugs_visual.md`.
+- **Reapertura (2026-03-24):** nueva pasada `audit` detecta `bugs_visual.md` con hallazgos activos (`V-064`, `V-066`, `V-065`): persisten estados legacy de feedback en `BrokersPrizesView` y `ConfigView` (`alert-error`/texto plano de carga), por lo que se reabre hasta normalizar `LoadingState`/`ErrorState` y cerrar drift documental.
+- **Verificación (2026-03-24):** `BrokersPrizesView` y `ConfigView` normalizados a feedback canónico (`LoadingState`/`ErrorState`), sin uso residual de `alert-error` para estados operativos en flujo nuevo. `bugs_visual.md` queda consistente con V-064/V-065/V-066 cerrados.
 - **Criterio de cierre:**
   1. Fronteras del canónico cumplidas (runtime, rutas, UI, estilos, contratos).
   2. Módulos nuevos sin marcadores legacy en flujo principal.
@@ -160,14 +164,45 @@
   - Encadenamiento obligatorio (`needs: security-gates`) para impedir ejecución de quality gates si falla seguridad.
 - **Criterio de cierre:** agregar gates de seguridad en CI (secret scan + dependency scan para backend y frontend), con falla bloqueante del pipeline ante hallazgos. **Cumplido.**
 
+### AUD-2026-03-24-40 — `iniciar.sh` ignora errores reales al activar admin one-shot
+- **Severidad:** Alta
+- **Prioridad:** P1
+- **Estado:** Cerrado
+- **Área:** Launchers Linux (`iniciar.sh`)
+- **Descripción:** El bloque de activación de admin usa `if ! docker ...; then` y luego toma `exit_code=$?`; ese `$?` corresponde al estado invertido por `!` (0), no al código real de `docker compose run`. Como resultado, fallos reales del comando quedan ocultos y el launcher continúa como si todo estuviera bien.
+- **Evidencia:**
+  - `iniciar.sh`:
+    - `if ! docker compose ... first_run_enable_admin_once.py ...; then`
+    - `exit_code=$?`
+    - `[[ $exit_code -eq 3 ]] || exit "$exit_code"`
+  - Con esta forma, `exit_code` queda en `0` cuando el `docker compose run` falla y entra al `then`.
+- **Impacto operativo:** el flujo “un clic” en Linux puede reportar éxito parcial con admin no activado o con errores silenciosos en first-run.
+- **Criterio de cierre:** capturar el código real del comando sin inversión de estado (ej. ejecutar comando, guardar `$?`, y solo tolerar explícitamente código `3`), fallando en cualquier otro código.
+- **Verificación (2026-03-24):** se elimina inversión de estado (`! docker ...`) y se evalúa el exit code real del `docker compose run`; solo se tolera `3` y cualquier otro error aborta el launcher.
+
+### AUD-2026-03-24-41 — `INICIAR.bat` no propaga código de error del bootstrap
+- **Severidad:** Media
+- **Prioridad:** P2
+- **Estado:** Cerrado
+- **Área:** Launcher Windows (`INICIAR.bat`)
+- **Descripción:** `INICIAR.bat` ejecuta `scripts\start_one_click.ps1` pero no valida `errorlevel` al retornar. Si PowerShell falla, el `.bat` igualmente termina con `pause` sin propagar error al caller.
+- **Evidencia:** `INICIAR.bat` actual:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start_one_click.ps1"`
+  - `pause`
+  - No existe `if errorlevel 1 exit /b %errorlevel%` (sí está presente en `DETENER.bat` y `REINICIAR.bat`).
+- **Impacto operativo:** falsa señal de éxito en automatizaciones/operación manual; dificulta diagnóstico y rompe consistencia entre launchers Windows.
+- **Criterio de cierre:** agregar control de `errorlevel` y `exit /b` antes del `pause`, alineado al patrón de `DETENER.bat`/`REINICIAR.bat`.
+- **Verificación (2026-03-24):** `INICIAR.bat` ahora valida `errorlevel` tras `start_one_click.ps1` y retorna `exit /b %errorlevel%` antes de `pause`, alineado al patrón canónico de launchers Windows.
+
 ## Backlog abierto
 | Orden | Prioridad | ID | Resumen |
 |---|---|---|---|
-| - | - | - | Sin hallazgos técnicos abiertos al cierre de esta pasada. |
+Sin hallazgos técnicos abiertos al cierre de esta pasada.
 
 ## Historial
 | Fecha | Acción |
 |---|---|
+| 2026-03-24 | Verificación de continuidad (dev): barrido técnico sobre backlog y código activo sin hallazgos AUD-* abiertos; `bugs.md` y `bugs_visual.md` permanecen consistentes en estado cerrado. |
 | 2026-03-23 | Recuperación post-incidente: recreado `bugs.md` canónico y estado recuperado de auditorías previas. |
 | 2026-03-23 | Dev: AUD-32 pasa a **Listo para verificar** (tests sin temporales en `sql/*` + script `cleanup_sql_tmp_safe.ps1` con allowlist y borrado seguro por ruta absoluta). |
 | 2026-03-23 | Validación adicional: `tests/test_sync_sql_loader.py` (5/5 OK) y `frontend` (`npm run typecheck`, `npm run build`) sin errores; persiste bloqueo ACL en residuos históricos `tmp*` de `sql/*`. |
@@ -197,7 +232,12 @@
 | 2026-03-23 | Verificación final: **AUD-2026-03-23-38 Cerrado** tras autenticar smoke CI (login + bearer) y validar flujo local en verde con `portfolio-corte-v2/options`. |
 | 2026-03-24 | Verificación **reabre**: **AUD-2026-03-23-38** vuelve a **Abierto** por evidencia de run CI con `401` en `Smoke - Health Endpoints`; pendiente confirmar ejecución del workflow actualizado en Actions. |
 | 2026-03-24 | Auditoría **audit**: añadido **AUD-2026-03-24-39** (**Abierto**, **P1**) por ausencia de gates de seguridad obligatorios (secret scan + dependency scan) en workflows de CI/CD. |
-| 2026-03-24 | Auditoría **audit**: **AUD-2026-03-23-35** se reabre por evidencia en `bugs_visual.md` (V-063, V-064, V-065) de estados legacy en brokers y drift entre documentación y código. |
+| 2026-03-24 | Auditoría **audit**: **AUD-2026-03-23-35** se reabre por evidencia en `bugs_visual.md` (V-064, V-065, V-066) de estados legacy en brokers y drift entre documentación y código. |
 | 2026-03-24 | Dev/verifica: **AUD-2026-03-23-35 Cerrado** tras barrido de marcadores legacy en módulos activos y normalización del drift documental con `bugs_visual.md`. |
 | 2026-03-24 | Dev/verifica: **AUD-2026-03-23-38 Cerrado** al validar que `docker-ci` mantiene login + bearer en smoke de analytics, corrigiendo la causa del `401`. |
 | 2026-03-24 | Dev/verifica: **AUD-2026-03-24-39 Cerrado** al incorporar `security-gates` bloqueante (gitleaks + pip-audit + npm audit) en workflows `docker-ci` y `release`. |
+| 2026-03-24 | Auditoría **audit**: **AUD-2026-03-23-35** vuelve a **Abierto** por persistencia de estados de feedback no canónicos en `BrokersPrizesView` y `ConfigView`, con `bugs_visual.md` activo en V-064/V-066/V-065. |
+| 2026-03-24 | Auditoría **audit** launchers Win/Linux: añadidos **AUD-2026-03-24-40** (**Abierto**, **P1**) por manejo incorrecto de salida en `iniciar.sh`, y **AUD-2026-03-24-41** (**Abierto**, **P2**) por falta de propagación de `errorlevel` en `INICIAR.bat`. |
+| 2026-03-24 | Dev/verifica: **AUD-2026-03-24-40 Cerrado** al corregir captura de exit code real en `iniciar.sh` durante activación de admin one-shot (solo se tolera código 3). |
+| 2026-03-24 | Dev/verifica: **AUD-2026-03-24-41 Cerrado** al propagar `errorlevel` en `INICIAR.bat` con `exit /b %errorlevel%` previo a `pause`. |
+| 2026-03-24 | Dev/verifica: **AUD-2026-03-23-35 Cerrado** en reapertura al normalizar feedback visual canónico en `BrokersPrizesView`/`ConfigView` y alinear `bugs_visual.md` sin drift. |

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { Button, Input, Modal, useOverlayState } from '@heroui/react'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
+import { ErrorState } from '../../components/feedback/ErrorState'
+import { LoadingState } from '../../components/feedback/LoadingState'
 import { getApiErrorMessage } from '../../shared/apiErrors'
 
 type PrizeScale = {
@@ -91,9 +93,9 @@ export function BrokersPrizesView({ rules, canEdit, loading, error, onSave }: Pr
         title="Configuración de premios"
         subtitle="Escalas en formato meta:premio. Ejemplo: 1:50000, 3:150000."
       />
-      {loading ? <p className="config-muted-text">Cargando...</p> : null}
-      {error ? <div className="alert-error">{error}</div> : null}
-      {localError ? <div className="alert-error">{localError}</div> : null}
+      {loading ? <LoadingState message="Cargando reglas de premios..." /> : null}
+      {error ? <ErrorState message={error} /> : null}
+      {localError ? <ErrorState message={localError} /> : null}
       <div className="table-wrap">
         <table>
           <thead>

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Button, Input, Label } from "@heroui/react";
+import { ErrorState } from "../../components/feedback/ErrorState";
 import type { LoginRequest } from "../../shared/contracts";
 
 type Props = {
@@ -60,11 +61,7 @@ export function LoginView({ onSubmit, error, loading = false }: Props) {
               className="input border border-[var(--color-border)] bg-[var(--input-bg)]"
             />
           </div>
-          {error ? (
-            <p className="alert-error" role="alert">
-              {error}
-            </p>
-          ) : null}
+          {error ? <ErrorState message={error} className="mb-1" /> : null}
           <Button type="submit" variant="primary" className="w-full" isDisabled={loading || submitting || !username.trim() || !password} aria-label="Entrar">
             {submitting ? "Entrando..." : "Entrar"}
           </Button>
