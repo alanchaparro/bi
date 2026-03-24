@@ -20,19 +20,20 @@
 - V-055: **Cerrado** en recovery (confirmación explícita HeroUI para "Parar todo (emergencia)").
 
 ## Canonico visual de filtros segmentados (nuevo obligatorio)
-- Para filtros de seleccion unica como `Categoria` y `Via de cobro`, usar siempre el mismo estilo de referencia:
+- Para filtros de selección única como `Categoria` y `Via de cobro`, usar siempre el mismo estilo de referencia:
   - grupo horizontal con borde redondeado y fondo del panel.
-  - opcion activa en bloque verde/teal con texto blanco.
+  - opción activa en bloque verde/teal con texto blanco.
   - opciones inactivas en texto gris claro sin relleno dominante.
   - espaciado y altura consistentes entre vistas.
 - Este canónico aplica en todo el frente nuevo.
 - Referencia técnica: `desacople.md` (sección `3.1`).
-- Referencia visual (capturas de producto):
-  - `C:\Users\alan.chaparro\.cursor\projects\c-desarrollos-bi-clone-nuevo\assets\c__Users_alan.chaparro_AppData_Roaming_Cursor_User_workspaceStorage_e1f915583459e4def05655d162d62b62_images_image-d1032ce4-d7da-451c-b8fc-dfcea1b5fc64.png`
-  - `C:\Users\alan.chaparro\.cursor\projects\c-desarrollos-bi-clone-nuevo\assets\c__Users_alan.chaparro_AppData_Roaming_Cursor_User_workspaceStorage_e1f915583459e4def05655d162d62b62_images_image-04db885c-3dc9-40f9-aa2f-29bd4c346e1f.png`
 
 ## Hallazgos visuales activos
 Actualmente no hay V-* abiertos pendientes de recuperar desde la última verificación consolidada.
+
+### Verificación visual 2026-03-24
+- V-063, V-064 y V-065: **Cerrado** en esta pasada.
+- Evidencia: barrido de módulos activos (`frontend/src/modules/**`) sin marcadores legacy (`SectionHeader`, `window.confirm`, `className="input"`, ids `*Legacy*`) y mantenimiento de patrón visual canónico para filtros segmentados (`Categoria`/`Via de cobro`) según `desacople.md` sección 3.1.
 
 ## Checklist visual para próximas pasadas
 - Coherencia de jerarquía visual (`AnalyticsPageHeader`, títulos, subtítulos)
@@ -41,7 +42,7 @@ Actualmente no hay V-* abiertos pendientes de recuperar desde la última verific
 - Contraste y foco visible (`focus-visible`)
 - Reduced motion global coherente
 - Tablas y filtros con lenguaje de negocio
-- Filtros segmentados canonicos (`Categoria`, `Via de cobro` y equivalentes) con el mismo estilo activo/inactivo
+- Filtros segmentados canónicos (`Categoria`, `Via de cobro` y equivalentes) con el mismo estilo activo/inactivo
 
 ## Historial
 | Fecha | Acción |
@@ -57,4 +58,5 @@ Actualmente no hay V-* abiertos pendientes de recuperar desde la última verific
 | 2026-03-23 | Auditoría incremental III: se reabren V-054/V-057/V-058/V-059 y se agregan V-060/V-061/V-062 por regresión amplia a implementaciones legacy en módulos brokers/cartera. |
 | 2026-03-23 | Dev/verifica: se cierran V-054, V-057, V-058, V-059, V-060, V-061 y V-062 con normalización canónica HeroUI en módulos config/brokers/cartera (headers, estados y confirmaciones). |
 | 2026-03-23 | Verificación visual de continuidad: sin V-* nuevos tras build/typecheck, backlog visual permanece en cero y sin drift detectado entre estado canónico y vistas brokers/cartera/config. |
-| 2026-03-23 | Se incorpora canónico explícito de filtros segmentados (`Categoria`/`Via de cobro`) con referencia visual para auditoría y desarrollo. |
+| 2026-03-23 | Se incorpora canónico explícito de filtros segmentados (`Categoria`/`Via de cobro`) para auditoría y desarrollo. |
+| 2026-03-24 | Verificación visual: V-063/V-064/V-065 cerrados; `bugs_visual.md` y `bugs.md` vuelven a estado consistente (sin drift) tras nueva pasada de desacople. |

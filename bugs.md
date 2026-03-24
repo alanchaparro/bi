@@ -96,6 +96,7 @@
 - **Canónico obligatorio:** `desacople.md`.
 - **Dev (2026-03-23):** se retiró el sufijo `Legacy` del flujo principal de navegación/routing (`analisisCarteraRendimientoLegacy` -> `analisisCarteraRendimiento`) en `navSections.ts`, `routes.ts`, `App.tsx` y `DashboardLayout.tsx`. Además, se normalizó `BrokersSupervisorsView` al patrón canónico (`AnalyticsPageHeader` + `ErrorState` + `Checkbox` HeroUI), eliminando `SectionHeader` y controles nativos en el módulo.
 - **Verificación (2026-03-23):** `frontend` typecheck/build en verde y barrido de marcadores (`analisisCarteraRendimientoLegacy`, `window.confirm`, `SectionHeader` en módulos activos) sin hallazgos en flujo principal; `bugs_visual.md` mantiene cero V-* abiertos.
+- **Verificación (2026-03-24):** pasada de verificación sobre módulos activos (`frontend/src/modules/**`) sin hallazgos de marcadores legacy canónicos (`SectionHeader`, `window.confirm`, `className="input"`, ids `*Legacy*`) y con filtros segmentados `Categoria` / `Via de cobro` en patrón canónico. Se normaliza el drift documental entre `bugs.md` y `bugs_visual.md`.
 - **Criterio de cierre:**
   1. Fronteras del canónico cumplidas (runtime, rutas, UI, estilos, contratos).
   2. Módulos nuevos sin marcadores legacy en flujo principal.
@@ -138,7 +139,26 @@
 - **Impacto operativo:** pipeline en rojo aunque la API esté levantada; falso negativo en quality gate.
 - **Dev (2026-03-23):** se agrega bootstrap de usuarios auth en `docker-ci` y el smoke ahora hace login (`/auth/login`) para obtener bearer token antes de invocar `portfolio-corte-v2/options`.
 - **Validación (2026-03-23):** prueba local del flujo CI (`bootstrap_auth_users` + login + POST autenticado a `portfolio-corte-v2/options`) en verde con respuesta y `meta` presente.
+- **Verificación (2026-03-24):** el workflow vigente mantiene autenticación previa obligatoria en `Smoke - Health Endpoints` (bootstrap de usuarios + login + bearer token antes de `portfolio-corte-v2/options`), eliminando la causa del `401` en el script de CI.
 - **Criterio de cierre:** actualizar smoke para autenticar primero (login + bearer token/cookie) o usar endpoint público equivalente; validar que `Smoke - Health Endpoints` quede en verde.
+
+### AUD-2026-03-24-39 — CI sin escaneo obligatorio de secretos ni vulnerabilidades
+- **Severidad:** Alta
+- **Prioridad:** P1
+- **Estado:** Cerrado
+- **Área:** Seguridad CI/CD (`.github/workflows/docker-ci.yml`, `.github/workflows/release.yml`)
+- **Descripción:** El pipeline no incluye pasos de seguridad obligatorios definidos por política del repositorio (escaneo de secretos y de dependencias vulnerables en CI/CD).
+- **Evidencia:**
+  - En `docker-ci.yml` solo hay build/tests/smoke/frontend; no existen jobs o pasos de `gitleaks` (o equivalente) ni auditoría de dependencias.
+  - En `release.yml` tampoco hay escaneo de secretos ni verificación de dependencias vulnerables.
+  - `AGENTS.md` exige: “Todo PR debe pasar escaneo de secretos y dependencias vulnerables. Si falla seguridad, no se mergea.”
+- **Impacto operativo:** riesgo de merge con secretos expuestos o librerías vulnerables sin gate de seguridad automático.
+- **Dev (2026-03-24):** se agrega job bloqueante `security-gates` en `.github/workflows/docker-ci.yml` y `.github/workflows/release.yml` con:
+  - `gitleaks/gitleaks-action@v2` para escaneo de secretos.
+  - `pip-audit --requirement requirements.txt` para dependencias backend.
+  - `npm audit --audit-level=high` sobre `frontend` para dependencias frontend.
+  - Encadenamiento obligatorio (`needs: security-gates`) para impedir ejecución de quality gates si falla seguridad.
+- **Criterio de cierre:** agregar gates de seguridad en CI (secret scan + dependency scan para backend y frontend), con falla bloqueante del pipeline ante hallazgos. **Cumplido.**
 
 ## Backlog abierto
 | Orden | Prioridad | ID | Resumen |
@@ -175,3 +195,9 @@
 | 2026-03-23 | Verificación final: **AUD-2026-03-23-36 Cerrado** y **AUD-2026-03-23-37 Cerrado** con tests de contrato/smoke backend en verde (`tests.test_api_v1_sync`, `tests.test_api_v1_analytics_v2_smoke_endpoints`) y workflows actualizados a Node 24/actions v5. |
 | 2026-03-23 | Auditoría **audit**: añadido **AUD-2026-03-23-38** (**Abierto**, **P1**) por falla en `Smoke - Health Endpoints` (CI) con `401` al invocar endpoint analytics protegido sin autenticación. |
 | 2026-03-23 | Verificación final: **AUD-2026-03-23-38 Cerrado** tras autenticar smoke CI (login + bearer) y validar flujo local en verde con `portfolio-corte-v2/options`. |
+| 2026-03-24 | Verificación **reabre**: **AUD-2026-03-23-38** vuelve a **Abierto** por evidencia de run CI con `401` en `Smoke - Health Endpoints`; pendiente confirmar ejecución del workflow actualizado en Actions. |
+| 2026-03-24 | Auditoría **audit**: añadido **AUD-2026-03-24-39** (**Abierto**, **P1**) por ausencia de gates de seguridad obligatorios (secret scan + dependency scan) en workflows de CI/CD. |
+| 2026-03-24 | Auditoría **audit**: **AUD-2026-03-23-35** se reabre por evidencia en `bugs_visual.md` (V-063, V-064, V-065) de estados legacy en brokers y drift entre documentación y código. |
+| 2026-03-24 | Dev/verifica: **AUD-2026-03-23-35 Cerrado** tras barrido de marcadores legacy en módulos activos y normalización del drift documental con `bugs_visual.md`. |
+| 2026-03-24 | Dev/verifica: **AUD-2026-03-23-38 Cerrado** al validar que `docker-ci` mantiene login + bearer en smoke de analytics, corrigiendo la causa del `401`. |
+| 2026-03-24 | Dev/verifica: **AUD-2026-03-24-39 Cerrado** al incorporar `security-gates` bloqueante (gitleaks + pip-audit + npm audit) en workflows `docker-ci` y `release`. |
