@@ -313,6 +313,7 @@ function StackedColumnChart({
   aColor = "var(--color-chart-1)",
   bColor = "var(--color-chart-5)",
   isLight = false,
+  labelZoomStorageKey,
 }: {
   data: Array<{ label: string; a: number; b: number }>;
   aLabel: string;
@@ -320,21 +321,67 @@ function StackedColumnChart({
   aColor?: string;
   bColor?: string;
   isLight?: boolean;
+  labelZoomStorageKey?: string;
 }) {
   const [hidden, setHidden] = useState<{ a: boolean; b: boolean }>({ a: false, b: false });
   const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
-  const maxY = Math.max(1, ...data.map((d) => (hidden.a ? 0 : Number(d.a || 0)) + (hidden.b ? 0 : Number(d.b || 0))));
+  const [showBarPercent, setShowBarPercent] = useState<boolean>(() => {
+    if (!labelZoomStorageKey) return true;
+    const raw = window.localStorage.getItem(`${labelZoomStorageKey}_show_pct`);
+    if (raw == null) return true;
+    return raw === "1";
+  });
+  const [showBarNumbers, setShowBarNumbers] = useState<boolean>(() => {
+    if (!labelZoomStorageKey) return true;
+    const raw = window.localStorage.getItem(`${labelZoomStorageKey}_show_num`);
+    if (raw == null) return true;
+    return raw === "1";
+  });
+  const [labelZoom, setLabelZoom] = useState<number>(() => {
+    if (!labelZoomStorageKey) return 100;
+    const raw = window.localStorage.getItem(labelZoomStorageKey);
+    const parsed = Number(raw || 100);
+    if (!Number.isFinite(parsed)) return 100;
+    return Math.min(200, Math.max(70, parsed));
+  });
+  const rawMaxY = Math.max(1, ...data.map((d) => (hidden.a ? 0 : Number(d.a || 0)) + (hidden.b ? 0 : Number(d.b || 0))));
+  const maxY = Math.max(1, rawMaxY * 1.08);
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map((r) => Math.round(maxY * r));
-  const chartHeight = 300;
-  const barWidth = 10;
-  const barGap = 4;
-  const minChartWidth = Math.max(620, data.length * (barWidth + barGap) + 24);
+  const chartHeight = 320;
+  const barWidth = data.length <= 1 ? 56 : data.length <= 3 ? 36 : data.length <= 8 ? 20 : 14;
+  const barGap = data.length <= 3 ? 10 : data.length <= 8 ? 7 : 4;
+  const useFluidBars = data.length >= 6;
+  const centerSparseBars = data.length <= 3;
+  const yAxisWidth = 96;
   const barTotalPct = (value: number) => Math.max(0, Math.min(100, (value / Math.max(1, maxY)) * 100));
   const axisBorder = isLight ? "1.2px solid var(--chart-grid)" : "1px solid var(--chart-grid)";
   const legendBtnClass = `analysis-legend-btn min-w-0 w-auto p-0 ${isLight ? "analysis-legend-btn--light" : ""}`.trim();
+  const labelZoomScale = Math.max(0.7, Math.min(2, labelZoom / 100));
+  const zoomOutDisabled = labelZoom <= 70;
+  const zoomInDisabled = labelZoom >= 200;
+  const showAnyBarDetail = showBarPercent || showBarNumbers;
+  const labelWidthBase = showBarPercent && showBarNumbers ? 56 : 40;
+  const labelAwareBarMinWidth = showAnyBarDetail ? Math.max(barWidth, Math.round(labelWidthBase * labelZoomScale)) : barWidth;
+  const horizontalDetailLayout = showAnyBarDetail && labelAwareBarMinWidth >= 62;
+  const chartBarWidthForLayout = useFluidBars ? labelAwareBarMinWidth : barWidth;
+  const chartMinWidth = Math.max(280, data.length * (chartBarWidthForLayout + barGap) + 24);
+  const stackWrapStyle = { "--analysis-stack-label-zoom": String(labelZoomScale) } as React.CSSProperties;
+
+  useEffect(() => {
+    if (!labelZoomStorageKey) return;
+    window.localStorage.setItem(labelZoomStorageKey, String(labelZoom));
+  }, [labelZoom, labelZoomStorageKey]);
+  useEffect(() => {
+    if (!labelZoomStorageKey) return;
+    window.localStorage.setItem(`${labelZoomStorageKey}_show_pct`, showBarPercent ? "1" : "0");
+  }, [showBarPercent, labelZoomStorageKey]);
+  useEffect(() => {
+    if (!labelZoomStorageKey) return;
+    window.localStorage.setItem(`${labelZoomStorageKey}_show_num`, showBarNumbers ? "1" : "0");
+  }, [showBarNumbers, labelZoomStorageKey]);
 
   return (
-    <div className="analysis-stack-wrap">
+    <div className="analysis-stack-wrap" style={stackWrapStyle}>
       <div className="analysis-stack-legend">
         <Button size="sm" variant="ghost" className={legendBtnClass} data-hidden={hidden.a ? "true" : undefined} aria-label={hidden.a ? "Mostrar serie" : "Ocultar serie"} onPress={() => setHidden((s) => ({ ...s, a: !s.a }))}>
           <span className="analysis-legend-swatch-sm" style={{ background: aColor }} />{aLabel}
@@ -342,6 +389,25 @@ function StackedColumnChart({
         <Button size="sm" variant="ghost" className={legendBtnClass} data-hidden={hidden.b ? "true" : undefined} aria-label={hidden.b ? "Mostrar serie" : "Ocultar serie"} onPress={() => setHidden((s) => ({ ...s, b: !s.b }))}>
           <span className="analysis-legend-swatch-sm" style={{ background: bColor }} />{bLabel}
         </Button>
+        <div className="analysis-stack-detail-controls">
+          <span className="analysis-stack-detail-label">Etiquetas:</span>
+          <Button size="sm" variant="ghost" className={`${legendBtnClass} analysis-stack-detail-btn`.trim()} data-hidden={!showBarPercent ? "true" : undefined} aria-label="Mostrar u ocultar porcentajes en barras" onPress={() => setShowBarPercent((prev) => !prev)}>
+            Ver %
+          </Button>
+          <Button size="sm" variant="ghost" className={`${legendBtnClass} analysis-stack-detail-btn`.trim()} data-hidden={!showBarNumbers ? "true" : undefined} aria-label="Mostrar u ocultar números en barras" onPress={() => setShowBarNumbers((prev) => !prev)}>
+            Ver #
+          </Button>
+        </div>
+        <div className="analysis-stack-zoom">
+          <span className="analysis-stack-zoom-label">Zoom etiquetas</span>
+          <Button size="sm" variant="ghost" className={legendBtnClass} isDisabled={zoomOutDisabled} onPress={() => setLabelZoom((prev) => Math.max(70, prev - 10))} aria-label="Reducir zoom de etiquetas">
+            -
+          </Button>
+          <span className="analysis-stack-zoom-value">{labelZoom}%</span>
+          <Button size="sm" variant="ghost" className={legendBtnClass} isDisabled={zoomInDisabled} onPress={() => setLabelZoom((prev) => Math.min(200, prev + 10))} aria-label="Aumentar zoom de etiquetas">
+            +
+          </Button>
+        </div>
       </div>
       <div className="analysis-stack-hoverline">
         {(() => {
@@ -357,36 +423,70 @@ function StackedColumnChart({
               <span className="analysis-stack-hover-label">{hoveredLabel}</span>
               <span className="analysis-stack-hover-badge">
                 <span className="analysis-legend-swatch-xs" style={{ background: aColor }} />
-                {aLabel}: {aPct}%
+                {aLabel}: {formatCount(a)} ({aPct}%)
               </span>
               <span className="analysis-stack-hover-badge">
                 <span className="analysis-legend-swatch-xs" style={{ background: bColor }} />
-                {bLabel}: {bPct}%
+                {bLabel}: {formatCount(b)} ({bPct}%)
               </span>
             </>
           );
         })()}
       </div>
       <div className="analysis-chart-scroll">
-        <div style={{ minWidth: minChartWidth, display: "grid", gridTemplateColumns: "56px 1fr", gap: "0.35rem" }}>
+        <div style={{ width: "100%", minWidth: chartMinWidth, display: "grid", gridTemplateColumns: `${yAxisWidth}px 1fr`, gap: "0.55rem" }}>
           <div style={{ position: "relative", height: chartHeight }}>
-            {yTicks.map((tick, idx) => <div key={tick} className="analysis-axis-tick" style={{ bottom: `${(idx / (yTicks.length - 1)) * 100}%` }}>{formatCount(tick)}</div>)}
+            {yTicks.map((tick, idx) => {
+              const isBottomTick = idx === 0;
+              const isTopTick = idx === yTicks.length - 1;
+              return (
+                <div
+                  key={tick}
+                  className="analysis-axis-tick"
+                  style={
+                    isTopTick
+                      ? { bottom: "calc(100% - 0.95rem)", transform: "none" }
+                      : {
+                          bottom: `${(idx / (yTicks.length - 1)) * 100}%`,
+                          transform: isBottomTick ? "translateY(0)" : "translateY(50%)",
+                        }
+                  }
+                >
+                  {formatCount(tick)}
+                </div>
+              );
+            })}
           </div>
-          <div style={{ position: "relative", height: chartHeight, borderLeft: axisBorder, borderBottom: axisBorder, display: "flex", alignItems: "flex-end", gap: `${barGap}px`, padding: "0", width: "100%" }}>
+          <div style={{ position: "relative", height: chartHeight, borderLeft: axisBorder, borderBottom: axisBorder, display: "flex", alignItems: "flex-end", justifyContent: centerSparseBars ? "center" : "flex-start", gap: `${barGap}px`, padding: "0.85rem 0.25rem 0 0.1rem", width: "100%" }}>
             {yTicks.map((tick, idx) => <div key={`grid-${tick}`} style={{ position: "absolute", left: 0, right: 0, bottom: `${(idx / (yTicks.length - 1)) * 100}%`, borderTop: "1px solid var(--chart-grid-soft)" }} />)}
             {data.map((d) => {
               const a = hidden.a ? 0 : Number(d.a || 0);
               const b = hidden.b ? 0 : Number(d.b || 0);
+              const rowTotal = Math.max(1, a + b);
+              const aShare = ((a / rowTotal) * 100).toFixed(1);
+              const bShare = ((b / rowTotal) * 100).toFixed(1);
               const aPct = barTotalPct(a);
               const bPct = barTotalPct(b);
               const isHovered = hoveredLabel === d.label;
               const totalPct = Math.max(aPct + bPct, 0);
+              const minPctForDetails = horizontalDetailLayout ? 20 : 14;
+              const showInsideDetails = showAnyBarDetail && totalPct >= minPctForDetails;
+              const aDetail = showBarPercent && showBarNumbers ? `V ${aShare}% | ${formatCount(a)}` : showBarPercent ? `V ${aShare}%` : `V ${formatCount(a)}`;
+              const bDetail = showBarPercent && showBarNumbers ? `M ${bShare}% | ${formatCount(b)}` : showBarPercent ? `M ${bShare}%` : `M ${formatCount(b)}`;
               return (
                 <div
                   key={d.label}
                   onMouseEnter={() => setHoveredLabel(d.label)}
                   onMouseLeave={() => setHoveredLabel((prev) => (prev === d.label ? null : prev))}
-                  style={{ flex: "1 1 0", minWidth: `${barWidth}px`, height: "100%", position: "relative", cursor: "pointer", overflow: "visible" }}
+                  style={{
+                    flex: useFluidBars ? "1 1 0" : "0 0 auto",
+                    width: useFluidBars ? undefined : `${barWidth}px`,
+                    minWidth: useFluidBars ? `${labelAwareBarMinWidth}px` : `${barWidth}px`,
+                    height: "100%",
+                    position: "relative",
+                    cursor: "pointer",
+                    overflow: "visible",
+                  }}
                   title={`${d.label} | ${aLabel}: ${formatCount(a)} | ${bLabel}: ${formatCount(b)} | Total: ${formatCount(a + b)}`}
                 >
                   <div
@@ -399,7 +499,7 @@ function StackedColumnChart({
                       borderRadius: "999px",
                       overflow: "hidden",
                       pointerEvents: "none",
-                      transform: isHovered ? "scaleX(0.88) translateY(-6px)" : "scaleX(1) translateY(0)",
+                      transform: isHovered ? "scaleX(0.9) translateY(-2px)" : "scaleX(1) translateY(0)",
                       transformOrigin: "center bottom",
                       filter: isHovered ? "brightness(1.04) saturate(1.03)" : "none",
                       transition: "transform 320ms cubic-bezier(0.22, 1, 0.36, 1), filter 320ms ease",
@@ -417,6 +517,8 @@ function StackedColumnChart({
                           background: aColor,
                           borderBottomLeftRadius: "999px",
                           borderBottomRightRadius: "999px",
+                          borderTopLeftRadius: bPct > 0 ? 0 : "999px",
+                          borderTopRightRadius: bPct > 0 ? 0 : "999px",
                         }}
                       />
                     )}
@@ -426,22 +528,49 @@ function StackedColumnChart({
                           position: "absolute",
                           left: 0,
                           right: 0,
-                          bottom: `calc(${aPct}% - 1px)`,
+                          bottom: `${aPct}%`,
                           height: `${bPct}%`,
+                          minHeight: b > 0 ? "1.5px" : undefined,
                           background: bColor,
                           borderTopLeftRadius: "999px",
                           borderTopRightRadius: "999px",
                         }}
                       />
                     )}
+                    {showInsideDetails ? (
+                      <div className={`analysis-stack-bar-overlay ${horizontalDetailLayout ? "analysis-stack-bar-overlay--horizontal" : ""}`.trim()}>
+                        {!hidden.b ? (
+                          <div className="analysis-stack-bar-tag">
+                            <span className="analysis-stack-bar-tag-main">{bDetail}</span>
+                          </div>
+                        ) : null}
+                        {!hidden.a ? (
+                          <div className="analysis-stack-bar-tag">
+                            <span className="analysis-stack-bar-tag-main">{aDetail}</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               );
             })}
           </div>
           <div />
-          <div className="analysis-stack-labels" style={{ gap: `${barGap}px` }}>
-            {data.map((d) => <div key={`lbl-${d.label}`} className="analysis-bar-label" style={{ minWidth: `${barWidth}px` }}>{d.label}</div>)}
+          <div className="analysis-stack-labels" style={{ gap: `${barGap}px`, marginTop: "0.22rem" }}>
+            {data.map((d) => (
+              <div
+                key={`lbl-${d.label}`}
+                className="analysis-bar-label"
+                style={{
+                  minWidth: `${barWidth}px`,
+                  width: useFluidBars ? undefined : `${barWidth}px`,
+                  flex: useFluidBars ? "1 1 0" : "0 0 auto",
+                }}
+              >
+                {d.label}
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -699,8 +828,8 @@ export function AnalisisCarteraView() {
   }, []);
 
   const chartCards: Record<ChartId, { title: string; content: React.ReactElement }> = {
-    series_vig_mor_month: { title: "Cartera por Gestión: Vigente vs Moroso", content: <StackedColumnChart data={vigMorByMonth} aLabel="Vigente" bLabel="Moroso" aColor="var(--color-state-ok)" bColor="var(--color-state-warn)" isLight={isLightTheme} /> },
-    series_via_month: { title: "Cartera por Gestión: Cobrador vs Débito", content: <StackedColumnChart data={viaByMonth} aLabel="Cobrador" bLabel="Débito" aColor="var(--color-chart-1)" bColor="var(--color-chart-2)" isLight={isLightTheme} /> },
+    series_vig_mor_month: { title: "Cartera por Gestión: Vigente vs Moroso", content: <StackedColumnChart data={vigMorByMonth} aLabel="Vigente" bLabel="Moroso" aColor="var(--color-state-ok)" bColor="var(--color-state-warn)" isLight={isLightTheme} labelZoomStorageKey="analisis_cartera_zoom_vig_mor_v1" /> },
+    series_via_month: { title: "Cartera por Gestión: Cobrador vs Débito", content: <StackedColumnChart data={viaByMonth} aLabel="Cobrador" bLabel="Débito" aColor="var(--color-chart-1)" bColor="var(--color-chart-2)" isLight={isLightTheme} labelZoomStorageKey="analisis_cartera_zoom_via_v1" /> },
     by_un: { title: "Contratos por Unidad de Negocio", content: <BarChart data={byUn} isLight={isLightTheme} colors={chartPalette} /> },
     by_tramo: { title: "Contratos por Tramo", content: <DonutChart data={byTramo} isLight={isLightTheme} colors={chartPalette} /> },
     by_via: { title: "Contratos por Via de Cobro", content: <BarChart data={byVia} isLight={isLightTheme} colors={chartPalette} /> },

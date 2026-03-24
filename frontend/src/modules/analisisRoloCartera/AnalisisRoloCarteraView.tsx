@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@heroui/react";
 import { AnalyticsMetaBadges } from "../../components/analytics/AnalyticsMetaBadges";
 import { AnalyticsPageHeader } from "../../components/analytics/AnalyticsPageHeader";
@@ -105,6 +106,12 @@ function SignedCount({ value }: { value: number }) {
 export function AnalisisRoloCarteraView() {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const [isFloatingFiltersOpen, setIsFloatingFiltersOpen] = useState(false);
+  const [floatingCloseMonths, setFloatingCloseMonths] = useState<string[]>([]);
+  const [floatingYears, setFloatingYears] = useState<string[]>([]);
+  const [floatingPosition, setFloatingPosition] = useState<{ left: number; top: number } | null>(null);
+  const [isClient, setIsClient] = useState(false);
+  const floatingWrapRef = useRef<HTMLDivElement | null>(null);
   const [optionsData, setOptionsData] = useState<PortfolioCorteOptionsResponse | null>(null);
   const [summaryData, setSummaryData] = useState<PortfolioRoloSummaryResponse | null>(null);
   const [loadingOptions, setLoadingOptions] = useState(false);
@@ -170,10 +177,64 @@ export function AnalisisRoloCarteraView() {
     void loadSummary(appliedFilters);
   }, [appliedFilters, loadSummary]);
 
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const applyMergedFilters = useCallback(async (next: Filters) => {
+    setFilters(next);
+    setAppliedFilters(next);
+    await loadSummary(next);
+  }, [loadSummary]);
+
   const applyFilters = useCallback(async () => {
-    setAppliedFilters(filters);
-    await loadSummary(filters);
-  }, [filters, loadSummary]);
+    await applyMergedFilters(filters);
+  }, [applyMergedFilters, filters]);
+
+  const openFloatingFilters = useCallback(() => {
+    setFloatingCloseMonths(filters.closeMonths);
+    setFloatingYears(filters.years);
+    setIsFloatingFiltersOpen(true);
+  }, [filters.closeMonths, filters.years]);
+
+  const applyFloatingFilters = useCallback(async () => {
+    const nextFilters: Filters = {
+      ...filters,
+      closeMonths: floatingCloseMonths.length ? [floatingCloseMonths[floatingCloseMonths.length - 1]] : [],
+      years: floatingYears,
+    };
+    await applyMergedFilters(nextFilters);
+    setIsFloatingFiltersOpen(false);
+  }, [applyMergedFilters, filters, floatingCloseMonths, floatingYears]);
+
+  const startFloatingDrag = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    const wrap = floatingWrapRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const offsetX = event.clientX - rect.left;
+    const offsetY = event.clientY - rect.top;
+    document.body.classList.add("is-dragging-floating-filter");
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const currentWrap = floatingWrapRef.current;
+      if (!currentWrap) return;
+      const currentRect = currentWrap.getBoundingClientRect();
+      const maxLeft = Math.max(0, window.innerWidth - currentRect.width);
+      const maxTop = Math.max(0, window.innerHeight - currentRect.height);
+      const nextLeft = Math.min(maxLeft, Math.max(0, moveEvent.clientX - offsetX));
+      const nextTop = Math.min(maxTop, Math.max(0, moveEvent.clientY - offsetY));
+      setFloatingPosition({ left: nextLeft, top: nextTop });
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      document.body.classList.remove("is-dragging-floating-filter");
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp, { once: true });
+    window.addEventListener("pointercancel", onPointerUp, { once: true });
+  }, []);
 
   const kpis = summaryData?.kpis || {};
   const rows = summaryData?.rows || [];
@@ -193,8 +254,60 @@ export function AnalisisRoloCarteraView() {
     [kpis],
   );
 
+  const floatingWidget = (
+    <div
+      ref={floatingWrapRef}
+      className={`rolo-floating-filter-wrap ${isFloatingFiltersOpen ? "is-open" : ""}`}
+      style={floatingPosition ? { left: `${floatingPosition.left}px`, top: `${floatingPosition.top}px`, right: "auto", bottom: "auto", transform: "none" } : undefined}
+    >
+      <button
+        type="button"
+        className="rolo-floating-drag-btn"
+        onPointerDown={startFloatingDrag}
+        aria-label="Mover filtros rápidos"
+        title="Mover filtros rápidos"
+      >
+        ::
+      </button>
+      {isFloatingFiltersOpen ? (
+        <div className="card rolo-floating-filter-card">
+          <div className="rolo-floating-filter-title">Filtros rápidos</div>
+          <div className="rolo-floating-filter-grid">
+            <MultiSelectFilter
+              className="analysis-filter-control"
+              label="Mes de cierre"
+              options={options.close_months || []}
+              selected={floatingCloseMonths}
+              onChange={(closeMonths) => setFloatingCloseMonths(closeMonths.length ? [closeMonths[closeMonths.length - 1]] : [])}
+            />
+            <MultiSelectFilter
+              className="analysis-filter-control"
+              label="Año de contrato"
+              options={options.contract_years || []}
+              selected={floatingYears}
+              onChange={setFloatingYears}
+            />
+          </div>
+          <div className="rolo-floating-filter-actions">
+            <Button size="sm" variant="primary" onPress={() => void applyFloatingFilters()} isDisabled={loadingSummary || !floatingCloseMonths.length}>
+              Aplicar
+            </Button>
+            <Button size="sm" variant="ghost" onPress={() => setIsFloatingFiltersOpen(false)}>
+              Contraer
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button className="rolo-floating-filter-fab rolo-floating-filter-fab-vertical" variant="primary" onPress={openFloatingFilters}>
+          Filtros
+        </Button>
+      )}
+    </div>
+  );
+
   return (
-    <section className="card analysis-card analysis-panel-card">
+    <>
+      <section className="card analysis-card analysis-panel-card">
       <AnalyticsPageHeader
         kicker="ROLO"
         pill="Analytics v2"
@@ -290,6 +403,8 @@ export function AnalisisRoloCarteraView() {
           )}
         </>
       ) : null}
-    </section>
+      </section>
+      {isClient ? createPortal(floatingWidget, document.body) : null}
+    </>
   );
 }
