@@ -126,6 +126,20 @@
 - **Dev (2026-03-23):** workflows actualizados a `actions/checkout@v5`, `actions/setup-node@v5` y `actions/upload-artifact@v5` (release), con `node-version: 24` en jobs frontend.
 - **Criterio de cierre:** actualizar actions/workflow a versiones compatibles con Node 24 y eliminar warning de deprecación en CI.
 
+### AUD-2026-03-23-38 — Smoke CI de analytics falla por `401 Unauthorized`
+- **Severidad:** Alta
+- **Prioridad:** P1
+- **Estado:** Cerrado
+- **Área:** CI/CD smoke backend (`.github/workflows/docker-ci.yml`)
+- **Descripción:** El paso `Smoke - Health Endpoints` hace `POST /api/v1/analytics/portfolio-corte-v2/options` sin autenticación y recibe `401`, rompiendo el workflow.
+- **Evidencia:** log del runner:
+  - `curl: (22) The requested URL returned error: 401`
+  - el script actual invoca `curl -fsS -X POST .../analytics/portfolio-corte-v2/options -d "{}"` sin token/cookie de sesión.
+- **Impacto operativo:** pipeline en rojo aunque la API esté levantada; falso negativo en quality gate.
+- **Dev (2026-03-23):** se agrega bootstrap de usuarios auth en `docker-ci` y el smoke ahora hace login (`/auth/login`) para obtener bearer token antes de invocar `portfolio-corte-v2/options`.
+- **Validación (2026-03-23):** prueba local del flujo CI (`bootstrap_auth_users` + login + POST autenticado a `portfolio-corte-v2/options`) en verde con respuesta y `meta` presente.
+- **Criterio de cierre:** actualizar smoke para autenticar primero (login + bearer token/cookie) o usar endpoint público equivalente; validar que `Smoke - Health Endpoints` quede en verde.
+
 ## Backlog abierto
 | Orden | Prioridad | ID | Resumen |
 |---|---|---|---|
@@ -159,3 +173,5 @@
 | 2026-03-23 | Dev (ajuste adicional): reforzado `backend/app/db/session.py` para crear ruta SQLite automáticamente y usar fallback temporal si el path no es escribible en CI/contenedor. |
 | 2026-03-23 | Dev (ajuste adicional 2): workflow `docker-ci` fija `DATABASE_URL` a SQLite en `/tmp` durante CI para eliminar dependencia de rutas relativas en `/app`. |
 | 2026-03-23 | Verificación final: **AUD-2026-03-23-36 Cerrado** y **AUD-2026-03-23-37 Cerrado** con tests de contrato/smoke backend en verde (`tests.test_api_v1_sync`, `tests.test_api_v1_analytics_v2_smoke_endpoints`) y workflows actualizados a Node 24/actions v5. |
+| 2026-03-23 | Auditoría **audit**: añadido **AUD-2026-03-23-38** (**Abierto**, **P1**) por falla en `Smoke - Health Endpoints` (CI) con `401` al invocar endpoint analytics protegido sin autenticación. |
+| 2026-03-23 | Verificación final: **AUD-2026-03-23-38 Cerrado** tras autenticar smoke CI (login + bearer) y validar flujo local en verde con `portfolio-corte-v2/options`. |

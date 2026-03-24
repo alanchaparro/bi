@@ -63,6 +63,9 @@ jobs:
       - name: API v1 Contract Tests
         run: docker compose --profile dev exec -T api-v1 python -m unittest tests.test_api_v1_brokers_config -v
 
+      - name: Bootstrap Auth Users
+        run: docker compose --profile dev exec -T api-v1 python scripts/bootstrap_auth_users.py
+
       - name: Smoke - Health Endpoints
         shell: bash
         run: |
@@ -80,7 +83,16 @@ jobs:
           }
           retry_curl "http://localhost:8000/api/v1/health" /tmp/v1-health.json
           grep -q "\"ok\":true" /tmp/v1-health.json
-          curl -fsS -X POST "http://localhost:8000/api/v1/analytics/portfolio-corte-v2/options" -H "Content-Type: application/json" -d "{}" > /tmp/portfolio-options.json
+
+          login_payload="$(printf '{"username":"%s","password":"%s"}' "${DEMO_ADMIN_USER:-admin}" "${DEMO_ADMIN_PASSWORD:-change_me_demo_admin_password}")"
+          curl -fsS -X POST "http://localhost:8000/api/v1/auth/login" -H "Content-Type: application/json" -d "$login_payload" > /tmp/login.json
+          access_token="$(python -c "import json; print(json.load(open('/tmp/login.json','r',encoding='utf-8')).get('access_token',''))")"
+          test -n "$access_token"
+
+          curl -fsS -X POST "http://localhost:8000/api/v1/analytics/portfolio-corte-v2/options" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${access_token}" \
+            -d "{}" > /tmp/portfolio-options.json
           grep -q "\"meta\"" /tmp/portfolio-options.json
 
       - name: Export OpenAPI v1
