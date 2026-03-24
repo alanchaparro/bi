@@ -32,6 +32,15 @@ Separar por completo el flujo **legacy** del flujo **nuevo** para evitar depende
   - `style={{ ... }}` estructural para layout/estados que debe vivir en clases CSS
   - `alert-error` en vistas donde ya existe `ErrorState`
 
+### 3.1) Canónico visual de filtros segmentados (obligatorio)
+- Cada vez que se use un filtro tipo opcion unica por categorias (ejemplo: `Categoria`, `Via de cobro`), se debe usar el estilo canónico:
+  - contenedor tipo "pill group" con bordes suaves y fondo oscuro del panel.
+  - opcion activa con bloque relleno verde/teal, texto blanco y glow suave.
+  - opciones inactivas con texto gris claro, sin relleno fuerte.
+  - labels superiores en semibold, misma jerarquia tipografica del panel.
+- No mezclar en el mismo contexto variantes legacy de tabs/botones que rompan ese lenguaje visual.
+- Este patron aplica en todo frontend nuevo (dashboard + modulos analiticos), no solo en una vista.
+
 ### 4) Backend/contratos
 - No mezclar payloads legacy y v2 en el mismo contenedor UI.
 - El frontend nuevo consume rutas v2 por defecto (segun `AGENTS.md`).
@@ -47,6 +56,7 @@ Separar por completo el flujo **legacy** del flujo **nuevo** para evitar depende
 - [x] No hay imports de `SidebarNav`/`App.tsx` legacy en runtime nuevo.
 - [x] Modulos nuevos (brokers/cartera/config) sin `SectionHeader`, sin `window.confirm`, sin `input/select` legacy.
 - [x] Vistas usan `AnalyticsPageHeader` + estados `LoadingState/ErrorState`.
+- [x] Filtros segmentados (`Categoria`, `Via de cobro` y equivalentes) respetan el canónico visual de estado activo/inactivo.
 - [x] Hallazgos V-* en `bugs_visual.md` cerrados y alineados con este canonico.
 - [x] Hallazgo tecnico de desacople en `bugs.md` pasa a `Cerrado`.
 

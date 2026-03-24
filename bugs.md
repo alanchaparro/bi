@@ -99,8 +99,9 @@
 - **Criterio de cierre:**
   1. Fronteras del canónico cumplidas (runtime, rutas, UI, estilos, contratos).
   2. Módulos nuevos sin marcadores legacy en flujo principal.
-  3. `bugs_visual.md` sin V-* abiertos por mezcla legacy/nuevo.
-  4. Auditoría `verifica` confirma desacople sin drift.
+  3. Filtros segmentados tipo `Categoria` / `Via de cobro` con estilo canónico consistente en todo frontend nuevo (según `desacople.md`, sección `3.1`).
+  4. `bugs_visual.md` sin V-* abiertos por mezcla legacy/nuevo.
+  5. Auditoría `verifica` confirma desacople sin drift.
 
 ### AUD-2026-03-23-36 — Falla de CI en tests backend por SQLite con ruta relativa no garantizada
 - **Severidad:** Alta
