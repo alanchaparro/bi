@@ -24,6 +24,10 @@ export type BrokersFilters = {
   vias: string[];
   years: string[];
   months: string[];
+  /** VIGENTE / MOROSO (vacío = todas) */
+  categorias: string[];
+  /** Tramos 0–7 como string (vacío = todos) */
+  tramos: string[];
 };
 
 export type BrokersPreferences = {
@@ -36,4 +40,6 @@ export const EMPTY_BROKERS_FILTERS: BrokersFilters = {
   vias: [],
   years: [],
   months: [],
+  categorias: [],
+  tramos: [],
 };

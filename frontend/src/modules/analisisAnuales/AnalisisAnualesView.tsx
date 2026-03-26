@@ -287,6 +287,7 @@ export function AnalisisAnualesView() {
       {!loadingOptions && !error ? (
         <div className={`data-transition ${loadingSummary ? 'data-transition--loading' : ''}`}>
         <div className="analysis-table-section">
+          <p className="table-scroll-hint">Desliza la tabla horizontalmente para ver todas las columnas.</p>
           <div className="table-wrap analysis-table-wrap analysis-table-wrap-annual">
             <table>
               <thead>
@@ -328,7 +329,7 @@ export function AnalisisAnualesView() {
                 ) : (
                   <tr>
                     <td colSpan={13}>
-                      <EmptyState message="Sin datos para filtros seleccionados." />
+                      <EmptyState message="Sin datos para filtros seleccionados." suggestion="Prueba ajustando la unidad de negocio, el año o el mes/año de contrato." />
                     </td>
                   </tr>
                 )}

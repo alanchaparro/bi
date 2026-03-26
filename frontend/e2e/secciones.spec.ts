@@ -10,7 +10,7 @@ async function loginAndWaitDashboard(page: import('@playwright/test').Page) {
   await page.getByLabel(/usuario/i).fill(E2E_USER)
   await page.getByLabel(/contrase(ñ|n)a/i).fill(E2E_PASS)
   await page.getByRole('button', { name: /entrar/i }).click()
-  await expect(page).toHaveURL(/\/(analisis-cartera|config|analisis-anuales|rendimiento|cobranzas-cohorte)/, { timeout: LOGIN_REDIRECT_MS })
+  await expect(page).toHaveURL(/\/(cartera|analisis-cartera|config|analisis-anuales|rendimiento|cobranzas-cohorte)/, { timeout: LOGIN_REDIRECT_MS })
   await expect(page.getByRole('heading', { name: /epem - cartera de cobranzas/i })).toBeVisible({ timeout: LOGIN_HEADING_MS })
 }
 
@@ -48,19 +48,21 @@ test.describe('Todas las secciones tras login', () => {
   })
 
   test('Configuracion: seccion visible', async ({ page }) => {
-    await page.getByRole('link', { name: /configuraci(o|ó)n/i }).click()
-    await expect(page).toHaveURL(/\/config/)
+    await page.getByTestId('nav-config').click()
+    await expect(page).toHaveURL(/\/config/, { timeout: 15_000 })
     await expect(page.getByRole('heading', { level: 1 }).or(page.getByRole('heading', { level: 2 })).first()).toBeVisible({ timeout: 10_000 })
   })
 
   test('Menu desplegable movil: abrir y cerrar', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 800 })
-    const header = page.locator('header').first()
-    const openMenuBtn = header.getByRole('button', { name: /abrir men(u|ú)|cerrar men(u|ú)/i })
-    await expect(openMenuBtn).toBeVisible({ timeout: 5_000 })
-    await openMenuBtn.click()
+    const headerToggle = page.getByTestId('sidebar-toggle')
+    await expect(headerToggle).toBeVisible({ timeout: 5_000 })
+    await expect(headerToggle).toHaveAttribute('aria-label', /abrir men(u|ú)|cerrar men(u|ú)/i)
+    await headerToggle.click()
     await expect(page.getByRole('navigation', { name: /men(u|ú) principal/i })).toBeInViewport()
-    await openMenuBtn.click()
-    await expect(openMenuBtn).toHaveAttribute('aria-expanded', 'false')
+    const sidebarClose = page.locator('aside').getByRole('button', { name: /^cerrar men(u|ú)$/i })
+    await expect(sidebarClose).toBeVisible({ timeout: 5_000 })
+    await sidebarClose.click()
+    await expect(headerToggle).toHaveAttribute('aria-expanded', 'false')
   })
 })

@@ -21,54 +21,43 @@
 - V-055: **Cerrado** en recovery (confirmación explícita HeroUI para "Parar todo (emergencia)").
 
 ## Hallazgos visuales activos
-- **V-075 (Abierto | Alta):** `app/login/page.tsx` muestra error como texto plano (`<p className="text-sm text-[var(--color-error)]">`) en vez de patrón canónico de estado (`ErrorState` o equivalente de bloque).  
-  **Impacto:** feedback de error menos visible/consistente en una pantalla crítica de acceso.  
-  **Fix mínimo sugerido:** reutilizar `LoginView` o migrar el bloque de error a componente de estado visual consistente con el resto del frontend.
-- **V-076 (Abierto | Alta):** `BrokersView` usa fila de tabla para vacío con copy técnico (`analytics_contract_snapshot`, validación de supervisores) y mezcla semántica con error.  
-  **Impacto:** confunde al cliente operativo y rompe jerarquía visual de estados.  
-  **Fix mínimo sugerido:** mantener error en `ErrorState` y vacío en `EmptyState` con lenguaje de negocio (sin nombres de tablas internas).
-- **V-077 (Abierto | Media):** `SidebarNav` legacy usa glifos abreviados (`[]`, `AC`, `BM`, etc.) y menú hamburguesa como carácter `☰`.  
-  **Impacto:** iconografía poco semántica y percepción visual menos profesional frente a shell Next.  
-  **Fix mínimo sugerido:** reemplazar por iconos SVG o set de iconos consistente con labels legibles.
-- **V-078 (Abierto | Media):** pantallas base de carga usan texto plano (`DashboardLayout` y `app/page.tsx`) sin `LoadingState` canónico.  
-  **Impacto:** inconsistencia visual en el primer contacto (arranque/autenticación).  
-  **Fix mínimo sugerido:** unificar a `LoadingState` con copy corto y patrón visual consistente.
-- **V-079 (Abierto | Media):** objetivos táctiles menores al mínimo canónico (`--touch-min: 44px`) en controles frecuentes (`dashboard-sidebar-sublink` 36px, `theme-toggle` 38px, `multi-select-trigger` 42px).  
-  **Impacto:** menor usabilidad táctil y más errores de interacción en operación.  
-  **Fix mínimo sugerido:** normalizar alturas/tamaño a `>=44px` en esos controles.
-- **V-080 (Abierto | Media):** `BrokersSupervisorsView` no muestra estado vacío cuando no hay supervisores disponibles; queda panel sin contexto.  
-  **Impacto:** pantalla “en blanco” que genera duda operativa.  
-  **Fix mínimo sugerido:** agregar `EmptyState` con mensaje y acción sugerida.
-- **V-081 (Abierto | Baja):** `DashboardLayout` mantiene copy sin tildes en navegación/cabecera (`Menu`, `Navegacion`, `sincronizacion`, `menu lateral`).  
-  **Impacto:** detalle de calidad percibida en UI principal.  
-  **Fix mínimo sugerido:** corregir a `Menú`, `Navegación`, `sincronización`, `menú`.
-- **V-082 (Abierto | Baja):** `MultiSelectFilter` usa caret textual (`^`/`v`) en lugar de icono visual consistente.  
-  **Impacto:** se percibe como placeholder/legacy frente al resto de componentes pulidos.  
-  **Fix mínimo sugerido:** reemplazar por chevron SVG o icono del sistema UI.
-- **V-083 (Abierto | Baja):** `AnalisisAnualesView` muestra `EmptyState` sin `suggestion` accionable.  
-  **Impacto:** vacío correcto pero poco guiado para usuario operativo.  
-  **Fix mínimo sugerido:** incluir sugerencia breve de ajuste de filtros/período.
-- **V-084 (Abierto | Baja):** `ConfigView` mantiene textos sin tilde en sección sensible (`conexion`, `Comprobar conexion`, `Sin conexion`).  
-  **Impacto:** inconsistencia de copy en una pantalla operativa crítica.  
-  **Fix mínimo sugerido:** normalizar ortografía (`conexión`) en labels, botones y estados.
-- **V-085 (Abierto | Baja):** píldoras de estado de cabecera (`.header-pill`) tienen `min-height: 2rem`, por debajo del objetivo táctil móvil.  
-  **Impacto:** target reducido para interacción rápida en anchos chicos.  
-  **Fix mínimo sugerido:** elevar `min-height`/padding en móvil para cumplir objetivo táctil.
+- Ninguno.
 
-### Aperturas de esta pasada
-- **V-075 (Abierto):** login Next sin bloque de error canónico.
-- **V-076 (Abierto):** vacío técnico/confuso en `BrokersView`.
-- **V-077 (Abierto):** iconografía legacy poco semántica en `SidebarNav`.
-- **V-078 (Abierto):** cargas base con texto plano, sin `LoadingState`.
-- **V-079 (Abierto):** targets táctiles por debajo de `44px` en controles clave.
-- **V-080 (Abierto):** falta `EmptyState` en `BrokersSupervisorsView` sin opciones.
-- **V-081 (Abierto):** copy sin tildes en cabecera/layout Next.
-- **V-082 (Abierto):** caret textual en `MultiSelectFilter`.
-- **V-083 (Abierto):** `EmptyState` sin sugerencia en `AnalisisAnualesView`.
-- **V-084 (Abierto):** ortografía inconsistente en textos de conexión (`ConfigView`).
-- **V-085 (Abierto):** píldoras de header con target táctil bajo.
+### V-096 — Badge «Analytics v2» en Cartera vs expectativa de corte v2 unificado
+- **Estado:** Cerrado
+- **Impacto:** Media
+- **Área:** `frontend/src/modules/cartera/CarteraView.tsx`
+- **Tipo:** drift legacy | implementación frontend | flujo de uso
+- **Descripción:** La cabecera muestra **pill** «Analytics v2» pero la pantalla no está alineada al mismo contrato visual/semántico que el resto de analytics v2 (p. ej. **Análisis cartera** con cierre/gestión explícitos). Refuerza desconfianza (“¿esto es el mismo reporte?”) sobre todo si filtros o tabla no reflejan el estado operativo esperado.
+- **Evidencia:** revisión de código + coherencia con **AUD-2026-03-26-45**; pasos: menú **Cartera** → comparar filtros/encabezado con **Análisis cartera** en el mismo entorno.
+- **Canon / referencia:** `desacople.md` §4 (frontend nuevo consume v2 por defecto); `docs/spec-canon-patrones-ui-analytics.md` (jerarquía y lenguaje de filtros).
+- **Cierre (2026-03-26):** `CarteraView` migrado a `portfolio-corte-v2`; subtítulo y label **Mes de gestión** / **Vía de cobro** alineados al lenguaje de negocio; remisión explícita a **Análisis cartera** para detalle por contrato. Validación: `npm run typecheck` OK.
 
 ### Cierres de esta pasada
+- **V-096 (Cerrado):** ver bloque de detalle arriba; pill «Analytics v2» coherente con consumo real de API v2 en Cartera.
+- **V-090 (Cerrado):** `DashboardLayout` + `globals.css` compactan shell y devuelven protagonismo al dato (`--header-height: 3.75rem`, `--sidebar-width: 16rem`, menor padding de header/main). La verificación runtime en `1366x768` confirma que el shell ya no domina la pantalla.
+- **V-091 (Cerrado):** el header normaliza jerarqu?a de acciones secundarias con HeroUI (`sidebar toggle` y `Cerrar sesi?n` pasan a `outline`).
+- **V-091 (Cerrado):** la verificación runtime con capturas Playwright de `/analisis-anuales`, `/analisis-cartera` y `/config` confirma que la composición general ya no está desbordada: headers, filtros, acciones y contención base quedaron suficientemente ordenados para cerrar el hallazgo sistémico de composición.
+- **V-092 (Cerrado):** `.analysis-kicker` y `.chart-card` reducen ornamentaci?n y vuelven al canon compartido (kicker 11px sin sombra decorativa; chart cards con `--shadow-card` y superficie m?s sobria).
+- **V-092 (Cerrado):** la dirección cromática dark queda cerrada tras unificar tokens de `frontend/src/index.css` y `frontend/src/app/globals.css` y verificar runtime en `frontend/tmp/visual-audit-analisis-anuales.png`: shell, cards, superficies y acentos ya comparten una familia visual suficientemente coherente y más ejecutiva.
+- **V-093 (Cerrado):** la verificación runtime final confirma mejora suficiente del lenguaje tabular: encabezados más claros, mejor separación de filas, hover útil y menor percepción de “planilla cruda” en analytics. Se cierra como backlog sistémico, aunque puede seguir refinándose en iteraciones futuras.
+- **V-094 (Cerrado):** la verificación runtime a `100%` en `1366x768` confirma que analytics ya no exige bajar el zoom del navegador a ~`70%` para sentirse usable; la densidad desktop quedó dentro de baseline operativo.
+- **V-095 (Cerrado):** `Categoría` migra a `SegmentedControl` en `frontend/src/modules/analisisCartera/AnalisisCarteraView.tsx` y `frontend/src/modules/analisisRendimiento/AnalisisRendimientoView.tsx`, alineando el filtro al canon `Todas | Vigente | Moroso` definido por `docs/spec-canon-patrones-ui-analytics.md` y `AGENTS.md`. Validación: `npm.cmd run typecheck` OK.
+- **V-088 (Cerrado):** `ConfigView` corrige copy visible del submenú/configuración (`Configuración de negocio`, `Programación`, `Subsecciones de configuración`) y reemplaza `MYSQL_SSL_DISABLED` por lenguaje comprensible para negocio.
+- **V-089 (Cerrado):** `AnalisisCobranzasCohorteView` reemplaza cargas parciales en texto plano por `LoadingState` canónico (`Actualizando resultados...`, `Cargando detalle...`).
+- **V-086 (Cerrado):** `.table-wrap` recupera scroll horizontal real al separar `overflow-x: auto` de `overflow-y: hidden` y estabilizar gutter en tablas operativas.
+- **V-087 (Cerrado):** tablas anchas agregan hint móvil de desplazamiento en `AnalisisAnualesView`, `AnalisisCobranzasCohorteView`, `BrokersView` y `CarteraView`.
+- **V-075 (Cerrado):** `app/login/page.tsx` migra el feedback de error a `ErrorState` canónico.
+- **V-076 (Cerrado):** `BrokersView` separa error/empty state y elimina copy técnico a favor de lenguaje de negocio.
+- **V-077 (Cerrado):** `SidebarNav` reemplaza glifos/carácter hamburguesa por iconografía SVG consistente.
+- **V-078 (Cerrado):** `DashboardLayout` y `app/page.tsx` unifican pantallas base de carga con `LoadingState`.
+- **V-079 (Cerrado):** controles frecuentes se normalizan a objetivo táctil `>= 44px` (`dashboard-sidebar-sublink`, `theme-toggle`, `multi-select-trigger`, `header-pill`).
+- **V-080 (Cerrado):** `BrokersSupervisorsView` incorpora `EmptyState` guiado cuando no hay supervisores.
+- **V-081 (Cerrado):** `DashboardLayout` corrige microcopy principal (`Menú`, `Navegación`, `sincronización`, `Cerrar sesión`).
+- **V-082 (Cerrado):** `MultiSelectFilter` sustituye caret textual por chevron SVG.
+- **V-083 (Cerrado):** `AnalisisAnualesView` agrega `suggestion` accionable al `EmptyState`.
+- **V-084 (Cerrado):** `ConfigView` normaliza ortografía sensible de conexión/sincronización/contraseña.
+- **V-085 (Cerrado):** `.header-pill` eleva su target táctil al mínimo canónico.
 - **V-068 (Cerrado):** `LoginView` migra feedback de error a `ErrorState` y elimina uso de `alert-error` en login legacy.
 - **V-069 (Cerrado):** indicador de programación en cabecera migra de glifo ambiguo `"P"` a copy explícito `"Prog."`.
 - **V-070 (Cerrado):** appbar principal deja de clippear contenido al relajar `overflow` y `white-space` con wrap controlado en acciones.
@@ -92,6 +81,19 @@
 ## Historial
 | Fecha | Acción |
 |---|---|
+| 2026-03-26 | Dev (**ejecutador**): **V-096 Cerrado** tras migración `CarteraView` a v2 y copy/filtros alineados (evidencia: typecheck OK). |
+| 2026-03-26 | **Orquesta / audivisual:** apertura **V-096** (pill «Analytics v2» en Cartera vs alineación con flujo/copy de analytics v2); barrido sin `SectionHeader` / `window.confirm` / ids `*Legacy*` en `frontend/src/modules/**`. |
+| 2026-03-25 | Dev: consolidación de la sección *Hallazgos visuales activos* (cero ítems abiertos; cierres V-075–V-095 solo en *Cierres de esta pasada*) para eliminar drift con el estado real del código. |
+| 2026-03-25 | Auditoría coordinada levanta **V-094** por evidencia de runtime: la app sigue requiriendo zoom ~`70%` para desktop usable. Se agrega ademas el canon operativo `docs/spec-canon-patrones-ui-analytics.md` para fijar reglas de decision visual (por ejemplo, filtros `<= 3` opciones => segmented control) y baseline obligatorio de densidad desktop a `100%` en `1366x768`. |
+| 2026-03-25 | Verificaci?n visual con capturas reales del usuario reabre **V-090**, **V-091** y **V-092** y abre **V-093**: el frente sigue percibi?ndose ?junior? por shell pesado, spacing inconsistente, paleta/contraste d?biles y tablas visualmente pobres. Se concluye que hace falta una pasada de redise?o sist?mico, no solo microajustes.
+| 2026-03-25 | Auditoría visual estricta contra `manual-ux-ui-reporteria.pdf` + `frontend-visual-standard.md` + specs `spec-titulos-kicker.md`, `spec-visual-appbar-sidebar-buttons.md` y `spec-cards-transicion-filtros.md`: se abren **V-090** por shell sobredimensionado (`--header-height: 4.25rem`, `--sidebar-width: 18rem`, paddings altos), **V-091** por drift de variantes HeroUI en acciones del header (`ghost`/`outline` fuera del patrón secundario esperado) y **V-092** por tokens compartidos fuera de canon (`.analysis-kicker` más ornamental y `.chart-card` dark con shadow propia en vez de ceñirse al estándar compartido). |
+| 2026-03-25 | Dev/verifica: **V-090**, **V-091** y **V-092** pasan a **Cerrado** al compactar el shell (`--header-height: 3.75rem`, `--sidebar-width: 16rem`, menor padding de `DashboardLayout`), normalizar variantes HeroUI del header a `outline` y desornamentar tokens compartidos (`.analysis-kicker`, `.chart-card`) para alinearlos con el canon visual. Validación: `npm.cmd run typecheck` OK. |
+| 2026-03-25 | Dev/verifica: **V-088** y **V-089** pasan a **Cerrado** al normalizar copy visible de `ConfigView` (`Configuración de negocio`, `Programación`, `Subsecciones de configuración`, `Desactivar SSL de MySQL`) y migrar cargas parciales de `AnalisisCobranzasCohorteView` a `LoadingState` canónico. Validación: `npm.cmd run typecheck` OK. |
+| 2026-03-25 | Auditoría visual amplia guiada por `manual-ux-ui-reporteria.pdf` + specs visuales actuales: se abren **V-088** por copy técnico/no canónico visible en `ConfigView` (`Configuracion de negocio`, `Programacion`, `Subsecciones de configuracion`, `MYSQL_SSL_DISABLED`) y **V-089** por estados de carga parciales en texto plano en `AnalisisCobranzasCohorteView` (`Actualizando resultados...`, `Cargando detalle...`). |
+| 2026-03-25 | Dev/verifica: **V-086** y **V-087** pasan a **Cerrado** al restaurar scroll horizontal controlado en `.table-wrap` (`overflow-x: auto` + `overflow-y: hidden`) y añadir hints móviles de desplazamiento en tablas anchas. Validación: `npm.cmd run typecheck` OK. |
+| 2026-03-25 | Auditoría visual estricta enfocada en móvil y tablas: se abren **V-086** por scroll horizontal bloqueado en `.table-wrap` (`frontend/src/index.css`) y **V-087** por ausencia de hint/alternativa móvil en tablas anchas de `AnalisisAnualesView`, `AnalisisCobranzasCohorteView`, `BrokersView` y `CarteraView`, en tensión con el manual UX/UI local. |
+| 2026-03-25 | Dev/verifica: V-075 a V-085 pasan a **Cerrado** tras normalizar feedback login, vacíos guiados, iconografía/sidebar, `LoadingState`, targets táctiles `>=44px`, microcopy con tildes y `EmptyState` accionable. Validación: `npm.cmd run typecheck` OK y `npm.cmd run test:run -- src/components/layout/DashboardLayout.test.tsx src/app/providers.test.tsx` -> `2 passed`. |
+| 2026-03-25 | Auditoría visual coordinada: se confirman vigentes V-075 a V-085 en código/CSS activo (`app/login/page.tsx`, `BrokersView`, `SidebarNav`, `DashboardLayout`, `MultiSelectFilter`, `BrokersSupervisorsView`, `AnalisisAnualesView`, `ConfigView`) y no se detectan V-* nuevos fuera de ese backlog abierto. |
 | 2026-03-24 | Auditoría visual estricta de segunda pasada: se abren V-075 a V-085 (feedback canónico en login, copy/empty state en brokers, iconografía/cargas legacy, targets táctiles <44px, consistencia de microcopy y accesibilidad táctil en header/filtros). |
 | 2026-03-24 | Verificación de continuidad (dev): barrido visual/UX sin reaperturas V-*; se mantiene backlog visual en cero y sin drift frente a `bugs.md`. |
 | 2026-03-24 | Dev/verifica: V-068 a V-074 pasan a **Cerrado** tras normalizar feedback login/shell (`ErrorState`), copy de programación/sesión, clipping de appbar, unificación de botones en `ConfigView` y estados vacíos canónicos en cartera/mora. |

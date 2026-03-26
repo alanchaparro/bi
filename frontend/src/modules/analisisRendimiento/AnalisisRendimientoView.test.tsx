@@ -8,6 +8,7 @@ vi.mock('@heroui/react', () => ({
       {children}
     </button>
   ),
+  ButtonGroup: ({ children, ...props }: any) => <div {...props}>{children}</div>,
   Text: ({ children, ...props }: any) => <span {...props}>{children}</span>,
   Skeleton: ({ animationType, ...props }: any) => <div {...props} />,
 }))
@@ -97,8 +98,8 @@ describe('AnalisisRendimientoView', () => {
 
     expect(await screen.findByText('Rendimiento de cartera')).toBeTruthy()
     expect(screen.getByText('Mes de gestión')).toBeTruthy()
-    expect(screen.getAllByText('Rendimiento por monto').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Rendimiento por cantidad').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('RENDIMIENTO POR MONTO').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('RENDIMIENTO POR CANTIDAD').length).toBeGreaterThan(0)
     expect(screen.getByText('Monto a cobrar = monto vencido + monto cuota.')).toBeTruthy()
     expect(screen.getByText('VIGENTE = 0..3 | MOROSO = >3')).toBeTruthy()
 

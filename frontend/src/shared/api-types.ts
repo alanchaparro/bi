@@ -290,10 +290,14 @@ export interface components {
         };
         /** BrokersFilters */
         BrokersFilters: {
+            /** Categorias */
+            categorias?: string[];
             /** Months */
             months?: string[];
             /** Supervisors */
             supervisors?: string[];
+            /** Tramos */
+            tramos?: string[];
             /** Uns */
             uns?: string[];
             /** Vias */

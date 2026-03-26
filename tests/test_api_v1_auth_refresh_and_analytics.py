@@ -1,6 +1,8 @@
+import json
 import os
 import sys
 import unittest
+from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
@@ -17,6 +19,7 @@ os.environ.setdefault('JWT_SECRET_KEY', 'test_secret_key')
 os.environ.setdefault('JWT_REFRESH_SECRET_KEY', 'test_refresh_secret')
 
 from app.main import app  # noqa: E402
+from app.core.config import settings  # noqa: E402
 from app.core.rate_limit import rate_limiter  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
@@ -25,6 +28,10 @@ from app.models.brokers import (  # noqa: E402
     AuditLog,
     AnalyticsContractSnapshot,
     BrokersSupervisorScope,
+    CarteraCorteAgg,
+    CarteraFact,
+    CobranzasCohorteAgg,
+    CobranzasFact,
     CommissionRules,
     PrizeRules,
     AuthSession,
@@ -32,6 +39,8 @@ from app.models.brokers import (  # noqa: E402
     AuthUserState,
     FrontendPerfMetric,
 )
+from app.schemas.analytics import CobranzasCohorteIn  # noqa: E402
+from app.services.analytics_service import AnalyticsService, cohorte_base_cache_clear  # noqa: E402
 
 TEST_ADMIN_USER = os.environ.get('TEST_ADMIN_USER', os.environ.get('DEMO_ADMIN_USER', 'admin'))
 TEST_ADMIN_PASSWORD = os.environ.get('TEST_ADMIN_PASSWORD', os.environ.get('DEMO_ADMIN_PASSWORD', 'change_me_demo_admin_password'))
@@ -73,6 +82,10 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
         ensure_table(AuthUserState)
         ensure_table(AuthSession)
         ensure_table(AnalyticsContractSnapshot)
+        ensure_table(CarteraFact)
+        ensure_table(CobranzasFact)
+        ensure_table(CarteraCorteAgg)
+        ensure_table(CobranzasCohorteAgg)
         ensure_analytics_source_freshness_table()
         ensure_table(BrokersSupervisorScope)
         ensure_table(CommissionRules)
@@ -145,6 +158,54 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
         payload = login.json()
         self.assertEqual(payload.get('role'), 'admin')
         self.assertIn('brokers:write_config', payload.get('permissions', []))
+
+    def test_login_rate_limit_is_bypassed_for_local_dev(self):
+        with (
+            patch.object(settings, 'app_env', 'dev'),
+            patch.object(settings, 'auth_login_rate_limit', 1),
+            patch.object(settings, 'auth_login_rate_window_seconds', 60),
+        ):
+            first = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
+            second = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+
+    def test_login_rate_limit_remains_active_in_prod(self):
+        with (
+            patch.object(settings, 'app_env', 'prod'),
+            patch.object(settings, 'auth_login_rate_bypass_localhost', False),
+            patch.object(settings, 'auth_login_rate_limit', 1),
+            patch.object(settings, 'auth_login_rate_window_seconds', 60),
+        ):
+            first = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
+            second = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 429)
+        self.assertEqual(second.json().get('error_code'), 'RATE_LIMITED')
+
+    def test_login_rate_limit_can_be_bypassed_for_localhost_in_prod_when_enabled(self):
+        with (
+            patch.object(settings, 'app_env', 'prod'),
+            patch.object(settings, 'auth_login_rate_bypass_localhost', True),
+            patch.object(settings, 'auth_login_rate_limit', 1),
+            patch.object(settings, 'auth_login_rate_window_seconds', 60),
+        ):
+            headers = {'host': 'localhost:8000', 'origin': 'http://localhost:3000'}
+            first = self.client.post(
+                '/api/v1/auth/login',
+                json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD},
+                headers=headers,
+            )
+            second = self.client.post(
+                '/api/v1/auth/login',
+                json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD},
+                headers=headers,
+            )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
 
     def test_analytics_portfolio_summary(self):
         login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})
@@ -374,6 +435,109 @@ class ApiV1AuthRefreshAnalyticsTests(unittest.TestCase):
             self.assertEqual(r2.status_code, 200)
             self.assertIn('cache_hit', r2.json().get('meta', {}))
             self.assertEqual(mocked.call_count, 1)
+
+    def test_cobranzas_cohorte_summary_v1_reuses_base_cache_and_refreshes_payments(self):
+        db = SessionLocal()
+        try:
+            db.query(CobranzasFact).filter(CobranzasFact.contract_id == 'COH-CACHE-1').delete(synchronize_session=False)
+            db.query(CarteraFact).filter(CarteraFact.contract_id == 'COH-CACHE-1').delete(synchronize_session=False)
+            db.query(CarteraCorteAgg).filter(CarteraCorteAgg.gestion_month == '02/2026').delete(synchronize_session=False)
+            db.commit()
+
+            db.add(
+                CarteraFact(
+                    contract_id='COH-CACHE-1',
+                    close_date=date(2026, 1, 31),
+                    close_month='01/2026',
+                    close_year=2026,
+                    contract_date=date(2026, 1, 5),
+                    contract_month='01/2026',
+                    culm_date=None,
+                    culm_month='',
+                    gestion_month='02/2026',
+                    supervisor='SUP QA',
+                    un='ODONTOLOGIA',
+                    via_cobro='COBRADOR',
+                    tramo=2,
+                    category='VIGENTE',
+                    cuota_amount=100.0,
+                    monto_vencido=50.0,
+                    total_saldo=150.0,
+                    capital_saldo=150.0,
+                    capital_vencido=50.0,
+                    source_hash='test-coh-cache-cartera',
+                    payload_json='{\"fecha_contrato\":\"2026-01-05\"}',
+                )
+            )
+            db.add(
+                CarteraCorteAgg(
+                    gestion_month='02/2026',
+                    close_month='01/2026',
+                    close_year=2026,
+                    contract_year=2026,
+                    un='ODONTOLOGIA',
+                    supervisor='SUP QA',
+                    via_cobro='COBRADOR',
+                    categoria='VIGENTE',
+                    tramo=2,
+                    contracts_total=1,
+                    vigentes_total=1,
+                    morosos_total=0,
+                    monto_total=150.0,
+                    monto_vencido_total=50.0,
+                    contracts_cobrador=1,
+                    contracts_debito=0,
+                    paid_total=0.0,
+                    paid_via_cobrador=0.0,
+                    paid_via_debito=0.0,
+                    contracts_paid_total=0,
+                    contracts_paid_via_cobrador=0,
+                    contracts_paid_via_debito=0,
+                )
+            )
+            db.commit()
+
+            cohorte_base_cache_clear()
+            filters = CobranzasCohorteIn(cutoff_month='02/2026')
+            with patch('app.services.analytics_service.json.loads', wraps=json.loads) as mocked_loads:
+                first = AnalyticsService.fetch_cobranzas_cohorte_summary_v1(db, filters)
+                first_calls = mocked_loads.call_count
+
+                db.add(
+                    CobranzasFact(
+                        contract_id='COH-CACHE-1',
+                        gestion_month='02/2026',
+                        supervisor='SUP QA',
+                        un='ODONTOLOGIA',
+                        via='COBRADOR',
+                        payment_date=date(2026, 2, 15),
+                        payment_month='02/2026',
+                        payment_year=2026,
+                        payment_amount=80.0,
+                        payment_via_class='COBRADOR',
+                        source_row_id='coh-cache-payment-1',
+                        tramo=2,
+                        source_hash='test-coh-cache-payment',
+                        payload_json='{}',
+                    )
+                )
+                db.commit()
+
+                second = AnalyticsService.fetch_cobranzas_cohorte_summary_v1(db, filters)
+
+            self.assertGreater(first_calls, 0)
+            self.assertEqual(mocked_loads.call_count, first_calls)
+            self.assertEqual(first.get('totals', {}).get('cobrado'), 0.0)
+            self.assertEqual(first.get('totals', {}).get('pagaron'), 0)
+            self.assertEqual(second.get('totals', {}).get('cobrado'), 80.0)
+            self.assertEqual(second.get('totals', {}).get('pagaron'), 1)
+        finally:
+            cohorte_base_cache_clear()
+            db.query(CobranzasFact).filter(CobranzasFact.contract_id == 'COH-CACHE-1').delete(synchronize_session=False)
+            db.query(CarteraFact).filter(CarteraFact.contract_id == 'COH-CACHE-1').delete(synchronize_session=False)
+            db.query(CarteraCorteAgg).filter(CarteraCorteAgg.gestion_month == '02/2026').delete(synchronize_session=False)
+            db.commit()
+            db.close()
 
     def test_telemetry_frontend_perf_ingest_and_summary(self):
         login = self.client.post('/api/v1/auth/login', json={'username': TEST_ADMIN_USER, 'password': TEST_ADMIN_PASSWORD})

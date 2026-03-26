@@ -1,3 +1,4 @@
+import threading
 import time
 import uuid
 
@@ -168,9 +169,22 @@ def _prewarm_analytics_cache_on_startup() -> None:
         db.close()
 
 
+def _schedule_prewarm_analytics_cache_on_startup() -> None:
+    """Ejecuta prewarm en background para no bloquear readiness del proceso (OPT-2026-03-25-005)."""
+    if settings.analytics_prewarm_defer_startup:
+
+        def _run() -> None:
+            _prewarm_analytics_cache_on_startup()
+
+        threading.Thread(target=_run, name='analytics-cache-prewarm', daemon=True).start()
+        structured_log('info', 'prewarm_analytics_cache_deferred')
+        return
+    _prewarm_analytics_cache_on_startup()
+
+
 @app.on_event('startup')
 def _bootstrap_db_on_startup() -> None:
     validate_production_config()
     if settings.db_bootstrap_on_start:
         bootstrap_database_with_demo_probe()
-    _prewarm_analytics_cache_on_startup()
+    _schedule_prewarm_analytics_cache_on_startup()

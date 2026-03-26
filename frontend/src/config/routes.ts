@@ -1,5 +1,6 @@
 /** Rutas del App Router y mapeo de ids de navegación */
 export const ROUTES = {
+  cartera: "/cartera",
   analisisCartera: "/analisis-cartera",
   roloCartera: "/analisis-cartera/rolo-cartera",
   analisisAnuales: "/analisis-anuales",
@@ -9,6 +10,7 @@ export const ROUTES = {
 } as const;
 
 export const ROUTE_TO_SECTION_ID: Record<string, string> = {
+  "/cartera": "cartera",
   "/analisis-cartera": "analisisCartera",
   "/analisis-cartera/rolo-cartera": "roloCartera",
   "/analisis-anuales": "analisisCarteraAnuales",
@@ -33,11 +35,22 @@ export type NavItem = {
 
 export const NAV_ITEMS = [
   {
+    id: "cartera",
+    label: "Resumen de Cartera",
+    href: ROUTES.cartera,
+    group: "Análisis de Cartera",
+  },
+  {
     id: "analisisCartera",
     label: "Análisis de Cartera",
     href: ROUTES.analisisCartera,
     group: "Análisis de Cartera",
-    children: [{ id: "roloCartera", label: "Rolo de Cartera", href: ROUTES.roloCartera }],
+  },
+  {
+    id: "roloCartera",
+    label: "Rolo de Cartera",
+    href: ROUTES.roloCartera,
+    group: "Análisis de Cartera",
   },
   { id: "analisisCarteraAnuales", label: "Análisis Anuales", href: ROUTES.analisisAnuales, group: "Análisis de Cartera" },
   { id: "analisisCarteraRendimiento", label: "Rendimiento de Cartera", href: ROUTES.rendimiento, group: "Análisis de Cartera" },

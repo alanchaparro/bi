@@ -8,13 +8,13 @@ from app.core.security import assert_permission, decode_token
 bearer_scheme = HTTPBearer(auto_error=False)
 login_rate_limiter = build_rate_limit_dependency(
     'auth_login',
-    settings.auth_login_rate_limit,
-    settings.auth_login_rate_window_seconds,
+    lambda: settings.auth_login_rate_limit,
+    lambda: settings.auth_login_rate_window_seconds,
 )
 write_rate_limiter = build_rate_limit_dependency(
     'write_ops',
-    settings.write_rate_limit,
-    settings.write_rate_window_seconds,
+    lambda: settings.write_rate_limit,
+    lambda: settings.write_rate_window_seconds,
 )
 
 

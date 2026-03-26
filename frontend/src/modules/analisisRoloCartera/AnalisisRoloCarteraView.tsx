@@ -16,6 +16,7 @@ import {
   type PortfolioRoloSummaryResponse,
 } from "../../shared/api";
 import { getApiErrorMessage } from "../../shared/apiErrors";
+import { useIsLightTheme } from "../../shared/useIsLightTheme";
 import { formatCount } from "../../shared/formatters";
 
 type Filters = {
@@ -36,12 +37,15 @@ const DEFAULT_FILTERS: Filters = {
 
 function RoloContributionChart({
   rows,
+  isLight,
 }: {
   rows: NonNullable<PortfolioRoloSummaryResponse["rows"]>;
+  isLight: boolean;
 }) {
   const max = Math.max(1, ...rows.map((row) => Math.abs(Number(row.neto_rolo || 0))));
+  const trackBg = "var(--chart-grid)";
   return (
-    <div className="analysis-bars-wrap">
+    <div className={`analysis-bars-wrap ${isLight ? "analysis-bars-wrap--light" : ""}`.trim()}>
       {rows.map((row) => {
         const value = Number(row.neto_rolo || 0);
         const widthPct = Math.max(6, Math.round((Math.abs(value) / max) * 100));
@@ -52,8 +56,8 @@ function RoloContributionChart({
               <span>{row.un}</span>
               <span>{value > 0 ? "+" : ""}{formatCount(value)}</span>
             </div>
-            <div className="analysis-bars-track">
-              <div style={{ width: `${widthPct}%`, height: "100%", borderRadius: 999, background: color }} />
+            <div className="analysis-bars-track" style={{ background: trackBg }}>
+              <div className="analysis-bars-fill" style={{ width: `${widthPct}%`, background: color }} />
             </div>
           </div>
         );
@@ -64,8 +68,10 @@ function RoloContributionChart({
 
 function RoloCompositionChart({
   kpis,
+  isLight,
 }: {
   kpis: NonNullable<PortfolioRoloSummaryResponse["kpis"]>;
+  isLight: boolean;
 }) {
   const items = [
     { label: "Vigente inicial", value: Number(kpis.vigente_inicial || 0), tone: "var(--color-text-muted)" },
@@ -77,8 +83,9 @@ function RoloCompositionChart({
     { label: "Vigente final", value: Number(kpis.vigente_final || 0), tone: "var(--color-chart-5)" },
   ];
   const max = Math.max(1, ...items.map((item) => Math.abs(item.value)));
+  const trackBg = "var(--chart-grid)";
   return (
-    <div className="analysis-bars-wrap">
+    <div className={`analysis-bars-wrap ${isLight ? "analysis-bars-wrap--light" : ""}`.trim()}>
       {items.map((item) => {
         const widthPct = Math.max(6, Math.round((Math.abs(item.value) / max) * 100));
         return (
@@ -87,8 +94,8 @@ function RoloCompositionChart({
               <span>{item.label}</span>
               <span style={{ color: item.tone }}>{item.value > 0 ? "+" : ""}{formatCount(item.value)}</span>
             </div>
-            <div className="analysis-bars-track">
-              <div style={{ width: `${widthPct}%`, height: "100%", borderRadius: 999, background: item.tone }} />
+            <div className="analysis-bars-track" style={{ background: trackBg }}>
+              <div className="analysis-bars-fill" style={{ width: `${widthPct}%`, background: item.tone }} />
             </div>
           </div>
         );
@@ -104,11 +111,12 @@ function SignedCount({ value }: { value: number }) {
 }
 
 export function AnalisisRoloCarteraView() {
+  const isLightTheme = useIsLightTheme();
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [isFloatingFiltersOpen, setIsFloatingFiltersOpen] = useState(false);
   const [floatingCloseMonths, setFloatingCloseMonths] = useState<string[]>([]);
-  const [floatingYears, setFloatingYears] = useState<string[]>([]);
+  const [floatingUns, setFloatingUns] = useState<string[]>([]);
   const [floatingPosition, setFloatingPosition] = useState<{ left: number; top: number } | null>(null);
   const [isClient, setIsClient] = useState(false);
   const floatingWrapRef = useRef<HTMLDivElement | null>(null);
@@ -193,19 +201,19 @@ export function AnalisisRoloCarteraView() {
 
   const openFloatingFilters = useCallback(() => {
     setFloatingCloseMonths(filters.closeMonths);
-    setFloatingYears(filters.years);
+    setFloatingUns(filters.uns);
     setIsFloatingFiltersOpen(true);
-  }, [filters.closeMonths, filters.years]);
+  }, [filters.closeMonths, filters.uns]);
 
   const applyFloatingFilters = useCallback(async () => {
     const nextFilters: Filters = {
       ...filters,
       closeMonths: floatingCloseMonths.length ? [floatingCloseMonths[floatingCloseMonths.length - 1]] : [],
-      years: floatingYears,
+      uns: floatingUns,
     };
     await applyMergedFilters(nextFilters);
     setIsFloatingFiltersOpen(false);
-  }, [applyMergedFilters, filters, floatingCloseMonths, floatingYears]);
+  }, [applyMergedFilters, filters, floatingCloseMonths, floatingUns]);
 
   const startFloatingDrag = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -282,10 +290,10 @@ export function AnalisisRoloCarteraView() {
             />
             <MultiSelectFilter
               className="analysis-filter-control"
-              label="Año de contrato"
-              options={options.contract_years || []}
-              selected={floatingYears}
-              onChange={setFloatingYears}
+              label="Unidad de negocio"
+              options={options.uns || []}
+              selected={floatingUns}
+              onChange={setFloatingUns}
             />
           </div>
           <div className="rolo-floating-filter-actions">
@@ -390,13 +398,13 @@ export function AnalisisRoloCarteraView() {
                   <div className="chart-card-header">
                     <h3 className="analysis-chart-title">Neto del rolo por unidad de negocio</h3>
                   </div>
-                  <RoloContributionChart rows={rows} />
+                  <RoloContributionChart rows={rows} isLight={isLightTheme} />
                 </article>
                 <article className="card chart-card analysis-card-pad">
                   <div className="chart-card-header">
                     <h3 className="analysis-chart-title">Composición del movimiento</h3>
                   </div>
-                  <RoloCompositionChart kpis={kpis} />
+                  <RoloCompositionChart kpis={kpis} isLight={isLightTheme} />
                 </article>
               </div>
             </>

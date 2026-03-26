@@ -597,6 +597,8 @@ export type PortfolioCorteSummaryResponse = {
   };
   charts?: {
     by_un?: Record<string, number>;
+    /** Mes de gestión MM/YYYY → UN → contratos (corte) */
+    by_un_by_gestion_month?: Record<string, Record<string, number>>;
     by_tramo?: Record<string, number>;
     by_via?: Record<string, number>;
     by_contract_year?: Record<string, number>;

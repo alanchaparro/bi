@@ -40,10 +40,12 @@ Separar por completo el flujo **legacy** del flujo **nuevo** para evitar depende
   - labels superiores en semibold, misma jerarquia tipografica del panel.
 - No mezclar en el mismo contexto variantes legacy de tabs/botones que rompan ese lenguaje visual.
 - Este patron aplica en todo frontend nuevo (dashboard + modulos analiticos), no solo en una vista.
+- La regla operacional completa de decision por patron vive en `docs/spec-canon-patrones-ui-analytics.md`.
 
 ### 4) Backend/contratos
 - No mezclar payloads legacy y v2 en el mismo contenedor UI.
 - El frontend nuevo consume rutas v2 por defecto (segun `AGENTS.md`).
+- **Cartera (Next):** `frontend/src/modules/cartera/CarteraView.tsx` consume solo `portfolio-corte-v2/options` y `portfolio-corte-v2/summary` (no `portfolio/summary` legacy). Ruta del dashboard nuevo: `/cartera` (menú: **Resumen de Cartera**).
 - Si un endpoint legacy permanece, debe consumirse desde el dominio legacy aislado.
 - En artefactos generados de contrato (ej: `shared/api-types.ts`) pueden persistir nombres `legacy` mientras el backend exponga esos endpoints; esto no implica uso en runtime nuevo.
 

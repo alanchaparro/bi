@@ -1,9 +1,10 @@
-import React, { useMemo, useState, useEffect } from 'react'
-import { Button } from '@heroui/react'
-import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
-import { ErrorState } from '../../components/feedback/ErrorState'
-import { LoadingState } from '../../components/feedback/LoadingState'
-import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
+import React, { useMemo, useState, useEffect } from "react"
+import { Button } from "@heroui/react"
+import { AnalyticsPageHeader } from "../../components/analytics/AnalyticsPageHeader"
+import { EmptyState } from "../../components/feedback/EmptyState"
+import { ErrorState } from "../../components/feedback/ErrorState"
+import { LoadingState } from "../../components/feedback/LoadingState"
+import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter"
 
 type Row = {
   year: string
@@ -80,7 +81,7 @@ export function BrokersView(props: Props) {
     props.onFiltersChange(empty)
   }
 
-  const formatGs = (value: number) => `Gs. ${Math.round(Number(value || 0)).toLocaleString('es-PY')}`
+  const formatGs = (value: number) => `Gs. ${Math.round(Number(value || 0)).toLocaleString("es-PY")}`
 
   return (
     <section className="analysis-panel-card">
@@ -96,40 +97,15 @@ export function BrokersView(props: Props) {
       </div>
 
       <div className="grid-cards">
-        <MultiSelectFilter
-          label="Supervisor"
-          options={props.options.supervisors}
-          selected={draft.supervisors}
-          onChange={(v) => setFilter('supervisors', v)}
-        />
-        <MultiSelectFilter
-          label="UN"
-          options={props.options.uns}
-          selected={draft.uns}
-          onChange={(v) => setFilter('uns', v)}
-        />
-        <MultiSelectFilter
-          label="Vía"
-          options={props.options.vias}
-          selected={draft.vias}
-          onChange={(v) => setFilter('vias', v)}
-        />
-        <MultiSelectFilter
-          label="Año"
-          options={props.options.years}
-          selected={draft.years}
-          onChange={(v) => setFilter('years', v)}
-        />
-        <MultiSelectFilter
-          label="Mes"
-          options={props.options.months}
-          selected={draft.months}
-          onChange={(v) => setFilter('months', v)}
-        />
+        <MultiSelectFilter label="Supervisor" options={props.options.supervisors} selected={draft.supervisors} onChange={(v) => setFilter("supervisors", v)} />
+        <MultiSelectFilter label="UN" options={props.options.uns} selected={draft.uns} onChange={(v) => setFilter("uns", v)} />
+        <MultiSelectFilter label="Vía" options={props.options.vias} selected={draft.vias} onChange={(v) => setFilter("vias", v)} />
+        <MultiSelectFilter label="Año" options={props.options.years} selected={draft.years} onChange={(v) => setFilter("years", v)} />
+        <MultiSelectFilter label="Mes" options={props.options.months} selected={draft.months} onChange={(v) => setFilter("months", v)} />
       </div>
       <div className="flex-actions">
         <Button variant="primary" onPress={applyFilters} isDisabled={props.loading}>
-          {props.loading ? 'Aplicando…' : 'Aplicar filtros'}
+          {props.loading ? "Aplicando..." : "Aplicar filtros"}
         </Button>
         <Button variant="outline" onPress={resetFilters} isDisabled={props.loading}>
           Restablecer
@@ -139,47 +115,49 @@ export function BrokersView(props: Props) {
       {props.loading ? <LoadingState message="Cargando resumen de brokers..." /> : null}
       {props.error ? <ErrorState message={props.error} /> : null}
 
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Año</th>
-              <th>Mes</th>
-              <th>Supervisor</th>
-              <th>UN</th>
-              <th>Vía</th>
-              <th>Contratos</th>
-              <th>Mora 3M</th>
-              <th>Monto</th>
-              <th>Comisiones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {props.rows.map((r, i) => (
-              <tr key={`${r.month}-${r.supervisor}-${r.un}-${r.via}-${i}`}>
-                <td>{r.year}</td>
-                <td>{r.month}</td>
-                <td>{r.supervisor}</td>
-                <td>{r.un}</td>
-                <td>{r.via}</td>
-                <td>{r.count}</td>
-                <td>{r.mora3m}</td>
-                <td>{Number(r.montoCuota || 0).toFixed(2)}</td>
-                <td>{Number(r.commission || 0).toFixed(2)}</td>
-              </tr>
-            ))}
-            {props.rows.length === 0 ? (
-              <tr>
-                <td colSpan={9}>
-                  {props.error
-                    ? 'Sin datos'
-                    : 'No hay datos. Verifique que la tabla analytics_contract_snapshot tenga datos y que los supervisores estén habilitados en Supervisores Brokers.'}
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+      {props.rows.length === 0 && !props.loading && !props.error ? (
+        <EmptyState
+          message="No hay datos para los filtros seleccionados."
+          suggestion="Prueba ajustando el período, la vía o verificando los supervisores habilitados."
+          className="w-full max-w-none"
+        />
+      ) : (
+        <>
+          <p className="table-scroll-hint">Desliza la tabla horizontalmente para ver supervisor, vía y métricas completas.</p>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Año</th>
+                  <th>Mes</th>
+                  <th>Supervisor</th>
+                  <th>UN</th>
+                  <th>Vía</th>
+                  <th>Contratos</th>
+                  <th>Mora 3M</th>
+                  <th>Monto</th>
+                  <th>Comisiones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {props.rows.map((r, i) => (
+                  <tr key={`${r.month}-${r.supervisor}-${r.un}-${r.via}-${i}`}>
+                    <td>{r.year}</td>
+                    <td>{r.month}</td>
+                    <td>{r.supervisor}</td>
+                    <td>{r.un}</td>
+                    <td>{r.via}</td>
+                    <td>{r.count}</td>
+                    <td>{r.mora3m}</td>
+                    <td>{Number(r.montoCuota || 0).toFixed(2)}</td>
+                    <td>{Number(r.commission || 0).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </section>
   )
 }

@@ -25,6 +25,7 @@ import { AnalisisCarteraView } from './modules/analisisCartera/AnalisisCarteraVi
 import { AnalisisCobranzasCohorteView } from './modules/analisisCobranzasCohorte/AnalisisCobranzasCohorteView'
 import { AnalisisRendimientoView } from './modules/analisisRendimiento/AnalisisRendimientoView'
 import { AnalisisAnualesView } from './modules/analisisAnuales/AnalisisAnualesView'
+import { applyThemePreset, getStoredThemePresetId, getThemePresetById } from './shared/themePresets'
 
 type GlobalSyncLive = {
   running?: boolean
@@ -50,14 +51,7 @@ type GlobalScheduleLive = {
 }
 
 export default function App() {
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    try {
-      const saved = localStorage.getItem('ui-theme')
-      return saved === 'light' ? 'light' : 'dark'
-    } catch {
-      return 'dark'
-    }
-  })
+  const [themePresetId, setThemePresetId] = useState<string>(() => getStoredThemePresetId())
   const [auth, setAuth] = useState<LoginResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [loginError, setLoginError] = useState<string | null>(null)
@@ -133,7 +127,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme)
+    applyThemePreset(themePresetId)
     if (USE_UI_IOS_REFINEMENT) {
       document.documentElement.setAttribute('data-ui-refinement', 'ios')
       document.documentElement.setAttribute('data-ui-refinement-modules', UI_IOS_REFINEMENT_MODULES || 'all')
@@ -141,12 +135,7 @@ export default function App() {
       document.documentElement.removeAttribute('data-ui-refinement')
       document.documentElement.removeAttribute('data-ui-refinement-modules')
     }
-    try {
-      localStorage.setItem('ui-theme', theme)
-    } catch {
-      // ignore storage failures
-    }
-  }, [theme])
+  }, [themePresetId])
 
   const prevSyncRunningRef = useRef<boolean | null>(null)
   useEffect(() => {
@@ -264,11 +253,11 @@ export default function App() {
             <button
               type="button"
               className="theme-toggle"
-              onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-              title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-              aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+              onClick={() => setThemePresetId((current) => (getThemePresetById(current).mode === 'dark' ? 'epem_marfil_brisa' : 'epem_obsidiana'))}
+              title={getThemePresetById(themePresetId).mode === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+              aria-label={getThemePresetById(themePresetId).mode === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
             >
-              {theme === 'dark' ? 'L' : 'O'}
+              {getThemePresetById(themePresetId).mode === 'dark' ? 'L' : 'O'}
             </button>
             <button type="button" className="btn btn-secondary" onClick={handleLogout}>
               Cerrar sesión

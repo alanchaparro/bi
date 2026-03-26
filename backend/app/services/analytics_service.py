@@ -244,6 +244,20 @@ def _normalize_contract_id_for_lookup(cid: str | int | None) -> str:
     return s
 
 
+def _nest_un_by_gestion_month(rows: list[tuple]) -> dict[str, dict[str, int]]:
+    """gestion_month -> { un -> contracts_total } para tabla pivote en resumen cartera."""
+    out: dict[str, dict[str, int]] = {}
+    for gestion_m, un, cnt in rows:
+        gm = str(gestion_m or '').strip()
+        u = str(un or '').strip()
+        if not gm or not u:
+            continue
+        if gm not in out:
+            out[gm] = {}
+        out[gm][u] = int(cnt or 0)
+    return out
+
+
 def _normalize_str_set(values: list[str]) -> set[str]:
     return {str(v).strip().upper() for v in (values or []) if str(v).strip()}
 
@@ -1033,6 +1047,15 @@ class AnalyticsService:
             .group_by(CarteraCorteAgg.un)
             .all()
         )
+        by_un_gestion_rows = (
+            base.with_entities(
+                CarteraCorteAgg.gestion_month,
+                CarteraCorteAgg.un,
+                func.coalesce(func.sum(CarteraCorteAgg.contracts_total), 0),
+            )
+            .group_by(CarteraCorteAgg.gestion_month, CarteraCorteAgg.un)
+            .all()
+        )
         by_tramo_rows = (
             base.with_entities(CarteraCorteAgg.tramo, func.coalesce(func.sum(CarteraCorteAgg.contracts_total), 0))
             .group_by(CarteraCorteAgg.tramo)
@@ -1083,6 +1106,7 @@ class AnalyticsService:
             },
             'charts': {
                 'by_un': {str(k): int(v or 0) for k, v in by_un_rows},
+                'by_un_by_gestion_month': _nest_un_by_gestion_month(by_un_gestion_rows),
                 'by_tramo': {str(k): int(v or 0) for k, v in by_tramo_rows},
                 'by_via': {str(k): int(v or 0) for k, v in by_via_rows},
                 'by_contract_year': {str(k): int(v or 0) for k, v in by_contract_year_rows if k is not None},
@@ -1650,8 +1674,7 @@ class AnalyticsService:
                 tx_by_contract[key] = tx_by_contract.get(key, 0) + int(tx_count or 0)
 
         base_cache_key = f'{resolved_cutoff}|{effective_cartera_month}'
-        # No usar caché: recalcular siempre para que paid_by_contract esté al día
-        base_rows = None
+        base_rows = _cohorte_base_cache_get(base_cache_key)
         if base_rows is None:
             base_rows = []
             for row in cartera_q.yield_per(2000):
@@ -1672,9 +1695,6 @@ class AnalyticsService:
                 if culm_serial > 0 and culm_serial <= cutoff_serial:
                     continue
                 deberia = float(_to_float(row.monto_cuota) + _to_float(row.monto_vencido))
-                cid_key = _normalize_contract_id_for_lookup(contract_id)
-                cobrado = float(paid_by_contract.get(cid_key, 0.0))
-                transacciones = int(tx_by_contract.get(cid_key, 0))
                 base_rows.append(
                     {
                         'contract_id': contract_id,
@@ -1685,9 +1705,6 @@ class AnalyticsService:
                         'via': str(row.via or 'DEBITO').strip().upper(),
                         'category': str(row.category or 'VIGENTE').strip().upper(),
                         'deberia': deberia,
-                        'cobrado': cobrado,
-                        'pagaron': 1 if cobrado > 0 else 0,
-                        'transacciones': transacciones,
                     }
                 )
             _cohorte_base_cache_set(base_cache_key, base_rows)
@@ -1708,8 +1725,8 @@ class AnalyticsService:
                 cobrado = float(paid_by_contract.get(cid_key, 0.0))
                 transacciones = int(tx_by_contract.get(cid_key, 0))
             else:
-                cobrado = float(row.get('cobrado', 0.0))
-                transacciones = int(row.get('transacciones', 0) or 0)
+                cobrado = 0.0
+                transacciones = 0
             pagaron = 1 if cobrado > 0 else 0
             sale_month = row['sale_month']
             tramo = str(int(row.get('tramo') or 0))

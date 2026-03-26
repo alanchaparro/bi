@@ -6,6 +6,9 @@ Definir el estandar visual operativo del frontend analytics para evitar que nuev
 La referencia actual de calidad visual es:
 - `Analisis de Cartera`
 
+Canon adicional obligatorio:
+- [spec-canon-patrones-ui-analytics.md](C:/desarrollos/bi-clone-nuevo/docs/spec-canon-patrones-ui-analytics.md)
+
 ## Direccion visual
 - Paleta base: `charcoal + olive + arena`
 - Superficies oscuras, sobrias y con brillo muy sutil

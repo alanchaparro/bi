@@ -21,6 +21,8 @@ export async function loadBrokersPreferences(): Promise<BrokersPreferences> {
       vias: r?.filters?.vias || [],
       years: r?.filters?.years || [],
       months: r?.filters?.months || [],
+      categorias: r?.filters?.categorias || [],
+      tramos: r?.filters?.tramos || [],
     },
   }
 }
@@ -38,6 +40,8 @@ export async function loadCarteraPreferences(): Promise<BrokersPreferences> {
       vias: r?.filters?.vias || [],
       years: r?.filters?.years || [],
       months: r?.filters?.months || [],
+      categorias: r?.filters?.categorias || [],
+      tramos: r?.filters?.tramos || [],
     },
   }
 }

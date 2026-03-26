@@ -8,6 +8,7 @@ import { login as apiLogin } from "@/shared/api";
 import { setStoredRefreshToken } from "@/shared/sessionStorage";
 import { getApiErrorMessage } from "@/shared/apiErrors";
 import type { LoginRequest } from "@/shared/contracts";
+import { ErrorState } from "@/components/feedback/ErrorState";
 
 export default function LoginPage() {
   const { auth, loading, login } = useAuth();
@@ -86,11 +87,9 @@ export default function LoginPage() {
                 aria-label="Contraseña"
               />
             </div>
-            <div className="min-h-[2.5rem] flex items-center" aria-live="assertive">
+            <div className="min-h-[4.5rem] flex items-center" aria-live="assertive">
               {error ? (
-                <p className="text-sm text-[var(--color-error)]" role="alert">
-                  {error}
-                </p>
+                <ErrorState message={error} className="w-full" />
               ) : null}
             </div>
             <Button

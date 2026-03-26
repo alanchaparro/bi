@@ -24,6 +24,7 @@ from app.domain import canonical_un, canonical_via, categoria_from_tramo, catego
 from app.domain.calendar_rules import add_months, month_from_any, month_serial, normalize_month
 from app.models.brokers import (
     AnalyticsFact,
+    CarteraCorteAgg,
     CarteraFact,
     CobranzasFact,
     ContratosFact,

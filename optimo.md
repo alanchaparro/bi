@@ -278,6 +278,143 @@ Un item pasa a "Listo para verificar" solo si:
 - **Rollback**:
   - Quitar `useMemo` y volver a objeto inline en el provider.
 
+
+### OPT-2026-03-25-004 - Evitar rerenders de `ConfigPage` por contexto `SyncLive` inestable
+- **Estado**: Cerrado
+- **Owner**: Dev
+- **Area objetivo**: `frontend/src/components/layout/DashboardLayout.tsx`, `frontend/src/app/(dashboard)/config/page.tsx`
+- **Problema actual**:
+  - `DashboardLayout` reconstruye `syncContextValue` en cada render y lo pasa directo a `SyncLiveContext.Provider`.
+  - `ConfigPage` consume `setSyncLive` y `setScheduleLive` desde `useSyncLive()`, por lo que cualquier rerender del layout puede propagar rerenders evitables hacia la pantalla de configuración aunque los setters y el estado relevante no hayan cambiado.
+- **Hipotesis**:
+  - si se memoiza el `value` del contexto (`syncLive`, `scheduleLive`, `setSyncLive`, `setScheduleLive`) con `useMemo`, disminuyen rerenders inducidos por identidad de objeto y mejora la fluidez del shell durante polling/actualización de header.
+
+#### Implementacion sugerida (paso a paso)
+1. Importar `useMemo` en `frontend/src/components/layout/DashboardLayout.tsx`.
+2. Reemplazar `const syncContextValue = { ... }` por un objeto memoizado con dependencias `syncLive` y `scheduleLive`.
+3. Mantener `setSyncLive` y `setScheduleLive` tal como salen de `useState`, sin cambiar contrato público de `useSyncLive()`.
+4. Validar que `ConfigPage` siga recibiendo setters funcionales y que no cambie el comportamiento de `onSyncLiveChange` / `onScheduleLiveChange`.
+
+#### Evidencia requerida (antes/despues)
+- **Metrica primaria**: cantidad de renders de `ConfigPage` o de un consumidor memoizado de `useSyncLive()` durante un flujo de polling estable.
+- **Metrica secundaria**: tiempo de commit promedio en React Profiler mientras corre una sincronización o se actualiza el header.
+- **Metrica funcional**:
+  - propagación de `syncLive` OK
+  - propagación de `scheduleLive` OK
+  - header y `/config` sincronizados sin drift visual
+
+#### Plan de validacion para dev
+1. Crear prueba de estabilidad similar a `providers.test.tsx`, pero para `SyncLiveContext`.
+2. Medir baseline con rerenders del `DashboardLayout` manteniendo `syncLive`/`scheduleLive` sin cambios.
+3. Implementar memoización del contexto.
+4. Repetir la medición y comparar render count.
+5. Correr `npm run typecheck` y pruebas frontend relacionadas.
+
+#### Criterio de cierre
+- Reducción medible de rerenders innecesarios en consumidor(es) de `useSyncLive()`.
+- Sin cambios funcionales en actualización de header, `/config` o navegación protegida.
+- Diff pequeño, reversible y sin complejidad extra.
+
+#### Resultado aplicado (2026-03-25)
+- **Cambio**:
+  - `DashboardLayout` ahora memoiza `syncContextValue` con `useMemo` en `frontend/src/components/layout/DashboardLayout.tsx`.
+  - Se agrega la prueba `frontend/src/components/layout/DashboardLayout.test.tsx` para verificar estabilidad del contexto.
+  - La misma pasada deja consistente el shell con `LoadingState` y microcopy corregido durante la verificación de `/config`.
+- **Costo reducido**:
+  - Se evita recrear el objeto de `SyncLiveContext.Provider` en rerenders donde `syncLive`/`scheduleLive` no cambian.
+  - Se reducen rerenders evitables en consumidores memoizados de `useSyncLive()` dentro del flujo de configuración.
+- **UX mejorada**:
+  - Shell y pantalla `/config` más estables durante polling/actualizaciones de header, con menos trabajo de render innecesario.
+- **Antes**:
+  - `SyncLiveContext.Provider` recibía un objeto nuevo en cada render del layout.
+- **Después**:
+  - `SyncLiveContext.Provider` mantiene referencia estable mientras `syncLive` y `scheduleLive` no cambian.
+- **Métrica (test reproducible)**:
+  - En `DashboardLayout.test.tsx`, ante rerenders consecutivos del árbol padre con estado estable, el consumidor memoizado de `useSyncLive()` renderiza `1` vez.
+- **Validación técnica**:
+  - `npm.cmd run typecheck` -> OK.
+  - `npm.cmd run test:run -- src/components/layout/DashboardLayout.test.tsx src/app/providers.test.tsx` -> `2 passed`.
+- **Riesgo**:
+  - Muy bajo; no cambia contrato público ni la propagación de setters/estado.
+- **Rollback**:
+  - Quitar `useMemo` y volver a objeto inline en `SyncLiveContext.Provider`.
+
+### OPT-2026-03-25-005 - Reducir cold start por prewarm síncrono agresivo en startup
+- **Estado**: Cerrado
+- **Owner**: Dev
+- **Area objetivo**: `backend/app/main.py`, `backend/app/core/config.py`
+- **Problema actual**:
+  - el startup de API ejecuta `_prewarm_analytics_cache_on_startup()` de forma síncrona y calienta de una vez `options`, `summary` y `first-paint` de cartera, cohorte, rendimiento y anuales.
+  - eso dispara múltiples queries pesadas y trabajo CPU antes de dejar la app lista, incluso si el usuario todavía no visitará todas esas pantallas.
+- **Hipotesis**:
+  - si el prewarm se vuelve selectivo o diferido en background, baja el costo de arranque (CPU/DB/latencia de disponibilidad) sin empeorar UX percibida en los flujos realmente usados.
+- **Resultado aplicado (2026-03-25)**:
+  - **Cambio**: por defecto el prewarm corre en un hilo daemon (`threading.Thread`) tras el bootstrap; log `prewarm_analytics_cache_deferred`. Variable `ANALYTICS_PREWARM_DEFER_STARTUP` (default `true`): con `false` se restaura el prewarm síncrono previo al evento `startup`.
+  - **Costo reducido**: el proceso queda listo para aceptar requests sin esperar el bloque completo de queries de prewarm.
+  - **UX**: primera visita a un módulo analytics puede llenar cache en paralelo; sin cambio de contratos de API.
+  - **Rollback**: `ANALYTICS_PREWARM_DEFER_STARTUP=false` o revertir llamada en `main.py`.
+- **Validación técnica**: `PYTHONPATH=backend python -m unittest tests.test_sync_cache_invalidation tests.test_prod_check -v` → `8 OK` (corrida 2026-03-25).
+
+### OPT-2026-03-25-006 - Reactivar cach? base de cohorte para evitar recalculo completo por request
+- **Estado**: Cerrado
+- **Owner**: Dev
+- **Area objetivo**: `backend/app/services/analytics_service.py`
+- **Problema actual**:
+  - existe `_cohorte_base_cache_get(...)`, pero en el flujo de cohorte se fuerza `base_rows = None` y se recalcula siempre el barrido base de cartera (`yield_per(2000)` + `json.loads(payload_json)`) aunque `resolved_cutoff` y `effective_cartera_month` no cambien.
+  - el cache base queda escrito con `_cohorte_base_cache_set(...)`, pero no se reutiliza.
+- **Hipotesis**:
+  - si se cachea y reutiliza la base est?tica de contratos por `cutoff|effective_cartera_month`, manteniendo `paid_by_contract` fresco por request, se reduce CPU y latencia en consultas repetidas de cohorte sin romper exactitud del cobrado actual.
+- **Evidencia requerida**:
+  - latencia de `cobranzas-cohorte-v2/first-paint` y/o summary antes/despu?s con mismo cutoff
+  - cantidad de filas/base parseadas por request antes/despu?s
+  - validaci?n funcional de que `cobrado`, `pagaron` y transacciones sigan saliendo del pago actual
+- **Criterio de cierre**:
+  - mejora medible en requests repetidos del mismo per?odo
+  - memoria acotada y cache invalidable
+  - sin drift funcional en m?tricas de cohorte
+
+#### Resultado aplicado (2026-03-25)
+- **Cambio**:
+  - `fetch_cobranzas_cohorte_summary_v1` ahora reutiliza `_cohorte_base_cache_get(...)` para la base est?tica por `cutoff|effective_cartera_month`.
+  - la cach? deja de guardar `cobrado`, `pagaron` y `transacciones`; esos valores se recalculan por request desde `paid_by_contract` y `tx_by_contract`.
+  - se agreg? prueba dirigida en `tests/test_api_v1_auth_refresh_and_analytics.py` para confirmar reutilizaci?n del barrido base y frescura de cobros.
+- **Costo reducido**:
+  - se evita repetir el barrido completo de `cartera_fact` y el `json.loads(payload_json)` en consultas repetidas del mismo corte.
+  - baja trabajo de CPU y deserializaci?n redundante en un endpoint anal?tico frecuente.
+- **UX mejorada**:
+  - las consultas repetidas de cohorte responden con menos trabajo backend sin congelar el cobrado actual del mes.
+  - el usuario recibe respuestas m?s estables en filtros repetidos del mismo per?odo.
+- **Antes**:
+  - cada request reconstru?a `base_rows` desde cero aun cuando el cutoff y la cartera efectiva no hab?an cambiado.
+- **Despu?s**:
+  - el barrido base se construye una vez por clave de cach? y los cobros/transacciones se refrescan en cada request.
+- **M?trica (test reproducible)**:
+  - en `test_cobranzas_cohorte_summary_v1_reuses_base_cache_and_refreshes_payments`, la segunda llamada con el mismo `cutoff_month='02/2026'` no incrementa el contador de `json.loads`, pero s? actualiza `totals.cobrado` de `0.0` a `80.0` y `totals.pagaron` de `0` a `1` tras insertar una cobranza nueva.
+- **Validaci?n t?cnica**:
+  - `python -m py_compile backend/app/services/analytics_service.py tests/test_api_v1_auth_refresh_and_analytics.py` -> OK.
+  - `python -m unittest tests.test_api_v1_auth_refresh_and_analytics -v` -> `19 tests OK`.
+  - `$env:PYTHONPATH='backend'; python -m unittest tests.test_prod_check -v` -> `5 tests OK`.
+- **Riesgo**:
+  - Bajo; la invalidaci?n del cache base ya existe en sync y los montos cobrados siguen saliendo de la consulta actual.
+- **Rollback**:
+  - volver a forzar `base_rows = None` y restaurar la reconstrucci?n completa por request en `fetch_cobranzas_cohorte_summary_v1`.
+
+### OPT-2026-03-25-007 - Cargar Config por subsección y pausar polling cuando no aporta valor
+- **Estado**: Cerrado
+- **Owner**: Dev
+- **Area objetivo**: `frontend/src/modules/config/ConfigView.tsx`
+- **Problema actual**:
+  - al montar `ConfigView` se lanzan de entrada `loadSchedules()`, `loadTramoConfig()`, `loadUsers()` y `loadMysqlConfig()`, aunque el usuario no visite todas las subsecciones.
+  - además `refreshScheduleRuntime(schedules)` sigue corriendo cada 8s mientras existan schedules, incluso si la pestaña visible no es `programacion`.
+- **Hipotesis**:
+  - si cada subsección carga bajo demanda y el polling se limita a `programacion`/documento visible, se reduce tráfico, renders y trabajo del hilo principal sin degradar UX.
+- **Resultado aplicado (2026-03-25)**:
+  - **Cambio**: carga perezosa por pestaña (`usuarios` | `negocio` | `importaciones` | `programacion`) con ref de “ya cargado”; el intervalo de 8s de `refreshScheduleRuntime` solo corre con `configSection === 'programacion'`.
+  - **Costo reducido**: menos requests al entrar a `/config` (solo la subsección activa) y sin polling de schedules fuera de programación.
+  - **UX**: al cambiar de pestaña la primera vez se dispara la carga correspondiente; botones manual “Recargar” siguen operativos.
+- **Validación técnica**: `npm run typecheck` en `frontend` → OK (corrida 2026-03-25).
+
+
 ---
 
 Si este documento queda desalineado con la realidad del repo o con nuevas reglas de negocio, debe actualizarse en el mismo ciclo donde se detecta la diferencia.

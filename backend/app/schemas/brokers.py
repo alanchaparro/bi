@@ -1,4 +1,4 @@
-﻿from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field
 
 
 class LoginIn(BaseModel):
@@ -44,6 +44,8 @@ class BrokersFilters(BaseModel):
     vias: list[str] = Field(default_factory=list)
     years: list[str] = Field(default_factory=list)
     months: list[str] = Field(default_factory=list)
+    categorias: list[str] = Field(default_factory=list)
+    tramos: list[str] = Field(default_factory=list)
 
 
 class BrokersPreferencesIn(BaseModel):

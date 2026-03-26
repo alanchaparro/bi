@@ -13,6 +13,25 @@ type Props = {
   className?: string;
 };
 
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={`multi-select-chevron ${open ? "is-open" : ""}`.trim()}
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
 export function MultiSelectFilter({
   label,
   options,
@@ -179,7 +198,7 @@ export function MultiSelectFilter({
         isDisabled={options.length === 0}
       >
         <span className="multi-select-value truncate">{displayText}</span>
-        <span className="multi-select-caret" aria-hidden>{open ? "^" : "v"}</span>
+        <span className="multi-select-caret" aria-hidden><ChevronIcon open={open} /></span>
       </Button>
       {open && options.length > 0 && typeof document !== "undefined" &&
         createPortal(

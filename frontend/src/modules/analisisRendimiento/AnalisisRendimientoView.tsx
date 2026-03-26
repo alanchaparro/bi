@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@heroui/react'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
+import { SegmentedControl } from '../../components/filters/SegmentedControl'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
 import { AnalyticsMetaBadges } from '../../components/analytics/AnalyticsMetaBadges'
@@ -75,6 +76,55 @@ const EMPTY_OPTIONS: Options = {
 
 const pct = (num: number, den: number) => `${den > 0 ? ((num / den) * 100).toFixed(1) : '0.0'}%`
 const pctNum = (num: number, den: number) => (den > 0 ? (num / den) * 100 : 0)
+
+type RendimientoKpiIconId = 'doc' | 'money' | 'check' | 'user' | 'card'
+
+function RendimientoKpiIcon({ icon }: { icon: RendimientoKpiIconId }) {
+  const common = {
+    width: 14,
+    height: 14,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.8,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  }
+  if (icon === 'doc')
+    return (
+      <svg {...common}>
+        <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+        <path d="M14 3v6h6" />
+      </svg>
+    )
+  if (icon === 'money')
+    return (
+      <svg {...common}>
+        <rect x="2" y="6" width="20" height="12" rx="2" />
+        <circle cx="12" cy="12" r="2.5" />
+      </svg>
+    )
+  if (icon === 'check')
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="9" />
+        <path d="m8.5 12.5 2.2 2.2 4.8-4.8" />
+      </svg>
+    )
+  if (icon === 'user')
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 20a8 8 0 0 1 16 0" />
+      </svg>
+    )
+  return (
+    <svg {...common}>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 10h20" />
+    </svg>
+  )
+}
 const RENDIMIENTO_KPI_ORDER_STORAGE = 'analisis_rendimiento_kpi_order_v2'
 const RENDIMIENTO_CHART_LABELS_STORAGE = 'analisis_rendimiento_chart_labels_v1'
 const DEFAULT_KPI_ORDER: KpiId[] = [
@@ -248,10 +298,11 @@ function PercentBarChart({
         const value = Math.max(0, Math.min(100, point.value))
         const barHeight = (value / 100) * plotH
         const y = height - padding.bottom - barHeight
+        const pillRx = barWidth / 2
         const showX = index % labelStep === 0 || index === data.length - 1
         return (
           <g key={`${point.label}-${index}`}>
-            <rect x={x} y={y} width={barWidth} height={barHeight} rx={6} fill={color} opacity={0.92} />
+            <rect x={x} y={y} width={barWidth} height={Math.max(barHeight, 0)} rx={pillRx} ry={pillRx} fill={color} opacity={0.98} className="rend-vbar-fill" />
             {showLabels && barHeight > 18 ? (
               <text
                 x={x + barWidth / 2}
@@ -516,42 +567,58 @@ export function AnalisisRendimientoView() {
     })
   }, [])
 
-  const kpiCards: Record<KpiId, { title: string; value: string; note?: string; className: string }> = {
+  const kpiCards: Record<
+    KpiId,
+    { title: string; value: string; fullValue?: string; note?: string; borderColor: string; valueColor?: string; icon: RendimientoKpiIconId }
+  > = {
     rendimiento_monto: {
-      title: 'Rendimiento por monto',
+      title: 'RENDIMIENTO POR MONTO',
       value: pct(Number(summary?.totalPaid || 0), Number(summary?.totalDebt || 0)),
       note: 'Cobrado / monto a cobrar',
-      className: 'cohorte-kpi-emerald',
+      borderColor: 'var(--color-chart-1)',
+      valueColor: 'var(--color-chart-1)',
+      icon: 'money',
     },
     rendimiento_cantidad: {
-      title: 'Rendimiento por cantidad',
+      title: 'RENDIMIENTO POR CANTIDAD',
       value: pct(Number(summary?.totalContractsPaid || 0), Number(summary?.totalContracts || 0)),
       note: 'Contratos con cobro / contratos por cobrar',
-      className: 'cohorte-kpi-cyan',
+      borderColor: 'var(--color-chart-2)',
+      valueColor: 'var(--color-chart-2)',
+      icon: 'check',
     },
     contratos_por_cobrar: {
-      title: 'Contratos por cobrar',
+      title: 'CONTRATOS POR COBRAR',
       value: formatCount(summary?.totalContracts || 0),
       note: 'Base filtrada por mes de gestión',
-      className: 'cohorte-kpi-primary',
+      borderColor: 'var(--color-text-muted)',
+      icon: 'doc',
     },
     contratos_con_cobro: {
-      title: 'Contratos con cobro',
+      title: 'CONTRATOS CON COBRO',
       value: formatCount(summary?.totalContractsPaid || 0),
-      note: 'Cantidad de contratos con pago registrado',
-      className: 'cohorte-kpi-primary',
+      note: 'Contratos con pago registrado',
+      borderColor: 'var(--color-state-ok)',
+      valueColor: 'var(--color-state-ok)',
+      icon: 'user',
     },
     monto_a_cobrar: {
-      title: 'Monto a cobrar',
+      title: 'MONTO A COBRAR',
       value: formatGsFull(summary?.totalDebt || 0),
+      fullValue: formatGsFull(summary?.totalDebt || 0),
       note: 'Monto vencido + monto cuota',
-      className: 'cohorte-kpi-gold',
+      borderColor: 'var(--color-chart-5)',
+      valueColor: 'var(--color-chart-5)',
+      icon: 'money',
     },
     total_cobrado: {
-      title: 'Total cobrado',
+      title: 'TOTAL COBRADO',
       value: formatGsFull(summary?.totalPaid || 0),
+      fullValue: formatGsFull(summary?.totalPaid || 0),
       note: `${formatCount(summary?.totalContractsPaid || 0)} contratos con cobro`,
-      className: 'cohorte-kpi-primary',
+      borderColor: 'var(--color-primary)',
+      valueColor: 'var(--color-primary)',
+      icon: 'card',
     },
   }
 
@@ -654,13 +721,16 @@ export function AnalisisRendimientoView() {
               onChange={(values) => setFilters((prev) => ({ ...prev, viasPago: values }))}
               placeholder="Todas"
             />
-            <MultiSelectFilter
+            <SegmentedControl
               className="analysis-filter-control"
               label="Categoría"
-              options={options.categorias}
-              selected={filters.categorias}
-              onChange={(values) => setFilters((prev) => ({ ...prev, categorias: values }))}
-              placeholder="Todas"
+              options={[
+                { value: '', label: 'Todas' },
+                { value: 'VIGENTE', label: 'Vigente' },
+                { value: 'MOROSO', label: 'Moroso' },
+              ]}
+              value={(filters.categorias[0] || '').toUpperCase()}
+              onChange={(value) => setFilters((prev) => ({ ...prev, categorias: value ? [value] : [] }))}
             />
             <MultiSelectFilter
               className="analysis-filter-control"
@@ -731,7 +801,7 @@ export function AnalisisRendimientoView() {
             />
           </div>
 
-          <div className="analysis-kpis rendimiento-kpis-auto">
+          <div className="summary-grid rendimiento-kpi-summary-grid">
             {kpiOrder.map((kpiId) => {
               const card = kpiCards[kpiId]
               const isDragging = draggingKpi === kpiId
@@ -739,7 +809,8 @@ export function AnalisisRendimientoView() {
               return (
                 <article
                   key={kpiId}
-                  className={`card kpi-card analysis-card-pad analysis-kpi-card ${card.className} ${isDragging ? 'dragging-card' : ''} ${isDropTarget ? 'chart-drop-target' : ''}`}
+                  className={`card kpi-card analysis-card-pad ${isDragging ? 'dragging-card' : ''} ${isDropTarget ? 'chart-drop-target' : ''}`}
+                  style={{ borderLeft: `4px solid ${card.borderColor}` }}
                   draggable
                   onDragStart={(event) => {
                     setDraggingKpi(kpiId)
@@ -765,11 +836,24 @@ export function AnalisisRendimientoView() {
                   }}
                 >
                   <div className="chart-card-header">
-                    <div className="kpi-card-title-wrap"><h3 className="kpi-card-title">{card.title}</h3></div>
-                    <span className="chart-drag-handle" title="Arrastrar para reordenar" aria-hidden>::</span>
+                    <div className="kpi-card-title-wrap">
+                      <span className="kpi-card-icon" aria-hidden>
+                        <RendimientoKpiIcon icon={card.icon} />
+                      </span>
+                      <span className="analysis-kpi-title">{card.title}</span>
+                    </div>
+                    <span className="chart-drag-handle" title="Arrastrar para reordenar" aria-hidden>
+                      ::
+                    </span>
                   </div>
-                  <strong className="kpi-card-value" title={card.value}>{card.value}</strong>
-                  {card.note ? <small className="analysis-kpi-note">{card.note}</small> : null}
+                  <div
+                    className="kpi-card-value"
+                    style={{ color: card.valueColor || 'var(--color-text)' }}
+                    title={card.fullValue || card.value}
+                  >
+                    {card.value}
+                  </div>
+                  {card.note ? <div className="analysis-kpi-note kpi-card-footnote">{card.note}</div> : null}
                 </article>
               )
             })}

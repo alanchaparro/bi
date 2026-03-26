@@ -9,19 +9,21 @@ test.describe('Menu de navegacion', () => {
     await page.getByLabel(/usuario/i).fill(E2E_USER)
     await page.getByLabel(/contrase(ñ|n)a/i).fill(E2E_PASS)
     await page.getByRole('button', { name: /entrar/i }).click()
-    await expect(page).toHaveURL(/\/(analisis-cartera|config|analisis-anuales|rendimiento|cobranzas-cohorte)/, { timeout: 15_000 })
+    await expect(page).toHaveURL(/\/(cartera|analisis-cartera|config|analisis-anuales|rendimiento|cobranzas-cohorte)/, { timeout: 15_000 })
     await expect(page.getByTestId('sidebar-toggle')).toBeVisible({ timeout: 15_000 })
   })
 
   test('tras login, el menu muestra enlaces a analiticas y configuracion', async ({ page }) => {
+    await expect(page.getByRole('link', { name: /resumen de cartera/i })).toBeVisible()
     await expect(page.getByRole('link', { name: /analisis de cartera|análisis de cartera/i })).toBeVisible()
+    await expect(page.getByRole('link', { name: /rolo de cartera/i })).toBeVisible()
     await expect(page.getByRole('link', { name: /configuraci(o|ó)n/i })).toBeVisible()
   })
 
   test('clic en configuracion muestra la seccion correspondiente', async ({ page }) => {
-    await page.getByRole('link', { name: /configuraci(o|ó)n/i }).click()
-    await expect(page).toHaveURL(/\/config/)
-    await expect(page.getByRole('heading', { name: /configuraci(o|ó)n/i })).toBeVisible({ timeout: 5_000 })
+    await page.getByTestId('nav-config').click()
+    await expect(page).toHaveURL(/\/config/, { timeout: 15_000 })
+    await expect(page.getByRole('heading', { name: /configuraci(o|ó)n/i })).toBeVisible({ timeout: 15_000 })
   })
 
   test('clic en analisis anuales navega y muestra contenido', async ({ page }) => {

@@ -31,6 +31,7 @@ import {
   type UserItem,
 } from '../../shared/api'
 import { getApiErrorMessage } from '../../shared/apiErrors'
+import { THEME_PRESETS, applyThemePreset, getStoredThemePresetId } from '../../shared/themePresets'
 
 type Props = {
   onReloadBrokers?: () => Promise<void>
@@ -295,6 +296,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   const [mysqlSaving, setMysqlSaving] = useState(false)
   const [mysqlTesting, setMysqlTesting] = useState(false)
   const [mysqlMessage, setMysqlMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  const [themePresetId, setThemePresetId] = useState<string>('epem_obsidiana')
   const [mysqlConfig, setMysqlConfig] = useState<MysqlConnectionConfig>({
     host: '',
     port: 3306,
@@ -390,6 +392,10 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   const liveTone: SyncTagTone = isLiveFresh ? 'ok' : 'warn'
 
   useEffect(() => {
+    setThemePresetId(getStoredThemePresetId())
+  }, [])
+
+  useEffect(() => {
     onSyncLiveChange?.(syncLive)
   }, [onSyncLiveChange, syncLive])
 
@@ -441,6 +447,34 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
       return prev.filter((d) => d !== domain)
     })
   }, [])
+
+  const selectAllSyncDomains = useCallback(() => {
+    setSelectedDomains(SYNC_DOMAINS.map((d) => d.value))
+  }, [])
+
+  const resetSyncDomainsDefault = useCallback(() => {
+    setSelectedDomains(['analytics'])
+  }, [])
+
+  const applyThemeChoice = useCallback((presetId: string) => {
+    setThemePresetId(presetId)
+    applyThemePreset(presetId)
+  }, [])
+
+  const themeGroups = [
+    {
+      id: 'base',
+      title: 'Familia base',
+      subtitle: 'Variantes suaves para operación general y transición desde el tema actual.',
+      presets: THEME_PRESETS.filter((preset) => preset.family === 'base'),
+    },
+    {
+      id: 'premium',
+      title: 'Familia premium / ejecutiva',
+      subtitle: 'Versiones más sobrias, directivas y corporativas usando la misma paleta como base.',
+      presets: THEME_PRESETS.filter((preset) => preset.family === 'premium'),
+    },
+  ] as const
 
   const loadTramoConfig = useCallback(async () => {
     setTramoConfigLoading(true)
@@ -560,26 +594,6 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
     }
   }, [deleteScheduleConfirm, loadSchedules, schedulePendingDeleteId])
 
-  useEffect(() => {
-    void loadSchedules()
-  }, [loadSchedules])
-
-  useEffect(() => {
-    if (!schedules.length) return
-    const timer = window.setInterval(() => {
-      void refreshScheduleRuntime(schedules)
-    }, 8000)
-    return () => window.clearInterval(timer)
-  }, [schedules, refreshScheduleRuntime])
-
-  useEffect(() => {
-    void loadTramoConfig()
-  }, [loadTramoConfig])
-
-  useEffect(() => {
-    void loadUsers()
-  }, [loadUsers])
-
   const loadMysqlConfig = useCallback(async () => {
     setMysqlLoading(true)
     setMysqlMessage(null)
@@ -600,9 +614,37 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
     }
   }, [])
 
+  const sectionDataLoadedRef = useRef<Partial<Record<ConfigSection, boolean>>>({})
+
   useEffect(() => {
-    void loadMysqlConfig()
-  }, [loadMysqlConfig])
+    const key = configSection
+    const loaded = sectionDataLoadedRef.current
+    if (key === 'usuarios' && !loaded.usuarios) {
+      loaded.usuarios = true
+      void loadUsers()
+    }
+    if (key === 'negocio' && !loaded.negocio) {
+      loaded.negocio = true
+      void loadTramoConfig()
+    }
+    if (key === 'importaciones' && !loaded.importaciones) {
+      loaded.importaciones = true
+      void loadMysqlConfig()
+    }
+    if (key === 'programacion' && !loaded.programacion) {
+      loaded.programacion = true
+      void loadSchedules()
+    }
+  }, [configSection, loadMysqlConfig, loadSchedules, loadTramoConfig, loadUsers])
+
+  useEffect(() => {
+    if (configSection !== 'programacion') return
+    if (!schedules.length) return
+    const timer = window.setInterval(() => {
+      void refreshScheduleRuntime(schedules)
+    }, 8000)
+    return () => window.clearInterval(timer)
+  }, [configSection, schedules, refreshScheduleRuntime])
 
   const handleSaveMysqlConfig = useCallback(async () => {
     if (!mysqlConfig.host.trim() || !mysqlConfig.user.trim() || !mysqlConfig.database.trim()) {
@@ -884,7 +926,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               running: true,
               currentDomain: domain,
               log: lines.slice(-200),
-              message: `[${domain}] Sin respuesta del estado de sincronizacion`,
+              message: `[${domain}] Sin respuesta del estado de sincronización`,
               lastUpdatedAt: prev?.lastUpdatedAt || null,
             }
           })
@@ -1112,10 +1154,10 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
     setSyncLive({
       running: true,
       currentDomain: null,
-      log: ['Estado: iniciando sincronizacion...'],
+      log: ['Estado: iniciando sincronización...'],
       progressPct: 1,
       stage: 'starting',
-      message: 'Iniciando sincronizacion...',
+      message: 'Iniciando sincronización...',
       lastUpdatedAt: new Date().toISOString(),
     })
 
@@ -1235,7 +1277,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
           globalLog.push(`[${domain}] job=${run.job_id} aplicadas=${applied} duplicados=${Number(status.duplicates_detected || 0)}`)
         } catch (domainError: unknown) {
           const msg = getApiErrorMessage(domainError)
-          if (/sincronizacion en curso|ya existe/i.test(msg)) {
+          if (/sincronización en curso|ya existe/i.test(msg)) {
             try {
               const runningJob = await findRunningSyncJob(domain)
               if (runningJob) {
@@ -1265,7 +1307,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
         ...(prev || {}),
         running: false,
         progressPct: 100,
-        message: 'Sincronizacion finalizada',
+        message: 'Sincronización finalizada',
       }))
       if (successfulDomains > 0) {
         if (skippedDomains.length > 0) {
@@ -1357,12 +1399,12 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   return (
     <section className="card config-card">
       <AnalyticsPageHeader kicker="SISTEMA" title="Configuración" subtitle="Usuarios, negocio, importaciones y programación." />
-      <div className="config-segmented-nav" role="tablist" aria-label="Subsecciones de configuracion">
+      <div className="config-segmented-nav" role="tablist" aria-label="Subsecciones de configuración">
         {([
           ['usuarios', 'Usuarios'],
-          ['negocio', 'Configuracion de negocio'],
+          ['negocio', 'Configuración de negocio'],
           ['importaciones', 'Importaciones'],
-          ['programacion', 'Programacion'],
+          ['programacion', 'Programación'],
         ] as const).map(([value, label]) => {
           const selected = configSection === value
           return (
@@ -1405,15 +1447,15 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
           </div>
 
           <div>
-            <h3 className="config-section-title">Estado de conexion</h3>
+            <h3 className="config-section-title">Estado de conexión</h3>
             <div className="config-row-wrap-tight">
               <Button type="button" variant="outline" onPress={checkHealth} isDisabled={healthLoading}>
-                {healthLoading ? 'Comprobando...' : 'Comprobar conexion'}
+                {healthLoading ? 'Comprobando...' : 'Comprobar conexión'}
               </Button>
               {health && (
                 <div className="config-label-col">
                   <span className={health.ok ? 'status-ok' : 'status-error'}>
-                    {health.ok ? 'OK Conectado' : 'ERROR Sin conexion'}
+                    {health.ok ? 'OK Conectado' : 'ERROR Sin conexión'}
                     {health.db_ok !== undefined && ` (DB: ${health.db_ok ? 'OK' : 'Error'})`}
                     {health.mysql_ok !== undefined && health.mysql_ok !== null && ` (MySQL: ${health.mysql_ok ? 'OK' : 'Error'})`}
                     {health.mysql_ok === null && ' (MySQL: no configurado)'}
@@ -1432,7 +1474,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
           </div>
 
           <div>
-            <h3 className="config-section-title">Conexion MySQL (extraccion)</h3>
+            <h3 className="config-section-title">Conexión MySQL (extracción)</h3>
             <p className="config-section-subtitle">
               Esta configuración se usa para extraer datos en sincronización.
             </p>
@@ -1496,7 +1538,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, ssl_disabled: e.target.checked }))}
                   disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
-                <span>MYSQL_SSL_DISABLED</span>
+                <span>Desactivar SSL de MySQL</span>
               </label>
             </div>
             <div className="config-row-wrap-tight config-mt-sm">
@@ -1636,6 +1678,49 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
 
         {configSection === 'negocio' && (
         <div>
+          <h3 className="config-section-title">Apariencia del sistema</h3>
+          <p className="config-section-subtitle">
+            Temas pensados con teoría de color para priorizar legibilidad, jerarquía y fatiga visual baja en operación.
+          </p>
+
+          <div className="config-theme-groups config-mt-md config-mb-md">
+            {themeGroups.map((group) => (
+              <section key={group.id} className="config-theme-group">
+                <div className="config-theme-group-header">
+                  <h4 className="config-theme-group-title">{group.title}</h4>
+                  <p className="config-theme-group-note">{group.subtitle}</p>
+                </div>
+                <div className="config-theme-grid">
+                  {group.presets.map((preset) => {
+                    const selected = themePresetId === preset.id
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        className={`config-theme-card ${selected ? 'is-active' : ''}`}
+                        onClick={() => applyThemeChoice(preset.id)}
+                        aria-pressed={selected}
+                      >
+                        <div className="config-theme-card-top">
+                          <div>
+                            <strong>{preset.label}</strong>
+                            <span>{preset.description}</span>
+                          </div>
+                          <span className="config-theme-mode">{preset.mode === 'dark' ? 'Oscuro' : 'Claro'}</span>
+                        </div>
+                        <div className="config-theme-swatches" aria-hidden="true">
+                          {preset.swatches.map((color) => (
+                            <span key={`${preset.id}-${color}`} className="config-theme-swatch" style={{ backgroundColor: color }} />
+                          ))}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+
           <h3 className="config-section-title">Reglas de Tramo por Unidad de Negocio</h3>
           <p className="config-section-subtitle">
             Elige varios tramos + Unidad de Negocio + Categoria, luego agrega la regla.
@@ -1747,6 +1832,17 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                 </label>
               ))}
             </div>
+            <div className="config-row-wrap-tight config-mt-2xs">
+              <Button type="button" variant="outline" size="sm" onPress={selectAllSyncDomains} isDisabled={busy}>
+                Seleccionar todos los dominios
+              </Button>
+              <Button type="button" variant="outline" size="sm" onPress={resetSyncDomainsDefault} isDisabled={busy}>
+                Solo Analytics (por defecto)
+              </Button>
+            </div>
+            <p className="config-section-subtitle config-mt-2xs config-no-margin">
+              Para traer todo en una pasada, usá «Seleccionar todos los dominios»; si el volumen es alto, el sistema pedirá confirmación antes de continuar. Cartera exige rango de cierre (mes/año desde–hasta).
+            </p>
           </div>
 
           <div className="config-stack-sm config-stack-sm-max">
@@ -1826,7 +1922,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   ? `ERROR ${syncResult.error}`
                   : Number(syncResult.rows || 0) > 0
                     ? `OK ${syncResult.rows ?? 0} filas cargadas`
-                    : 'OK sincronizacion completada (sin cambios)'}
+                    : 'OK sincronización completada (sin cambios)'}
               </span>
               )}
           </div>
@@ -1874,7 +1970,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={syncPercent}
-                  aria-label="Progreso de sincronizacion"
+                  aria-label="Progreso de sincronización"
                 >
                   <svg className={`sync-ring-svg ${syncLive.running ? 'is-running' : ''}`} viewBox="0 0 120 120" aria-hidden>
                     <circle className="sync-ring-track" cx="60" cy="60" r="48" />
@@ -1901,7 +1997,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                     <span className={toneClass(liveTone)}>
                       Estado: <strong>{isLiveFresh ? 'En vivo' : 'Desfasado'}</strong>
                     </span>
-                    <span className={toneClass('info')}>Ult. actualizacion: <strong>{lastUpdatedLabel}</strong></span>
+                    <span className={toneClass('info')}>Últ. actualización: <strong>{lastUpdatedLabel}</strong></span>
                     <span className={toneClass('info')}>Dominio: <strong>{syncDomainLabel}</strong></span>
                     <span className={toneClass('info')}>Query: <code>{syncQueryFile}</code></span>
                     <span className={toneClass('info')}>Etapa: <strong>{syncLive.jobStep || syncLive.stage || '-'}</strong></span>
@@ -1916,6 +2012,14 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   </div>
                 </div>
               </div>
+
+              {syncLive.running ? (
+                <p className="config-section-subtitle config-mt-sm config-no-margin" role="status" aria-live="polite">
+                  {syncPercent < 5
+                    ? 'Es normal ver varios minutos en 0% al inicio (estimación de volumen o conexión a MySQL). Si «Últ. actualización» no cambia en un tiempo prolongado, puede haber un corte de red o de base; consultá con operaciones o TI.'
+                    : 'Importación en curso. El porcentaje refleja el avance reportado por el servidor.'}
+                </p>
+              ) : null}
 
               <div className="config-meta">
                 Avance general

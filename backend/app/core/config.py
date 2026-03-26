@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     auth_lock_minutes: int = Field(default=15, alias='AUTH_LOCK_MINUTES')
     auth_login_rate_limit: int = Field(default=10, alias='AUTH_LOGIN_RATE_LIMIT')
     auth_login_rate_window_seconds: int = Field(default=60, alias='AUTH_LOGIN_RATE_WINDOW_SECONDS')
+    auth_login_rate_bypass_localhost: bool = Field(default=False, alias='AUTH_LOGIN_RATE_BYPASS_LOCALHOST')
     write_rate_limit: int = Field(default=30, alias='WRITE_RATE_LIMIT')
     write_rate_window_seconds: int = Field(default=60, alias='WRITE_RATE_WINDOW_SECONDS')
 
@@ -93,6 +94,7 @@ class Settings(BaseSettings):
     analytics_sync_mode: str = Field(default='incremental', alias='ANALYTICS_SYNC_MODE')
     analytics_sync_window_months: int = Field(default=3, alias='ANALYTICS_SYNC_WINDOW_MONTHS')
     read_from_fact_tables: bool = Field(default=True, alias='READ_FROM_FACT_TABLES')
+    analytics_prewarm_defer_startup: bool = Field(default=True, alias='ANALYTICS_PREWARM_DEFER_STARTUP')
 
 
 settings = Settings()

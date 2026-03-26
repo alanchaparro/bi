@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@heroui/react";
 import { useAuth } from "@/app/providers";
 import { NAV_ITEMS, type NavItem } from "@/config/routes";
+import { LoadingState } from "@/components/feedback/LoadingState";
+import { applyThemePreset, getStoredThemePresetId, getThemePresetById } from "@/shared/themePresets";
 
 type SyncLive = {
   running?: boolean;
@@ -70,6 +72,15 @@ function SidebarIcon({ id }: { id: string }) {
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
   };
+  if (id === "cartera") {
+    return (
+      <svg {...common} aria-hidden>
+        <rect x="3" y="4" width="18" height="6" rx="1.5" />
+        <rect x="3" y="14" width="8" height="7" rx="1.5" />
+        <rect x="13" y="14" width="8" height="7" rx="1.5" />
+      </svg>
+    );
+  }
   if (id === "analisisCartera") {
     return (
       <svg {...common} aria-hidden>
@@ -184,7 +195,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { auth, loading, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [themePresetId, setThemePresetId] = useState<string>("epem_obsidiana");
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     return window.matchMedia("(min-width: 1024px)").matches;
@@ -202,23 +213,15 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("ui-theme");
-      setTheme(saved === "light" ? "light" : "dark");
+      setThemePresetId(getStoredThemePresetId());
     } catch {
-      setTheme("dark");
+      setThemePresetId("epem_obsidiana");
     }
   }, []);
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    document.documentElement.classList.remove("dark", "light");
-    document.documentElement.classList.add(theme);
-    try {
-      localStorage.setItem("ui-theme", theme);
-    } catch {
-      // ignore
-    }
-  }, [theme]);
+    applyThemePreset(themePresetId);
+  }, [themePresetId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -234,20 +237,26 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toggleTheme = useCallback(() => {
-    setTheme((t) => (t === "dark" ? "light" : "dark"));
+    setThemePresetId((current) => {
+      const next = getThemePresetById(current).mode === "dark" ? "epem_marfil_brisa" : "epem_obsidiana";
+      return next;
+    });
   }, []);
 
-  const syncContextValue: SyncLiveContextValue = {
-    syncLive,
-    scheduleLive,
-    setSyncLive,
-    setScheduleLive,
-  };
+  const syncContextValue = useMemo<SyncLiveContextValue>(
+    () => ({
+      syncLive,
+      scheduleLive,
+      setSyncLive,
+      setScheduleLive,
+    }),
+    [scheduleLive, syncLive]
+  );
 
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[var(--bg-color)]">
-        <p className="text-[var(--text-secondary)]">Cargando...</p>
+        <LoadingState message="Cargando navegación..." className="w-full max-w-md" />
       </div>
     );
   }
@@ -292,12 +301,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         }`}
       >
         <div className="dashboard-sidebar-mobile-header flex items-center justify-between px-4 py-2 lg:hidden">
-          <strong className="text-sm font-semibold text-[var(--color-text)]">Menu</strong>
+          <strong className="text-sm font-semibold text-[var(--color-text)]">Menú</strong>
           <Button
             isIconOnly
             variant="ghost"
             size="sm"
-            aria-label="Cerrar menu"
+            aria-label="Cerrar menú"
             onPress={() => setSidebarOpen(false)}
             className="text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
           >
@@ -305,11 +314,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           </Button>
         </div>
         <div className="dashboard-sidebar-brand hidden lg:block">
-          <div className="dashboard-sidebar-brand-kicker">Navegacion</div>
+          <div className="dashboard-sidebar-brand-kicker">Navegación</div>
           <div className="dashboard-sidebar-brand-title">EPEM</div>
-          <div className="dashboard-sidebar-brand-note">Accesos principales del frente analitico.</div>
+          <div className="dashboard-sidebar-brand-note">Accesos principales del frente analítico.</div>
         </div>
-        <nav className="dashboard-sidebar-nav flex flex-1 flex-col overflow-y-auto overflow-x-hidden pb-6" aria-label="Menu principal">
+        <nav className="dashboard-sidebar-nav flex flex-1 flex-col overflow-y-auto overflow-x-hidden pb-6" aria-label="Menú principal">
           {Array.from(groups.entries()).map(([groupName, items]) => (
             <div key={groupName || "default"} className="dashboard-sidebar-group">
               {groupName ? <div className="dashboard-sidebar-group-label">{groupName}</div> : null}
@@ -326,7 +335,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                         className={`dashboard-sidebar-link ${isActive ? "is-active" : ""} ${isRendimiento ? "sidebar-item-rendimiento" : ""}`}
                         aria-current={isActive ? "page" : undefined}
                         aria-label={item.label}
-                        data-testid={isRendimiento ? "nav-rendimiento-cartera" : undefined}
+                        data-testid={item.id === "config" ? "nav-config" : isRendimiento ? "nav-rendimiento-cartera" : undefined}
                       >
                         <span className="dashboard-sidebar-link-icon" aria-hidden>
                           <SidebarIcon id={item.id} />
@@ -362,17 +371,17 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         </nav>
       </aside>
       <div
-        className={`dashboard-shell min-h-screen overflow-x-hidden transition-[padding-left] duration-300 ease-out ${sidebarOpen ? "dashboard-shell--with-sidebar" : "dashboard-shell--without-sidebar"}`}
+        className={`dashboard-shell min-h-screen overflow-x-visible transition-[padding-left] duration-300 ease-out ${sidebarOpen ? "dashboard-shell--with-sidebar" : "dashboard-shell--without-sidebar"}`}
       >
-        <div className="dashboard-header dashboard-header--full sticky top-0 z-[140] border-b border-[var(--glass-border)] bg-[var(--card-bg)]/95 px-3 py-3 backdrop-blur-xl lg:px-6">
+        <div className="dashboard-header dashboard-header--full sticky top-0 z-[140] border-b border-[var(--glass-border)] bg-[var(--card-bg)]/95 px-2.5 py-1.5 backdrop-blur-xl lg:px-4">
           <div className="dashboard-header-shell">
-            <div className="flex min-w-0 items-center gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
               <Button
                 isIconOnly
-                variant="ghost"
+                variant="outline"
                 size="md"
                 className="dashboard-toggle-button min-h-[var(--touch-min)] min-w-[var(--touch-min)] shrink-0"
-                aria-label={sidebarOpen ? "Cerrar menu lateral" : "Abrir menu lateral"}
+                aria-label={sidebarOpen ? "Cerrar menú lateral" : "Abrir menú lateral"}
                 aria-expanded={sidebarOpen}
                 data-testid="sidebar-toggle"
                 onPress={() => setSidebarOpen((open) => !open)}
@@ -384,8 +393,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 <h1 className="dashboard-brand-title">EPEM - Cartera de Cobranzas</h1>
               </div>
             </div>
-            <div className="dashboard-header-actions text-sm text-[var(--text-secondary)]">
-              <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Estado de sincronizacion">
+            <div className="dashboard-header-actions text-xs text-[var(--text-secondary)]">
+              <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Estado de sincronización">
                 {showSchedule && (
                   <Link
                     href="/config"
@@ -411,7 +420,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 )}
               </div>
               {(showSchedule || showSync) ? <span className="hidden h-4 w-px bg-[var(--glass-border)] md:block" aria-hidden /> : null}
-              <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Usuario y acciones">
+              <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Usuario y acciones">
                 <span>
                   Rol: <strong className="text-[var(--text-primary)]">{auth.role ?? "-"}</strong>
                 </span>
@@ -420,11 +429,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                   size="sm"
                   variant="ghost"
                   isIconOnly
-                  aria-label={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+                  aria-label={getThemePresetById(themePresetId).mode === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
                   onPress={toggleTheme}
                   className="min-h-[var(--touch-min)] min-w-[var(--touch-min)]"
                 >
-                  <ThemeIcon isDark={theme === "dark"} />
+                  <ThemeIcon isDark={getThemePresetById(themePresetId).mode === "dark"} />
                 </Button>
                 <Button type="button" variant="outline" size="sm" onPress={logout} className="min-h-[var(--touch-min)]">
                   Cerrar sesión
@@ -433,7 +442,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
-        <main className="dashboard-main-content px-4 pb-8 pt-6 lg:px-8 lg:pt-8 xl:px-10 xl:pt-10">
+        <main className="dashboard-main-content overflow-x-auto px-3 pb-6 pt-3 lg:px-4 lg:pt-4 xl:px-5 xl:pt-5">
           <div className="container-main dashboard-page-enter">{children}</div>
         </main>
       </div>

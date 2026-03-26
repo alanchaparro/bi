@@ -9,12 +9,34 @@ sys.path.insert(0, str(ROOT / "backend"))
 os.environ.setdefault("DATABASE_URL", "sqlite:///./data/test_sync_cache_invalidation.db")
 
 from app.services.sync_service import (  # noqa: E402
+    _analyze_after_sync,
     _invalidate_cartera_cache,
     _invalidate_when_months_overlap,
 )
+from app.models.brokers import CarteraCorteAgg, CarteraFact  # noqa: E402
 
 
 class SyncCacheInvalidationTests(unittest.TestCase):
+    def test_analyze_after_sync_includes_cartera_agg_table(self):
+        class DummyDb:
+            def __init__(self):
+                self.calls = []
+                self.committed = False
+
+            def execute(self, stmt):
+                self.calls.append(str(stmt))
+
+            def commit(self):
+                self.committed = True
+
+        db = DummyDb()
+
+        _analyze_after_sync(db, "cartera")
+
+        self.assertTrue(any(CarteraFact.__tablename__ in stmt for stmt in db.calls))
+        self.assertTrue(any(CarteraCorteAgg.__tablename__ in stmt for stmt in db.calls))
+        self.assertTrue(db.committed)
+
     def test_invalidate_when_months_overlap_respects_selected_month(self):
         months = {"03/2026", "04/2026"}
         self.assertTrue(_invalidate_when_months_overlap({"gestion_month": ["03/2026"]}, months, "gestion_month"))

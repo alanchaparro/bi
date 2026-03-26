@@ -7,13 +7,19 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
 ## Canonico transversal de desacople
 - El desacople entre frontend **nuevo** y **legacy** se rige por `desacople.md`.
 - Si el cambio toca navegacion, routing, layout o UI de modulos analiticos, validar obligatoriamente contra `desacople.md`.
+- El canon visual operativo por patrones de UI analytics se rige por `docs/spec-canon-patrones-ui-analytics.md`.
+- Si el cambio toca filtros, botones, tablas, densidad desktop, jerarquia o componentes visuales repetidos, validar obligatoriamente contra `docs/spec-canon-patrones-ui-analytics.md`.
 
 ## Canonicos operativos de seguimiento (obligatorios)
 - `bugs.md`: backlog tecnico/operativo y estado AUD-*.
 - `bugs_visual.md`: backlog UX/UI visual y estado V-*.
 - `optimo.md`: backlog/criterios de optimizacion continua (hardware + UX) y evidencia antes/despues.
+- `qa.md`: corridas QA tipo usuario final, evidencia, estado por flujo y escalamiento a los canónicos de bugs/visual/óptimo.
+- `pendientes.md`: voz del **cliente ejecutivo no técnico** (experiencia de uso, usabilidad percibida, estética y alineación del mensaje con el negocio canónico); estado **PEND-*** y handoff al dev (skill `experiencia-cliente`).
+- Skill **`ejecutador`**: ciclo planificado (inventario → plan → implementación → validación) para **cerrar ítems abiertos** en esos canónicos con evidencia y sin drift documental (ver `.cursor/skills/ejecutador/SKILL.md`).
+- Skill **`orquesta`**: encadena en orden **`auditor`** → **`audivisual`** → **`experiencia-cliente`** → **`ejecutador`**, y cierra con aviso explícito al usuario (ver `.cursor/skills/orquesta/SKILL.md`).
 - La coordinacion entre agentes/equipo se realiza por handoffs en estos `.md`; no dejar decisiones operativas solo en conversaciones.
-- Todo ciclo de trabajo debe revisar y mantener alineados estos tres canónicos, sin drift entre codigo y documentos.
+- Todo ciclo de trabajo debe revisar y mantener alineados estos documentos canónicos, sin drift entre codigo y documentos.
 
 ## Reglas de negocio obligatorias
 1. **Fecha de cierre != fecha de gestion**.
@@ -148,6 +154,8 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
 7. Si el cambio toca Docker/compose/bootstrap/scripts: validar `INICIAR.bat`/`iniciar.sh`, `DETENER.bat`/`detener.sh` y `REINICIAR.bat`/`reiniciar.sh`.
 8. Si el cambio toca frontend de analytics, validar fronteras de `desacople.md` (sin marcadores legacy en flujo nuevo).
 9. Validar `optimo.md` como canónico de pendientes: registrar impacto en hardware/UX, evidencia antes/despues y estado consistente con `bugs.md`/`bugs_visual.md`.
+10. Si el cambio requiere validación funcional o de regresión, registrar la corrida en `qa.md` con evidencia y enlazar cualquier hallazgo a su canónico correspondiente.
+11. Si el cambio altera copy, métricas visibles o flujos de decision con datos para perfiles no técnicos: revisar coherencia con `pendientes.md` (ítems abiertos/cerrados) y con la voz de negocio de `AGENTS.md`.
 
 ## Cuando actualizar este archivo
 Actualizar inmediatamente si cambia:
@@ -161,3 +169,4 @@ Actualizar inmediatamente si cambia:
 8. Esquema de hashing de contraseñas o validacion de tipo de token JWT.
 9. Fronteras de desacople entre frontend nuevo y legacy (`desacople.md`).
 10. Criterios de optimizacion continua y politica de seguimiento de pendientes en `optimo.md`.
+11. Politica o formato del canónico de experiencia ejecutiva en `pendientes.md` (PEND-*).

@@ -5,90 +5,118 @@ import { EmptyState } from '../../components/feedback/EmptyState'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { LoadingState } from '../../components/feedback/LoadingState'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
-import { api } from '../../shared/api'
+import { getPortfolioCorteOptions, getPortfolioCorteSummary } from '../../shared/api'
+import type { PortfolioCorteSummaryResponse } from '../../shared/api'
 import { getApiErrorMessage } from '../../shared/apiErrors'
 import type { BrokersFilters } from '../../shared/contracts'
 import { EMPTY_BROKERS_FILTERS } from '../../shared/contracts'
 import { loadCarteraPreferences, persistCarteraPreferences } from '../../store/userPreferences'
 
-type PortfolioRow = {
-  contract_id?: string
-  supervisor?: string
-  un?: string
-  via?: string
-  year?: string
-  month?: string
-  tramo?: string
-  category?: string
-  debt?: number
-  expired?: number
+const formatCount = (value: number) => Math.round(Number(value || 0)).toLocaleString('es-PY')
+
+function gestionMonthRank(value: string): number {
+  const parts = String(value || '')
+    .trim()
+    .split('/')
+  if (parts.length !== 2) return 0
+  const m = Number(parts[0])
+  const y = Number(parts[1])
+  if (!Number.isFinite(m) || !Number.isFinite(y) || m < 1 || m > 12) return 0
+  return y * 100 + m
 }
 
-const formatGs = (value: number) => `Gs. ${Math.round(Number(value || 0)).toLocaleString('es-PY')}`
-const formatCount = (value: number) => Math.round(Number(value || 0)).toLocaleString('es-PY')
+function filtersToCortePayload(next: BrokersFilters) {
+  return {
+    supervisor: next.supervisors,
+    un: next.uns,
+    via_cobro: next.vias,
+    anio: next.years,
+    gestion_month: next.months,
+    categoria: next.categorias,
+    tramo: next.tramos,
+  }
+}
 
 export function CarteraView() {
   const [filters, setFilters] = useState<BrokersFilters>(EMPTY_BROKERS_FILTERS)
   const [draftFilters, setDraftFilters] = useState<BrokersFilters>(EMPTY_BROKERS_FILTERS)
-  const [rows, setRows] = useState<PortfolioRow[]>([])
-  const [summary, setSummary] = useState<Record<string, unknown>>({})
+  const [summary, setSummary] = useState<PortfolioCorteSummaryResponse | null>(null)
   const [options, setOptions] = useState<{
     supervisors: string[]
     uns: string[]
     vias: string[]
     years: string[]
     months: string[]
-  }>({ supervisors: [], uns: [], vias: [], years: [], months: [] })
+    categories: string[]
+    tramos: string[]
+  }>({ supervisors: [], uns: [], vias: [], years: [], months: [], categories: [], tramos: [] })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const loadOptions = useCallback(async (ctx: BrokersFilters) => {
+    const res = await getPortfolioCorteOptions(filtersToCortePayload(ctx))
+    const o = res.options || {}
+    setOptions({
+      supervisors: Array.isArray(o.supervisors) ? o.supervisors : [],
+      uns: Array.isArray(o.uns) ? o.uns : [],
+      vias: Array.isArray(o.vias) ? o.vias : [],
+      years: Array.isArray(o.contract_years) ? o.contract_years : [],
+      months: Array.isArray(o.gestion_months) ? o.gestion_months : [],
+      categories: Array.isArray(o.categories) ? o.categories : [],
+      tramos: Array.isArray(o.tramos) ? o.tramos : [],
+    })
+    return o
+  }, [])
 
   const loadSummary = useCallback(async (nextFilters: BrokersFilters) => {
     setLoading(true)
     setError('')
     try {
-      const payload = {
-        supervisor: nextFilters.supervisors,
-        un: nextFilters.uns,
-        via_cobro: nextFilters.vias,
-        anio: nextFilters.years,
-        contract_month: nextFilters.months,
-        gestion_month: [],
-        via_pago: [],
-        categoria: [],
-        tramo: [],
-      }
-      const res = await api.post('/analytics/portfolio/summary', payload)
-      const data = (res.data || {}) as Record<string, unknown>
-      const rawRows = Array.isArray(data.rows) ? (data.rows as PortfolioRow[]) : []
-      const apiOptions = (data.options || {}) as Record<string, unknown>
-
-      setRows(rawRows)
-      setSummary(data)
-      setOptions({
-        supervisors: Array.isArray(apiOptions.supervisors) ? (apiOptions.supervisors as string[]) : [],
-        uns: Array.isArray(apiOptions.uns) ? (apiOptions.uns as string[]) : [],
-        vias: Array.isArray(apiOptions.vias) ? (apiOptions.vias as string[]) : [],
-        years: Array.isArray(apiOptions.years) ? (apiOptions.years as string[]) : [],
-        months: Array.isArray(apiOptions.months) ? (apiOptions.months as string[]) : [],
-      })
+      await loadOptions(nextFilters)
+      const data = await getPortfolioCorteSummary(filtersToCortePayload(nextFilters))
+      setSummary(data || null)
     } catch (e: unknown) {
       setError(getApiErrorMessage(e))
-      setRows([])
-      setSummary({})
-      setOptions({ supervisors: [], uns: [], vias: [], years: [], months: [] })
+      setSummary(null)
+      setOptions({ supervisors: [], uns: [], vias: [], years: [], months: [], categories: [], tramos: [] })
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [loadOptions])
 
   useEffect(() => {
     const boot = async () => {
       try {
         const pref = await loadCarteraPreferences()
-        const next = pref.filters || EMPTY_BROKERS_FILTERS
+        let next = pref.filters || EMPTY_BROKERS_FILTERS
+        const o = await getPortfolioCorteOptions(filtersToCortePayload(next))
+        const gestionMonths = Array.isArray(o.options?.gestion_months) ? o.options.gestion_months : []
+        if (!next.months.length && gestionMonths.length) {
+          next = { ...next, months: [gestionMonths[gestionMonths.length - 1]] }
+          await persistCarteraPreferences({ filters: next })
+        }
         setFilters(next)
         setDraftFilters(next)
-        await loadSummary(next)
+        setOptions({
+          supervisors: Array.isArray(o.options?.supervisors) ? o.options.supervisors : [],
+          uns: Array.isArray(o.options?.uns) ? o.options.uns : [],
+          vias: Array.isArray(o.options?.vias) ? o.options.vias : [],
+          years: Array.isArray(o.options?.contract_years) ? o.options.contract_years : [],
+          months: gestionMonths,
+          categories: Array.isArray(o.options?.categories) ? o.options.categories : [],
+          tramos: Array.isArray(o.options?.tramos) ? o.options.tramos : [],
+        })
+        setLoading(true)
+        setError('')
+        try {
+          const data = await getPortfolioCorteSummary(filtersToCortePayload(next))
+          setSummary(data || null)
+        } catch (e: unknown) {
+          setError(getApiErrorMessage(e))
+          setSummary(null)
+        } finally {
+          setLoading(false)
+        }
       } catch {
         setFilters(EMPTY_BROKERS_FILTERS)
         setDraftFilters(EMPTY_BROKERS_FILTERS)
@@ -112,34 +140,47 @@ export function CarteraView() {
     await applyFilters(EMPTY_BROKERS_FILTERS)
   }, [applyFilters])
 
-  const summaryCards = useMemo(() => {
-    const totalContracts = Number(summary.total_contracts || 0)
-    const totalRows = Number(summary.total_rows || 0)
-    const debtTotal = Number(summary.debt_total || 0)
-    const expiredTotal = Number(summary.expired_total || 0)
-    return [
-      { label: 'Contratos', value: formatCount(totalContracts) },
-      { label: 'Registros de detalle', value: formatCount(totalRows) },
-      { label: 'Saldo Total', value: formatGs(debtTotal) },
-      { label: 'Vencido', value: formatGs(expiredTotal) },
-    ]
-  }, [summary])
+  const kpis = summary?.kpis
+  const totalCartera = Number(kpis?.total_cartera ?? 0)
+
+  const byUnRows = useMemo(() => {
+    const byUn = summary?.charts?.by_un
+    if (!byUn || typeof byUn !== 'object') return []
+    return Object.entries(byUn)
+      .map(([un, n]) => ({ un, count: Number(n || 0) }))
+      .filter((r) => r.count > 0)
+      .sort((a, b) => b.count - a.count)
+  }, [summary?.charts?.by_un])
+
+  const monthColumns = useMemo(() => {
+    const valid = filters.months.filter((m) => gestionMonthRank(m) > 0)
+    return [...valid].sort((a, b) => gestionMonthRank(a) - gestionMonthRank(b))
+  }, [filters.months])
+
+  const byUnByGestion = summary?.charts?.by_un_by_gestion_month
+  const showPivotByMonth = !!(byUnByGestion && monthColumns.length > 0)
+
+  const showEmpty = !loading && !error && (!kpis || totalCartera === 0)
 
   return (
-    <section className="analysis-panel-card">
+    <section className="analysis-panel-card rendimiento-panel">
       <AnalyticsPageHeader
+        kicker="CARTERA"
+        pill="Analytics v2"
         title="Cartera"
-        subtitle="Resumen operativo de cartera con filtros manuales por supervisor, UN, vía y período."
+        subtitle="Resumen por corte operativo (agregados v2). Filtros por mes de gestión, UN, vía, supervisor, categoría (VIGENTE/MOROSO) y tramo — alineado a reportes de cartera. Para detalle por contrato usá «Análisis de cartera»."
       />
 
-      <div className="filters-grid mb-1">
+      <div className="rendimiento-filters-panel cartera-filters-grid-3">
         <MultiSelectFilter label="Supervisor" options={options.supervisors} selected={draftFilters.supervisors} onChange={(values) => setDraftFilters((prev) => ({ ...prev, supervisors: values }))} />
         <MultiSelectFilter label="UN" options={options.uns} selected={draftFilters.uns} onChange={(values) => setDraftFilters((prev) => ({ ...prev, uns: values }))} />
-        <MultiSelectFilter label="Vía" options={options.vias} selected={draftFilters.vias} onChange={(values) => setDraftFilters((prev) => ({ ...prev, vias: values }))} />
-        <MultiSelectFilter label="Año" options={options.years} selected={draftFilters.years} onChange={(values) => setDraftFilters((prev) => ({ ...prev, years: values }))} />
-        <MultiSelectFilter label="Mes" options={options.months} selected={draftFilters.months} onChange={(values) => setDraftFilters((prev) => ({ ...prev, months: values }))} />
+        <MultiSelectFilter label="Vía de cobro" options={options.vias} selected={draftFilters.vias} onChange={(values) => setDraftFilters((prev) => ({ ...prev, vias: values }))} />
+        <MultiSelectFilter label="Categoría" options={options.categories} selected={draftFilters.categorias} onChange={(values) => setDraftFilters((prev) => ({ ...prev, categorias: values }))} />
+        <MultiSelectFilter label="Tramo" options={options.tramos} selected={draftFilters.tramos} onChange={(values) => setDraftFilters((prev) => ({ ...prev, tramos: values }))} />
+        <MultiSelectFilter label="Año de contrato" options={options.years} selected={draftFilters.years} onChange={(values) => setDraftFilters((prev) => ({ ...prev, years: values }))} />
+        <MultiSelectFilter label="Mes de gestión" options={options.months} selected={draftFilters.months} onChange={(values) => setDraftFilters((prev) => ({ ...prev, months: values }))} />
       </div>
-      <div className="flex-actions">
+      <div className="analysis-actions-row analysis-actions">
         <Button variant="primary" onPress={() => void applyFilters(draftFilters)} isDisabled={loading}>
           {loading ? 'Aplicando…' : 'Aplicar filtros'}
         </Button>
@@ -148,60 +189,63 @@ export function CarteraView() {
         </Button>
       </div>
 
-      {loading && <LoadingState message="Cargando resumen de cartera..." />}
+      {loading && <LoadingState message="Cargando resumen de cartera…" />}
       {!loading && error && <ErrorState message={error} onRetry={() => void loadSummary(filters)} />}
-      {!loading && !error && rows.length === 0 && (
+      {!loading && !error && showEmpty && (
         <EmptyState
           message="Sin datos para los filtros seleccionados."
-          suggestion="Probá ajustar Supervisor, UN, Vía o período."
+          suggestion="Probá ajustar supervisor, UN, vía, categoría, tramo o mes de gestión. Para filas por contrato, abrí Análisis de cartera."
         />
       )}
 
-      {!loading && !error && summaryCards.length > 0 && (
-        <div className="summary-cards-grid">
-          {summaryCards.map((item) => (
-            <article key={item.label} className="card summary-card">
-              <div className="summary-card-label">{item.label}</div>
-              <div className="summary-card-value">{item.value}</div>
-            </article>
-          ))}
-        </div>
-      )}
-
-      {!loading && !error && rows.length > 0 && (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Contrato</th>
-                <th>Supervisor</th>
-                <th>UN</th>
-                <th>Vía</th>
-                <th>Mes</th>
-                <th>Saldo</th>
-                <th>Vencido</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.slice(0, 300).map((row, idx) => (
-                <tr key={`${row.contract_id || 'c'}-${idx}`}>
-                  <td>{String(row.contract_id || '-')}</td>
-                  <td>{String(row.supervisor || '-')}</td>
-                  <td>{String(row.un || '-')}</td>
-                  <td>{String(row.via || '-')}</td>
-                  <td>{String(row.month || '-')}</td>
-                  <td>{formatGs(Number(row.debt || 0))}</td>
-                  <td>{formatGs(Number(row.expired || 0))}</td>
+      {!loading && !error && !showEmpty && byUnRows.length > 0 && (
+        <>
+          <p className="table-scroll-hint mt-4">
+            {showPivotByMonth && monthColumns.length > 1
+              ? 'Contratos por unidad de negocio y mes de gestión (una columna por mes seleccionado). Desplazá la tabla horizontalmente si hay muchos meses.'
+              : showPivotByMonth
+                ? 'Contratos por unidad de negocio — mes de gestión seleccionado.'
+                : 'Contratos por unidad de negocio (agregado del corte seleccionado).'}
+          </p>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>UN</th>
+                  {showPivotByMonth
+                    ? monthColumns.map((m) => (
+                        <th key={m} className="text-end align-bottom">
+                          <span className="block whitespace-nowrap">Gestión {m}</span>
+                          <span className="block text-muted-sm font-normal">Contratos</span>
+                        </th>
+                      ))
+                    : (
+                      <th>Contratos</th>
+                    )}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {(Boolean(summary.rows_limited) || Number(summary.total_rows || 0) > 300) && (
-            <p className="text-muted-sm">
-              Mostrando 300 de {Number(summary.total_rows || rows.length).toLocaleString('es-PY')} filas.
-            </p>
-          )}
-        </div>
+              </thead>
+              <tbody>
+                {byUnRows.slice(0, 60).map((row) => (
+                  <tr key={row.un}>
+                    <td>{row.un}</td>
+                    {showPivotByMonth
+                      ? monthColumns.map((m) => (
+                          <td key={`${row.un}-${m}`} className="text-end tabular-nums">
+                            {formatCount(Number(byUnByGestion[m]?.[row.un] ?? 0))}
+                          </td>
+                        ))
+                      : (
+                        <td className="text-end tabular-nums">{formatCount(row.count)}</td>
+                      )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {byUnRows.length > 60 && (
+              <p className="text-muted-sm">Mostrando 60 de {byUnRows.length.toLocaleString('es-PY')} UN con contratos.</p>
+            )}
+          </div>
+        </>
       )}
     </section>
   )

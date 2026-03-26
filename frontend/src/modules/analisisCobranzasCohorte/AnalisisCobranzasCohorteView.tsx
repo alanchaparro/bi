@@ -88,6 +88,55 @@ function readStoredOrder(defaults: KpiId[]): KpiId[] {
   }
 }
 
+type CohorteKpiIconId = 'doc' | 'money' | 'check' | 'user' | 'card'
+
+function CohorteKpiIcon({ icon }: { icon: CohorteKpiIconId }) {
+  const common = {
+    width: 14,
+    height: 14,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.8,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  }
+  if (icon === 'doc')
+    return (
+      <svg {...common}>
+        <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+        <path d="M14 3v6h6" />
+      </svg>
+    )
+  if (icon === 'money')
+    return (
+      <svg {...common}>
+        <rect x="2" y="6" width="20" height="12" rx="2" />
+        <circle cx="12" cy="12" r="2.5" />
+      </svg>
+    )
+  if (icon === 'check')
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="9" />
+        <path d="m8.5 12.5 2.2 2.2 4.8-4.8" />
+      </svg>
+    )
+  if (icon === 'user')
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 20a8 8 0 0 1 16 0" />
+      </svg>
+    )
+  return (
+    <svg {...common}>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 10h20" />
+    </svg>
+  )
+}
+
 const pct = (v: number) => `${(Number(v || 0) * 100).toFixed(1)}%`
 
 const monthMinusOne = (mmYYYY: string | undefined | null): string => {
@@ -329,40 +378,67 @@ export function AnalisisCobranzasCohorteView() {
     })
   }, [])
 
-  const kpiCards: Record<KpiId, { title: string; value: string; note?: string; className: string }> = {
+  const kpiCards: Record<
+    KpiId,
+    {
+      title: string
+      value: string
+      fullValue?: string
+      note?: string
+      borderColor: string
+      valueColor?: string
+      icon: CohorteKpiIconId
+    }
+  > = {
     total_cobrado: {
-      title: 'Total Cobrado',
+      title: 'TOTAL COBRADO',
       value: formatGsFull(totals?.cobrado || 0),
+      fullValue: formatGsFull(totals?.cobrado || 0),
       note: `${formatCount(totals?.pagaron || 0)} contratos pagaron`,
-      className: 'analysis-kpi-primary',
+      borderColor: 'var(--color-primary)',
+      valueColor: 'var(--color-primary)',
+      icon: 'card',
     },
     deberia_cobrar: {
-      title: 'Debería Cobrar',
+      title: 'DEBERÍA COBRAR',
       value: formatGsFull(totals?.deberia || 0),
+      fullValue: formatGsFull(totals?.deberia || 0),
       note: `${formatCount(totals?.activos || 0)} contratos activos`,
-      className: 'analysis-kpi-gold',
+      borderColor: 'var(--color-chart-5)',
+      valueColor: 'var(--color-chart-5)',
+      icon: 'money',
     },
     pago_contratos: {
-      title: '% Pago Contratos',
+      title: '% PAGO CONTRATOS',
       value: pct(totals?.pct_pago_contratos || 0),
-      className: 'analysis-kpi-emerald',
+      borderColor: 'var(--color-chart-2)',
+      valueColor: 'var(--color-chart-2)',
+      icon: 'check',
     },
     cobertura_monto: {
-      title: '% Cobertura Monto',
+      title: '% COBERTURA MONTO',
       value: pct(totals?.pct_cobertura_monto || 0),
-      className: 'analysis-kpi-violet',
+      borderColor: 'var(--color-chart-4)',
+      valueColor: 'var(--color-chart-4)',
+      icon: 'money',
     },
     ticket_transaccional: {
-      title: 'Ticket Transaccional',
+      title: 'TICKET TRANSACCIONAL',
       value: formatGsFull(ticketTransaccional),
+      fullValue: formatGsFull(ticketTransaccional),
       note: `${formatCount(totals?.transacciones || 0)} transacciones`,
-      className: 'analysis-kpi-cyan',
+      borderColor: 'var(--color-chart-3)',
+      valueColor: 'var(--color-chart-3)',
+      icon: 'card',
     },
     ticket_contrato: {
-      title: 'Ticket Contrato',
+      title: 'TICKET CONTRATO',
       value: formatGsFull(ticketContrato),
+      fullValue: formatGsFull(ticketContrato),
       note: `${formatCount(totals?.pagaron || 0)} contratos con pago`,
-      className: 'analysis-kpi-amber',
+      borderColor: 'var(--color-chart-6)',
+      valueColor: 'var(--color-chart-6)',
+      icon: 'user',
     },
   }
 
@@ -421,84 +497,84 @@ export function AnalisisCobranzasCohorteView() {
       {!loadingOptions ? (
         <>
           <div className="rendimiento-filters-panel">
-          <div className="analysis-filters-grid" data-testid="analysis-filters-grid">
-            <div className="analysis-filter-control">
-              <label className="input-label" id="cutoff-month-label">Mes de cobro</label>
-              <select
-                className="input input-heroui-tokens w-full min-h-10 rounded-lg border border-[var(--color-border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--color-text)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                value={filters.cutoffMonth}
-                onChange={(e) => setFilters((prev) => ({ ...prev, cutoffMonth: e.target.value }))}
-                aria-labelledby="cutoff-month-label"
-              >
-                {options.cutoffMonths.map((month) => (
-                  <option key={month} value={month}>{month}</option>
-                ))}
-              </select>
+            <div className="cohorte-filters-grid-3" data-testid="analysis-filters-grid">
+              <div className="analysis-filter-control">
+                <label className="input-label" id="cutoff-month-label">Mes de cobro</label>
+                <select
+                  className="input input-heroui-tokens w-full min-h-10 rounded-lg border border-[var(--color-border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--color-text)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                  value={filters.cutoffMonth}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, cutoffMonth: e.target.value }))}
+                  aria-labelledby="cutoff-month-label"
+                >
+                  {options.cutoffMonths.map((month) => (
+                    <option key={month} value={month}>{month}</option>
+                  ))}
+                </select>
+              </div>
+
+              <MultiSelectFilter
+                className="analysis-filter-control"
+                label="Unidad de negocio"
+                options={options.uns}
+                selected={filters.uns}
+                onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
+                placeholder="Todos"
+              />
+
+              <SegmentedControl
+                className="analysis-filter-control"
+                label="Vía de cobro"
+                options={[
+                  { value: '', label: 'Todos' },
+                  { value: 'DEBITO', label: 'Débito' },
+                  { value: 'COBRADOR', label: 'Cobrador' },
+                ]}
+                value={selectedVia}
+                onChange={(v) => setFilters((prev) => ({ ...prev, vias: v === '' ? [] : [v] }))}
+              />
+
+              <MultiSelectFilter
+                className="analysis-filter-control"
+                label="Supervisor"
+                options={options.supervisors}
+                selected={filters.supervisors}
+                onChange={(values) => setFilters((prev) => ({ ...prev, supervisors: values }))}
+                placeholder="Todos"
+              />
+
+              <SegmentedControl
+                className="analysis-filter-control"
+                label="Categoría"
+                options={[
+                  { value: '', label: 'Todas' },
+                  { value: 'VIGENTE', label: 'Vigente' },
+                  { value: 'MOROSO', label: 'Moroso' },
+                ]}
+                value={selectedCategoria}
+                onChange={(v) => setFilters((prev) => ({ ...prev, categorias: v === '' ? [] : [v] }))}
+              />
+            </div>
+            <div className="rendimiento-filter-hints" role="note" aria-label="Ayuda de filtros">
+              <span className="rendimiento-filter-hint">Mes de cobro define el corte consultado.</span>
+              <span className="rendimiento-filter-hint">La cartera efectiva se alinea a gestion operativa.</span>
+              <span className="rendimiento-filter-hint">Vía de cobro y categoría segmentan la cohorte activa.</span>
             </div>
 
-            <MultiSelectFilter
-              className="analysis-filter-control"
-              label="Unidad de negocio"
-              options={options.uns}
-              selected={filters.uns}
-              onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
-              placeholder="Todos"
-            />
+            <div className="analysis-actions-row analysis-actions">
+              <Button variant="primary" onPress={onApply} isDisabled={applying}>
+                {applying ? <span className="inline-spinner" aria-hidden /> : null}
+                {applying ? 'Aplicando...' : 'Aplicar filtros'}
+              </Button>
+              <Button variant="outline" onPress={clearFilters} isDisabled={applying}>Limpiar</Button>
+              <Button variant="outline" onPress={onReset} isDisabled={applying}>Restablecer</Button>
+              <span className="analysis-active-count">
+                {activeFilterChips.length} filtro{activeFilterChips.length === 1 ? '' : 's'} activo{activeFilterChips.length === 1 ? '' : 's'}
+              </span>
+            </div>
 
-            <SegmentedControl
-              className="analysis-filter-control"
-              label="Vía de cobro"
-              options={[
-                { value: '', label: 'Todos' },
-                { value: 'DEBITO', label: 'Débito' },
-                { value: 'COBRADOR', label: 'Cobrador' },
-              ]}
-              value={selectedVia}
-              onChange={(v) => setFilters((prev) => ({ ...prev, vias: v === '' ? [] : [v] }))}
-            />
-
-            <MultiSelectFilter
-              className="analysis-filter-control"
-              label="Supervisor"
-              options={options.supervisors}
-              selected={filters.supervisors}
-              onChange={(values) => setFilters((prev) => ({ ...prev, supervisors: values }))}
-              placeholder="Todos"
-            />
-
-            <SegmentedControl
-              className="analysis-filter-control"
-              label="Categoría"
-              options={[
-                { value: '', label: 'Todas' },
-                { value: 'VIGENTE', label: 'Vigente' },
-                { value: 'MOROSO', label: 'Moroso' },
-              ]}
-              value={selectedCategoria}
-              onChange={(v) => setFilters((prev) => ({ ...prev, categorias: v === '' ? [] : [v] }))}
-            />
-          </div>
-          <div className="rendimiento-filter-hints" role="note" aria-label="Ayuda de filtros">
-            <span className="rendimiento-filter-hint">Mes de cobro define el corte consultado.</span>
-            <span className="rendimiento-filter-hint">La cartera efectiva se alinea a gestion operativa.</span>
-            <span className="rendimiento-filter-hint">Vía de cobro y categoría segmentan la cohorte activa.</span>
-          </div>
-
-          <div className="analysis-actions-row analysis-actions">
-            <Button variant="primary" onPress={onApply} isDisabled={applying}>
-              {applying ? <span className="inline-spinner" aria-hidden /> : null}
-              {applying ? 'Aplicando...' : 'Aplicar filtros'}
-            </Button>
-            <Button variant="outline" onPress={clearFilters} isDisabled={applying}>Limpiar</Button>
-            <Button variant="outline" onPress={onReset} isDisabled={applying}>Restablecer</Button>
-            <span className="analysis-active-count">
-              {activeFilterChips.length} filtro{activeFilterChips.length === 1 ? '' : 's'} activo{activeFilterChips.length === 1 ? '' : 's'}
-            </span>
-          </div>
-
-          <div className="analysis-active-filters">
-            <ActiveFilterChips chips={activeFilterChips} onRemove={removeChip} />
-          </div>
+            <div className="analysis-active-filters">
+              <ActiveFilterChips chips={activeFilterChips} onRemove={removeChip} />
+            </div>
           </div>
 
           <AnalysisSelectionSummary
@@ -521,31 +597,32 @@ export function AnalisisCobranzasCohorteView() {
 
           {error ? <ErrorState message={error} className="analysis-error" onRetry={() => void retryLastRequest()} disabled={applying} /> : null}
 
-          {applying && summary ? <div className="summary-loading-note">Actualizando resultados...</div> : null}
+          {applying && summary ? <LoadingState message="Actualizando resultados..." className="summary-loading-note" /> : null}
           {loadingSummary && !summary ? <LoadingState message="Cargando resumen inicial..." className="summary-loading-note" /> : null}
-          {loadingDetail && summary ? <div className="summary-loading-note">Cargando detalle...</div> : null}
+          {loadingDetail && summary ? <LoadingState message="Cargando detalle..." className="summary-loading-note" /> : null}
 
           <div className={`analysis-results data-transition ${applying || loadingSummary || loadingDetail ? 'data-transition--loading' : ''}`}>
-            <div className="analysis-kpis">
+            <div className="summary-grid rendimiento-kpi-summary-grid">
               {kpiOrder.map((kpiId) => {
                 const card = kpiCards[kpiId]
+                const isDragging = draggingKpi === kpiId
+                const isDropTarget = dragOverKpi === kpiId && draggingKpi !== kpiId
                 return (
                   <article
                     key={kpiId}
-                    className={`card kpi-card analysis-card-pad cohorte-kpi-card ${card.className} ${dragOverKpi === kpiId ? 'chart-drop-target' : ''} ${draggingKpi === kpiId ? 'dragging-card' : ''}`}
+                    className={`card kpi-card analysis-card-pad ${isDragging ? 'dragging-card' : ''} ${isDropTarget ? 'chart-drop-target' : ''}`}
+                    style={{ borderLeft: `4px solid ${card.borderColor}` }}
                     draggable
                     onDragStart={(e) => {
                       setDraggingKpi(kpiId)
+                      setDragOverKpi(kpiId)
                       e.dataTransfer.effectAllowed = 'move'
                       e.dataTransfer.setData('text/plain', kpiId)
                     }}
-                    onDragEnd={() => {
-                      setDraggingKpi(null)
-                      setDragOverKpi(null)
-                    }}
                     onDragOver={(e) => {
                       e.preventDefault()
-                      if (draggingKpi && draggingKpi !== kpiId) setDragOverKpi(kpiId)
+                      if (dragOverKpi !== kpiId) setDragOverKpi(kpiId)
+                      e.dataTransfer.dropEffect = 'move'
                     }}
                     onDrop={(e) => {
                       e.preventDefault()
@@ -554,13 +631,30 @@ export function AnalisisCobranzasCohorteView() {
                       setDraggingKpi(null)
                       setDragOverKpi(null)
                     }}
+                    onDragEnd={() => {
+                      setDraggingKpi(null)
+                      setDragOverKpi(null)
+                    }}
                   >
                     <div className="chart-card-header">
-                      <div className="kpi-card-title-wrap"><h3 className="kpi-card-title">{card.title}</h3></div>
-                      <span className="chart-drag-handle" title="Arrastrar para reordenar" aria-hidden>::</span>
+                      <div className="kpi-card-title-wrap">
+                        <span className="kpi-card-icon" aria-hidden>
+                          <CohorteKpiIcon icon={card.icon} />
+                        </span>
+                        <span className="analysis-kpi-title">{card.title}</span>
+                      </div>
+                      <span className="chart-drag-handle" title="Arrastrar para reordenar" aria-hidden>
+                        ::
+                      </span>
                     </div>
-                    <div className="kpi-card-value" title={card.value}>{card.value}</div>
-                    {card.note ? <small className="analysis-kpi-note">{card.note}</small> : null}
+                    <div
+                      className="kpi-card-value"
+                      style={{ color: card.valueColor || 'var(--color-text)' }}
+                      title={card.fullValue || card.value}
+                    >
+                      {card.value}
+                    </div>
+                    {card.note ? <div className="analysis-kpi-note kpi-card-footnote">{card.note}</div> : null}
                   </article>
                 )
               })}
@@ -572,6 +666,7 @@ export function AnalisisCobranzasCohorteView() {
               <p className="analysis-table-caption">
                 {usesTramoBreakdown ? 'Resumen de efectividad por tramo.' : 'Resumen de efectividad por año de venta.'}
               </p>
+              <p className="table-scroll-hint">Desliza la tabla horizontalmente para revisar todas las métricas.</p>
               <div className="table-wrap analysis-table-wrap analysis-table-wrap-annual">
                 <table>
                   <thead>
@@ -604,6 +699,7 @@ export function AnalisisCobranzasCohorteView() {
 
             <div className="analysis-table-section">
               <p className="analysis-table-caption">Detalle mensual por cohorte de contratos.</p>
+              <p className="table-scroll-hint">Desliza la tabla horizontalmente para revisar todas las métricas.</p>
               <div className="table-wrap analysis-table-wrap analysis-table-wrap-monthly">
                 <table>
                   <thead>

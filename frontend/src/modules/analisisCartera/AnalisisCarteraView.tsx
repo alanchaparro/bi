@@ -22,6 +22,7 @@ import {
 } from "../../shared/api";
 import { formatCount, formatGsCompact, formatGsFull } from "../../shared/formatters";
 import { getApiErrorMessage } from "../../shared/apiErrors";
+import { useIsLightTheme } from "../../shared/useIsLightTheme";
 
 type Filters = {
   uns: string[];
@@ -80,7 +81,40 @@ const CHART_COLORS = [
   "var(--color-chart-7)",
 ];
 const CHART_COLORS_LIGHT = CHART_COLORS;
+
+/** Paleta secuencial tipo “tramo”: azules → rosados → rojo de alerta (referencia ejecutiva). */
+const BAR_SEQUENTIAL_LIGHT = [
+  "#1e3a5f",
+  "#2f4f6f",
+  "#4a6582",
+  "#6b8299",
+  "#d4c4c0",
+  "#e0b0a0",
+  "#d88878",
+  "#dc2626",
+] as const;
+const BAR_SEQUENTIAL_DARK = [
+  "#4d7ab8",
+  "#5d8ab8",
+  "#6e9ab8",
+  "#7fa8b8",
+  "#b8a090",
+  "#c89880",
+  "#d88870",
+  "#f43f5e",
+] as const;
 const STORAGE_KPI_MODE = "analisis_cartera_kpi_mode_v1";
+
+/** Superficie del badge dentro de la barra (inline para ganar a estilos globales de UI kit). */
+function stackBarInbarBadgeStyle(isLight: boolean): React.CSSProperties {
+  return {
+    background: isLight ? "rgba(15, 23, 42, 0.94)" : "rgba(8, 10, 14, 0.92)",
+    color: "#f8fafc",
+    border: "none",
+    borderRadius: 4,
+    boxShadow: isLight ? "0 1px 4px rgba(15, 23, 42, 0.18)" : "0 2px 8px rgba(0, 0, 0, 0.42)",
+  };
+}
 
 const formatPct = (value: number, total: number) => `${((Number(value || 0) / Math.max(1, Number(total || 0))) * 100).toFixed(1)}%`;
 
@@ -280,7 +314,7 @@ function BarChart({ data, isLight = false, colors = CHART_COLORS }: { data: Arra
   const toggle = (label: string) => setHidden((prev) => ({ ...prev, [label]: !prev[label] }));
 
   return (
-    <div className="analysis-bars-wrap">
+    <div className={`analysis-bars-wrap ${isLight ? "analysis-bars-wrap--light" : ""}`.trim()}>
       {data.map((d, idx) => {
         const isHidden = !!hidden[d.label];
         const widthPct = isHidden ? 0 : Math.max(3, Math.round((d.value / max) * 100));
@@ -297,7 +331,13 @@ function BarChart({ data, isLight = false, colors = CHART_COLORS }: { data: Arra
               <span>{formatCount(d.value)} ({formatPct(d.value, total)})</span>
             </div>
             <div className="analysis-bars-track" style={{ background: trackBg }}>
-              <div style={{ width: `${widthPct}%`, height: "100%", borderRadius: 999, background: colors[idx % colors.length] }} />
+              <div
+                className="analysis-bars-fill"
+                style={{
+                  width: `${widthPct}%`,
+                  background: colors[idx % colors.length],
+                }}
+              />
             </div>
           </button>
         );
@@ -458,7 +498,16 @@ function StackedColumnChart({
             })}
           </div>
           <div style={{ position: "relative", height: chartHeight, borderLeft: axisBorder, borderBottom: axisBorder, display: "flex", alignItems: "flex-end", justifyContent: centerSparseBars ? "center" : "flex-start", gap: `${barGap}px`, padding: "0.85rem 0.25rem 0 0.1rem", width: "100%" }}>
-            {yTicks.map((tick, idx) => <div key={`grid-${tick}`} style={{ position: "absolute", left: 0, right: 0, bottom: `${(idx / (yTicks.length - 1)) * 100}%`, borderTop: "1px solid var(--chart-grid-soft)" }} />)}
+            {yTicks.map((tick, idx) => {
+              const edge = idx === 0 || idx === yTicks.length - 1;
+              return (
+                <div
+                  key={`grid-${tick}`}
+                  className={edge ? "analysis-stack-hgrid analysis-stack-hgrid--edge" : "analysis-stack-hgrid"}
+                  style={{ bottom: `${(idx / (yTicks.length - 1)) * 100}%` }}
+                />
+              );
+            })}
             {data.map((d) => {
               const a = hidden.a ? 0 : Number(d.a || 0);
               const b = hidden.b ? 0 : Number(d.b || 0);
@@ -473,6 +522,19 @@ function StackedColumnChart({
               const showInsideDetails = showAnyBarDetail && totalPct >= minPctForDetails;
               const aDetail = showBarPercent && showBarNumbers ? `V ${aShare}% | ${formatCount(a)}` : showBarPercent ? `V ${aShare}%` : `V ${formatCount(a)}`;
               const bDetail = showBarPercent && showBarNumbers ? `M ${bShare}% | ${formatCount(b)}` : showBarPercent ? `M ${bShare}%` : `M ${formatCount(b)}`;
+              const inbarPctNum = showBarPercent && showBarNumbers;
+              const inbarDualLines = (key: "a" | "b") =>
+                key === "a" ? (
+                  <>
+                    <span className="analysis-stack-bar-inbar-sub">V {aShare}%</span>
+                    <span className="analysis-stack-bar-inbar-sub">{formatCount(a)}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="analysis-stack-bar-inbar-sub">M {bShare}%</span>
+                    <span className="analysis-stack-bar-inbar-sub">{formatCount(b)}</span>
+                  </>
+                );
               return (
                 <div
                   key={d.label}
@@ -490,24 +552,25 @@ function StackedColumnChart({
                   title={`${d.label} | ${aLabel}: ${formatCount(a)} | ${bLabel}: ${formatCount(b)} | Total: ${formatCount(a + b)}`}
                 >
                   <div
+                    className="analysis-stack-bar-pill"
                     style={{
                       position: "absolute",
-                      left: "8%",
-                      right: "8%",
+                      left: "6%",
+                      right: "6%",
                       bottom: 0,
                       height: `${totalPct}%`,
-                      borderRadius: "999px",
-                      overflow: "hidden",
+                      overflow: "visible",
                       pointerEvents: "none",
-                      transform: isHovered ? "scaleX(0.9) translateY(-2px)" : "scaleX(1) translateY(0)",
+                      transform: isHovered ? "scaleX(0.94) translateY(-3px)" : "scaleX(1) translateY(0)",
                       transformOrigin: "center bottom",
-                      filter: isHovered ? "brightness(1.04) saturate(1.03)" : "none",
-                      transition: "transform 320ms cubic-bezier(0.22, 1, 0.36, 1), filter 320ms ease",
+                      filter: isHovered ? "brightness(1.06) saturate(1.05)" : "none",
+                      transition: "transform 320ms cubic-bezier(0.22, 1, 0.36, 1), filter 320ms ease, box-shadow 320ms ease",
                       willChange: "transform, filter",
                     }}
                   >
                     {aPct > 0 && (
                       <div
+                        className="analysis-stack-seg analysis-stack-seg--a"
                         style={{
                           position: "absolute",
                           left: 0,
@@ -524,6 +587,7 @@ function StackedColumnChart({
                     )}
                     {bPct > 0 && (
                       <div
+                        className="analysis-stack-seg analysis-stack-seg--b"
                         style={{
                           position: "absolute",
                           left: 0,
@@ -539,16 +603,45 @@ function StackedColumnChart({
                     )}
                     {showInsideDetails ? (
                       <div className={`analysis-stack-bar-overlay ${horizontalDetailLayout ? "analysis-stack-bar-overlay--horizontal" : ""}`.trim()}>
-                        {!hidden.b ? (
-                          <div className="analysis-stack-bar-tag">
-                            <span className="analysis-stack-bar-tag-main">{bDetail}</span>
+                        {horizontalDetailLayout ? (
+                          <>
+                            {!hidden.b ? (
+                              <div className="analysis-stack-bar-tag analysis-stack-bar-tag--inbar" style={stackBarInbarBadgeStyle(isLight)}>
+                                <span className="analysis-stack-bar-tag-main analysis-stack-bar-tag-main--inbar-fill" style={{ color: "inherit" }}>
+                                  {inbarPctNum ? (
+                                    <span className="analysis-stack-bar-inbar-metric-col">{inbarDualLines("b")}</span>
+                                  ) : (
+                                    bDetail
+                                  )}
+                                </span>
+                              </div>
+                            ) : null}
+                            {!hidden.a ? (
+                              <div className="analysis-stack-bar-tag analysis-stack-bar-tag--inbar" style={stackBarInbarBadgeStyle(isLight)}>
+                                <span className="analysis-stack-bar-tag-main analysis-stack-bar-tag-main--inbar-fill" style={{ color: "inherit" }}>
+                                  {inbarPctNum ? (
+                                    <span className="analysis-stack-bar-inbar-metric-col">{inbarDualLines("a")}</span>
+                                  ) : (
+                                    aDetail
+                                  )}
+                                </span>
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <div className="analysis-stack-bar-tag analysis-stack-bar-tag--inbar analysis-stack-bar-tag--inbar-duo" style={stackBarInbarBadgeStyle(isLight)}>
+                            {!hidden.b ? (
+                              <span className="analysis-stack-bar-tag-main analysis-stack-bar-tag-inbar-line analysis-stack-bar-tag-main--inbar-fill" style={{ color: "inherit" }}>
+                                {inbarPctNum ? <span className="analysis-stack-bar-inbar-metric-col">{inbarDualLines("b")}</span> : bDetail}
+                              </span>
+                            ) : null}
+                            {!hidden.a ? (
+                              <span className="analysis-stack-bar-tag-main analysis-stack-bar-tag-inbar-line analysis-stack-bar-tag-main--inbar-fill" style={{ color: "inherit" }}>
+                                {inbarPctNum ? <span className="analysis-stack-bar-inbar-metric-col">{inbarDualLines("a")}</span> : aDetail}
+                              </span>
+                            ) : null}
                           </div>
-                        ) : null}
-                        {!hidden.a ? (
-                          <div className="analysis-stack-bar-tag">
-                            <span className="analysis-stack-bar-tag-main">{aDetail}</span>
-                          </div>
-                        ) : null}
+                        )}
                       </div>
                     ) : null}
                   </div>
@@ -602,8 +695,9 @@ export function AnalisisCarteraView() {
   const [kpiMode, setKpiMode] = useState<KpiMode>(() => (window.localStorage.getItem(STORAGE_KPI_MODE) as KpiMode) || "filters");
   const [showFullAmounts, setShowFullAmounts] = useState<boolean>(() => window.localStorage.getItem(STORAGE_AMOUNT_VIEW) === "full");
   const [toastQueue, setToastQueue] = useState<ToastMessage[]>([]);
-  const isLightTheme = document.documentElement.dataset.theme === "light";
+  const isLightTheme = useIsLightTheme();
   const chartPalette = isLightTheme ? CHART_COLORS_LIGHT : CHART_COLORS;
+  const barSequentialPalette = isLightTheme ? [...BAR_SEQUENTIAL_LIGHT] : [...BAR_SEQUENTIAL_DARK];
   const isInitialOptionsLoading = loadingOptions && !optionsData && !optionsError;
 
   const dismissToast = useCallback((id: string) => setToastQueue((prev) => prev.filter((t) => t.id !== id)), []);
@@ -830,10 +924,10 @@ export function AnalisisCarteraView() {
   const chartCards: Record<ChartId, { title: string; content: React.ReactElement }> = {
     series_vig_mor_month: { title: "Cartera por Gestión: Vigente vs Moroso", content: <StackedColumnChart data={vigMorByMonth} aLabel="Vigente" bLabel="Moroso" aColor="var(--color-state-ok)" bColor="var(--color-state-warn)" isLight={isLightTheme} labelZoomStorageKey="analisis_cartera_zoom_vig_mor_v1" /> },
     series_via_month: { title: "Cartera por Gestión: Cobrador vs Débito", content: <StackedColumnChart data={viaByMonth} aLabel="Cobrador" bLabel="Débito" aColor="var(--color-chart-1)" bColor="var(--color-chart-2)" isLight={isLightTheme} labelZoomStorageKey="analisis_cartera_zoom_via_v1" /> },
-    by_un: { title: "Contratos por Unidad de Negocio", content: <BarChart data={byUn} isLight={isLightTheme} colors={chartPalette} /> },
+    by_un: { title: "Contratos por Unidad de Negocio", content: <BarChart data={byUn} isLight={isLightTheme} colors={barSequentialPalette} /> },
     by_tramo: { title: "Contratos por Tramo", content: <DonutChart data={byTramo} isLight={isLightTheme} colors={chartPalette} /> },
-    by_via: { title: "Contratos por Via de Cobro", content: <BarChart data={byVia} isLight={isLightTheme} colors={chartPalette} /> },
-    by_contract_year: { title: "Contratos por Año de Contrato", content: <BarChart data={byContractYear} isLight={isLightTheme} colors={chartPalette} /> },
+    by_via: { title: "Contratos por vía de cobro", content: <BarChart data={byVia} isLight={isLightTheme} colors={barSequentialPalette} /> },
+    by_contract_year: { title: "Contratos por Año de Contrato", content: <BarChart data={byContractYear} isLight={isLightTheme} colors={barSequentialPalette} /> },
   };
 
   const kpiCards: Record<KpiId, { title: string; value: string; fullValue?: string; valueColor?: string; borderColor: string; icon: KpiIconId; isHero?: boolean; isZeroHint?: boolean }> = {
@@ -872,21 +966,21 @@ export function AnalisisCarteraView() {
       <AnalyticsPageHeader
         kicker="CARTERA"
         pill="Analytics v2"
-        title="Analisis de cartera"
-        subtitle="Corte de cartera por unidad de negocio, tramo, via de cobro, mes de gestion y mes de cierre."
+        title="Análisis de cartera"
+        subtitle="Corte de cartera por unidad de negocio, tramo, vía de cobro, mes de gestión y mes de cierre."
         meta={<AnalyticsMetaBadges meta={effectiveMeta} />}
       />
       <MetricExplainer
         items={[
           {
-            label: "Mes de gestion",
+            label: "Mes de gestión",
             formula: "gestion_month = cierre + 1 mes",
-            note: "Los reportes operativos trabajan por gestion; no confundir con mes de cierre.",
+            note: "Los reportes operativos trabajan por gestión; no confundir con mes de cierre.",
           },
           {
-            label: "Categorias por tramo",
+            label: "Categorías por tramo",
             formula: "VIGENTE = 0..3 | MOROSO = >3",
-            note: "La clasificacion visible en cartera debe respetar esta regla en todos los cortes.",
+            note: "La clasificación visible en cartera debe respetar esta regla en todos los cortes.",
           },
           {
             label: "Monto a cobrar",
@@ -906,7 +1000,17 @@ export function AnalisisCarteraView() {
         <MultiSelectFilter className="analysis-filter-control" label="Año de contrato" options={options.contract_years || []} selected={filters.years} onChange={(years) => setFilters((f) => ({ ...f, years }))} />
         <MultiSelectFilter className="analysis-filter-control" label="Vía de cobro" options={options.vias || []} selected={filters.vias} onChange={(vias) => setFilters((f) => ({ ...f, vias }))} />
         <MultiSelectFilter className="analysis-filter-control" label="Tramo" options={options.tramos || []} selected={filters.tramos} onChange={(tramos) => setFilters((f) => ({ ...f, tramos }))} />
-        <MultiSelectFilter className="analysis-filter-control" label="Categoría" options={options.categories || []} selected={filters.categorias} onChange={(categorias) => setFilters((f) => ({ ...f, categorias }))} />
+        <SegmentedControl
+          className="analysis-filter-control"
+          label="Categoría"
+          options={[
+            { value: "", label: "Todas" },
+            { value: "VIGENTE", label: "Vigente" },
+            { value: "MOROSO", label: "Moroso" },
+          ]}
+          value={(filters.categorias[0] || "").toUpperCase()}
+          onChange={(categoria) => setFilters((f) => ({ ...f, categorias: categoria ? [categoria] : [] }))}
+        />
         <MultiSelectFilter className="analysis-filter-control" label="Mes de gestión" options={options.gestion_months || []} selected={filters.gestionMonths} onChange={(gestionMonths) => setFilters((f) => ({ ...f, gestionMonths }))} />
         <MultiSelectFilter className="analysis-filter-control" label="Mes de cierre" options={options.close_months || []} selected={filters.closeMonths} onChange={(closeMonths) => setFilters((f) => ({ ...f, closeMonths }))} />
       </div>
