@@ -37,11 +37,24 @@ set_env_value() {
 
 # --- 1) Comprobar Docker y Docker Compose ---
 step "1" "Comprobando Docker y Docker Compose..."
-if ! docker info >/dev/null 2>&1; then
-  fail "Docker no esta instalado o no esta en ejecucion. Instale Docker y arranquelo."
+docker_ok() {
+  command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 && docker compose version >/dev/null 2>&1
+}
+
+if ! docker_ok; then
+  if [[ "$(uname -s 2>/dev/null || echo unknown)" == "Linux" ]] && [[ -f "$SCRIPT_DIR/scripts/check_prerequisites.sh" ]]; then
+    echo "" >&2
+    echo "[iniciar.sh] Docker no listo; ejecutando scripts/check_prerequisites.sh (sudo puede pedir contraseña)..." >&2
+    bash "$SCRIPT_DIR/scripts/check_prerequisites.sh" || true
+    hash -r 2>/dev/null || true
+  fi
+fi
+
+if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+  fail "Docker no esta instalado o no esta en ejecucion. Pruebe: ./verificar_requisitos.sh  Si acaba de instalarlo: newgrp docker  o cierre sesion y vuelva a ejecutar ./iniciar.sh"
 fi
 if ! docker compose version >/dev/null 2>&1; then
-  fail "Docker Compose V2 no esta disponible."
+  fail "Docker Compose V2 no esta disponible. Ejecute: ./verificar_requisitos.sh"
 fi
 
 # --- 2) Crear .env desde .env.example si no existe ---
