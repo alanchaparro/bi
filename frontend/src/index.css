@@ -5093,6 +5093,10 @@ body.is-dragging-floating-filter {
   min-width: 0;
 }
 
+.rend-count-bar-chart--tall .rend-chart-svg {
+  min-height: 300px;
+}
+
 .rend-count-bar-chart .rend-chart-svg {
   display: block;
   max-width: 100%;
@@ -5101,6 +5105,10 @@ body.is-dragging-floating-filter {
 
 .rend-stack-svg {
   min-height: 220px;
+}
+
+.rend-hbar-svg {
+  min-height: 200px;
 }
 
 .rend-stack-inbar-text {

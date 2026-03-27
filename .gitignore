@@ -46,6 +46,7 @@ frontend/.next/
 frontend/playwright-report/
 frontend/test-results/
 frontend/.tmp_homepage.html
+frontend/tmp/
 frontend/tsconfig.tsbuildinfo
 
 # Local runtime persisted state

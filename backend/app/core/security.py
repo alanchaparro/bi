@@ -7,6 +7,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.role_nav import DEFAULT_NAV_IDS_BY_ROLE
 from app.models.brokers import AuthUser
 
 pwd_context = CryptContext(schemes=['pbkdf2_sha256'], deprecated='auto')
@@ -16,6 +17,19 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
     'analyst': ['brokers:read', 'analytics:read', 'system:read'],
     'viewer': ['brokers:read', 'analytics:read'],
 }
+
+
+def effective_permissions(role: str, db: Session | None) -> List[str]:
+    """API permissions + nav:<id> según BD o defaults (role_nav)."""
+    r = (role or 'viewer').strip().lower() or 'viewer'
+    api = list(ROLE_PERMISSIONS.get(r, ROLE_PERMISSIONS['viewer']))
+    if db is None:
+        nav_ids = list(DEFAULT_NAV_IDS_BY_ROLE.get(r, DEFAULT_NAV_IDS_BY_ROLE['viewer']))
+    else:
+        from app.services.role_nav_service import get_nav_ids_for_role
+
+        nav_ids = get_nav_ids_for_role(db, r)
+    return api + [f'nav:{n}' for n in nav_ids]
 
 DEMO_USERS = {
     settings.demo_admin_user: {'password': settings.demo_admin_password, 'role': 'admin'},
@@ -28,7 +42,7 @@ def authenticate_user(username: str, password: str):
     if not user or user['password'] != password:
         return None
     role = user['role']
-    return {'username': username, 'role': role, 'permissions': ROLE_PERMISSIONS.get(role, [])}
+    return {'username': username, 'role': role, 'permissions': effective_permissions(role, None)}
 
 
 def hash_password(password: str) -> str:
@@ -56,13 +70,13 @@ def resolve_identity(username: str, db: Session | None = None):
         row = db.query(AuthUser).filter(AuthUser.username == name, AuthUser.is_active == True).first()  # noqa: E712
         if row:
             role = str(row.role or 'viewer').strip().lower() or 'viewer'
-            return {'username': row.username, 'role': role, 'permissions': ROLE_PERMISSIONS.get(role, [])}
+            return {'username': row.username, 'role': role, 'permissions': effective_permissions(role, db)}
 
     if _is_demo_allowed():
         demo = DEMO_USERS.get(name)
         if demo:
             role = demo['role']
-            return {'username': name, 'role': role, 'permissions': ROLE_PERMISSIONS.get(role, [])}
+            return {'username': name, 'role': role, 'permissions': effective_permissions(role, db)}
 
     return None
 
@@ -76,7 +90,7 @@ def authenticate_user_with_db(db: Session | None, username: str, password: str):
         row = db.query(AuthUser).filter(AuthUser.username == name, AuthUser.is_active == True).first()  # noqa: E712
         if row and verify_password(password, row.password_hash):
             role = str(row.role or 'viewer').strip().lower() or 'viewer'
-            return {'username': row.username, 'role': role, 'permissions': ROLE_PERMISSIONS.get(role, [])}
+            return {'username': row.username, 'role': role, 'permissions': effective_permissions(role, db)}
         if row:
             return None
 

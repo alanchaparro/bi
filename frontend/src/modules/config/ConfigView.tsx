@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
 import { Button, Input, Modal, Tabs, useOverlayState } from '@heroui/react'
+import { useAuth } from '../../app/providers'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { LoadingState } from '../../components/feedback/LoadingState'
@@ -12,9 +13,12 @@ import {
   emergencyResumeSchedules,
   emergencyStopSchedules,
   getMysqlConnectionConfig,
+  getRoleNavMatrix,
   getSyncStatus,
   listSyncSchedules,
   listUsers,
+  putRoleNavMatrix,
+  restoreSession,
   pauseSyncSchedule,
   previewSync,
   resumeSyncSchedule,
@@ -102,7 +106,7 @@ type TramoRule = {
 }
 
 type RoleType = 'admin' | 'analyst' | 'viewer'
-type ConfigSection = 'usuarios' | 'negocio' | 'importaciones' | 'programacion'
+type ConfigSection = 'usuarios' | 'rolesMenus' | 'negocio' | 'importaciones' | 'programacion'
 const ROLE_OPTIONS: RoleType[] = ['admin', 'analyst', 'viewer']
 
 const SYNC_DOMAINS: Array<{ value: SyncDomain; label: string }> = [
@@ -255,6 +259,11 @@ function getAppliedRows(status: Pick<SyncStatusResponse, "rows_upserted" | "rows
 }
 
 export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveChange }: Props) {
+  const { auth, login } = useAuth()
+  const canManageRoleNav = useMemo(
+    () => (auth?.permissions ?? []).includes('brokers:write_config'),
+    [auth?.permissions],
+  )
   const resumeAttemptedRef = useRef(false)
   const previewEnabledRef = useRef(true)
   const [configSection, setConfigSection] = useState<ConfigSection>('usuarios')
@@ -318,6 +327,26 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   const emergencyStopConfirm = useOverlayState()
   const deleteScheduleConfirm = useOverlayState()
   const [schedulePendingDeleteId, setSchedulePendingDeleteId] = useState<number | null>(null)
+
+  const [roleNavLoading, setRoleNavLoading] = useState(false)
+  const [roleNavSaving, setRoleNavSaving] = useState(false)
+  const [roleNavMessage, setRoleNavMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  const [roleNavDraft, setRoleNavDraft] = useState<Record<string, string[]>>({})
+  const [roleNavMeta, setRoleNavMeta] = useState<{
+    roles: string[]
+    nav_items: { id: string; label: string }[]
+  } | null>(null)
+
+  const configTabEntries = useMemo(() => {
+    const tabs: Array<[ConfigSection, string]> = [['usuarios', 'Usuarios']]
+    if (canManageRoleNav) tabs.push(['rolesMenus', 'Roles y menús'])
+    tabs.push(
+      ['negocio', 'Configuración de negocio'],
+      ['importaciones', 'Importaciones'],
+      ['programacion', 'Programación'],
+    )
+    return tabs
+  }, [canManageRoleNav])
 
   const hasCarteraSelected = selectedDomains.includes('cartera')
   const closeMonthFromValue = useMemo(() => {
@@ -518,6 +547,55 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
     }
   }, [])
 
+  const loadRoleNav = useCallback(async () => {
+    setRoleNavLoading(true)
+    setRoleNavMessage(null)
+    try {
+      const data = await getRoleNavMatrix()
+      setRoleNavMeta({ roles: data.roles, nav_items: data.nav_items })
+      setRoleNavDraft({ ...data.nav_by_role })
+    } catch (e: unknown) {
+      setRoleNavMessage({ ok: false, text: getApiErrorMessage(e) })
+    } finally {
+      setRoleNavLoading(false)
+    }
+  }, [])
+
+  const toggleRoleNav = useCallback((role: string, navId: string, checked: boolean) => {
+    if (role === 'admin' && navId === 'config') return
+    setRoleNavDraft((prev) => {
+      const cur = [...(prev[role] ?? [])]
+      const next = new Set(cur)
+      if (checked) next.add(navId)
+      else next.delete(navId)
+      return { ...prev, [role]: [...next].sort() }
+    })
+  }, [])
+
+  const handleSaveRoleNav = useCallback(async () => {
+    if (!canManageRoleNav) return
+    setRoleNavSaving(true)
+    setRoleNavMessage(null)
+    try {
+      const payload: Record<string, string[]> = { ...roleNavDraft }
+      const adminNav = [...new Set([...(payload.admin ?? []), 'config'])].sort()
+      payload.admin = adminNav
+      const data = await putRoleNavMatrix({ nav_by_role: payload })
+      setRoleNavDraft({ ...data.nav_by_role })
+      setRoleNavMeta({ roles: data.roles, nav_items: data.nav_items })
+      const refreshed = await restoreSession()
+      if (refreshed) login(refreshed, refreshed.access_token)
+      setRoleNavMessage({
+        ok: true,
+        text: 'Menús por rol guardados. Tu sesión se actualizó; el resto de usuarios al refrescar token o volver a entrar.',
+      })
+    } catch (e: unknown) {
+      setRoleNavMessage({ ok: false, text: getApiErrorMessage(e) })
+    } finally {
+      setRoleNavSaving(false)
+    }
+  }, [canManageRoleNav, roleNavDraft, login])
+
   const refreshScheduleRuntime = useCallback(async (list: SyncScheduleOut[]) => {
     const runtimeEntries = await Promise.all(
       (list || []).map(async (schedule) => {
@@ -617,11 +695,21 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   const sectionDataLoadedRef = useRef<Partial<Record<ConfigSection, boolean>>>({})
 
   useEffect(() => {
+    if (!canManageRoleNav && configSection === 'rolesMenus') {
+      setConfigSection('usuarios')
+    }
+  }, [canManageRoleNav, configSection])
+
+  useEffect(() => {
     const key = configSection
     const loaded = sectionDataLoadedRef.current
     if (key === 'usuarios' && !loaded.usuarios) {
       loaded.usuarios = true
       void loadUsers()
+    }
+    if (key === 'rolesMenus' && canManageRoleNav && !loaded.rolesMenus) {
+      loaded.rolesMenus = true
+      void loadRoleNav()
     }
     if (key === 'negocio' && !loaded.negocio) {
       loaded.negocio = true
@@ -635,7 +723,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
       loaded.programacion = true
       void loadSchedules()
     }
-  }, [configSection, loadMysqlConfig, loadSchedules, loadTramoConfig, loadUsers])
+  }, [canManageRoleNav, configSection, loadMysqlConfig, loadRoleNav, loadSchedules, loadTramoConfig, loadUsers])
 
   useEffect(() => {
     if (configSection !== 'programacion') return
@@ -1398,14 +1486,9 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
 
   return (
     <section className="card config-card">
-      <AnalyticsPageHeader kicker="SISTEMA" title="Configuración" subtitle="Usuarios, negocio, importaciones y programación." />
+      <AnalyticsPageHeader kicker="SISTEMA" title="Configuración" subtitle="Usuarios, roles y menús, negocio, importaciones y programación." />
       <div className="config-segmented-nav" role="tablist" aria-label="Subsecciones de configuración">
-        {([
-          ['usuarios', 'Usuarios'],
-          ['negocio', 'Configuración de negocio'],
-          ['importaciones', 'Importaciones'],
-          ['programacion', 'Programación'],
-        ] as const).map(([value, label]) => {
+        {configTabEntries.map(([value, label]) => {
           const selected = configSection === value
           return (
             <button
@@ -1430,6 +1513,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
         <Tabs.ListContainer>
           <Tabs.List>
             <Tabs.Tab id="usuarios">Usuarios</Tabs.Tab>
+            {canManageRoleNav ? <Tabs.Tab id="rolesMenus">Roles y menús</Tabs.Tab> : null}
             <Tabs.Tab id="negocio">Configuración de negocio</Tabs.Tab>
             <Tabs.Tab id="importaciones">Importaciones</Tabs.Tab>
             <Tabs.Tab id="programacion">Programación</Tabs.Tab>
@@ -1559,6 +1643,69 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
             </div>
           </div>
         </>
+        )}
+
+        {configSection === 'rolesMenus' && canManageRoleNav && (
+        <div>
+          <h3 className="config-section-title">Roles y menús laterales</h3>
+          <p className="config-section-subtitle">
+            Define qué entradas del menú principal ve cada rol. Los permisos de API (exportar datos, guardar importaciones, etc.) siguen definidos por el rol en el servidor.
+          </p>
+          {roleNavLoading && !roleNavMeta ? (
+            <LoadingState message="Cargando matriz de menús..." className="config-mt-md max-w-md" />
+          ) : roleNavMeta ? (
+            <>
+              <div className="overflow-x-auto config-mt-md">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr>
+                      <th className="border-b border-[var(--glass-border)] p-2 text-left font-semibold">Menú</th>
+                      {roleNavMeta.roles.map((r) => (
+                        <th key={r} className="border-b border-[var(--glass-border)] p-2 text-center font-semibold capitalize">
+                          {r}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {roleNavMeta.nav_items.map((item) => (
+                      <tr key={item.id}>
+                        <td className="border-b border-[var(--glass-border)] p-2">{item.label}</td>
+                        {roleNavMeta.roles.map((role) => {
+                          const locked = role === 'admin' && item.id === 'config'
+                          const checked = locked || (roleNavDraft[role]?.includes(item.id) ?? false)
+                          return (
+                            <td key={`${role}-${item.id}`} className="border-b border-[var(--glass-border)] p-2 text-center">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 accent-[var(--color-primary)]"
+                                aria-label={`${role}: ${item.label}`}
+                                checked={checked}
+                                disabled={locked || roleNavSaving || roleNavLoading}
+                                onChange={(e) => toggleRoleNav(role, item.id, e.target.checked)}
+                              />
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="config-row-wrap-tight config-mt-md">
+                <Button type="button" variant="primary" onPress={() => void handleSaveRoleNav()} isDisabled={roleNavSaving || roleNavLoading}>
+                  {roleNavSaving ? 'Guardando...' : 'Guardar menús por rol'}
+                </Button>
+                <Button type="button" variant="outline" onPress={() => void loadRoleNav()} isDisabled={roleNavSaving || roleNavLoading}>
+                  {roleNavLoading ? 'Cargando...' : 'Recargar'}
+                </Button>
+                {roleNavMessage ? (
+                  <span className={roleNavMessage.ok ? 'status-ok' : 'status-error'}>{roleNavMessage.text}</span>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+        </div>
         )}
 
         {configSection === 'usuarios' && (

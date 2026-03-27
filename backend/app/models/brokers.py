@@ -64,6 +64,15 @@ class AuthUser(Base):
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class AuthRoleNav(Base):
+    """Filas por (rol, id de menú lateral). Si no hay filas para un rol, se usan defaults en código."""
+
+    __tablename__ = 'auth_role_nav'
+
+    role = Column(String(32), primary_key=True, nullable=False, index=True)
+    nav_id = Column(String(64), primary_key=True, nullable=False)
+
+
 class AuthUserState(Base):
     __tablename__ = 'auth_user_state'
 

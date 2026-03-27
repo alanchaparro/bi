@@ -17,12 +17,15 @@ from app.schemas.brokers import (
     MysqlConnectionIn,
     MysqlConnectionOut,
     MysqlConnectionTestOut,
+    RoleNavMatrixOut,
+    RoleNavMatrixPutIn,
     RulesIn,
     RulesOut,
     SupervisorsScopeIn,
     SupervisorsScopeOut,
 )
 from app.services.brokers_config_service import BrokersConfigService
+from app.services.role_nav_service import get_matrix, replace_matrix
 from app.services.sync_service import SyncService
 
 router = APIRouter()
@@ -147,6 +150,29 @@ def update_user(
         return _user_to_out(row)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail={'message': str(exc)})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)})
+
+
+@router.get('/role-nav-matrix', response_model=RoleNavMatrixOut)
+def get_role_nav_matrix(
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('brokers:write_config')),
+):
+    data = get_matrix(db)
+    return RoleNavMatrixOut(**data)
+
+
+@router.put('/role-nav-matrix', response_model=RoleNavMatrixOut)
+def put_role_nav_matrix(
+    payload: RoleNavMatrixPutIn,
+    _rl=Depends(write_rate_limiter),
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('brokers:write_config')),
+):
+    try:
+        data = replace_matrix(db, payload.nav_by_role, str(user.get('sub', 'system')))
+        return RoleNavMatrixOut(**data)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)})
 

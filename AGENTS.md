@@ -83,6 +83,10 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
    - Para limpieza de `tmp*` usar solo iteración segura con `Get-ChildItem` + `Remove-Item -LiteralPath` sobre rutas absolutas validadas una por una, sin pasar por `cmd /c`.
 
 ## Despliegue canonico (un clic)
+0. **Comprobar / instalar requisitos** (Docker + Compose V2):
+   - Windows: `VERIFICAR_REQUISITOS.bat` (comprueba) o `VERIFICAR_REQUISITOS.bat -Install` (intenta `winget` Docker Desktop; puede pedir UAC).
+   - Linux: `./verificar_requisitos.sh` **intenta instalar** Docker y el plugin Compose con apt/dnf/pacman si faltan (requiere `sudo`; use `./verificar_requisitos.sh --no-install` para solo comprobar). Tras unir al grupo `docker`, cierre sesion o `newgrp docker`.
+   - macOS: comprobar Docker Desktop manualmente; el script no instala paquetes del sistema en macOS (solo informa).
 1. **Entrada oficial** para levantar stack:
    - Windows: `INICIAR.bat` (raiz) -> `scripts/start_one_click.ps1`.
    - Linux/macOS: `iniciar.sh` (raiz).

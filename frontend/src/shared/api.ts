@@ -550,6 +550,26 @@ export async function updateUser(
   return response.data;
 }
 
+export type RoleNavItemMeta = { id: string; label: string };
+
+export type RoleNavMatrixResponse = {
+  roles: string[];
+  nav_items: RoleNavItemMeta[];
+  nav_by_role: Record<string, string[]>;
+};
+
+export async function getRoleNavMatrix(): Promise<RoleNavMatrixResponse> {
+  const response = await api.get<RoleNavMatrixResponse>("/brokers/role-nav-matrix");
+  return response.data;
+}
+
+export async function putRoleNavMatrix(payload: {
+  nav_by_role: Record<string, string[]>;
+}): Promise<RoleNavMatrixResponse> {
+  const response = await api.put<RoleNavMatrixResponse>("/brokers/role-nav-matrix", payload);
+  return response.data;
+}
+
 export type SyncDomain = "analytics" | "cartera" | "cobranzas" | "contratos" | "gestores";
 export type AnalyticsMeta = {
   generated_at?: string;

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Launcher un solo clic (Linux/Mac): valida Docker, prepara .env, configura
 # admin opcional, ejecuta bootstrap compartido, activa one-shot y levanta prod.
+# Requisitos previos: ./verificar_requisitos.sh  (en Linux intenta instalar Docker si falta; --no-install solo comprueba)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

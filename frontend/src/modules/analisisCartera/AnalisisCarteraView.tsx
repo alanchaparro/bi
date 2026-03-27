@@ -624,6 +624,9 @@ export function AnalisisCarteraView() {
           colors={barSequentialPalette}
           ariaLabel="Contratos por año de contrato"
           legendLayout="vertical"
+          tightValueAxis
+          viewBoxHeight={440}
+          horizontalCategoryLabels
         />
       ),
     },
@@ -861,7 +864,8 @@ export function AnalisisCarteraView() {
               chartId === "series_vig_mor_month" ||
               chartId === "series_via_month" ||
               chartId === "by_un" ||
-              chartId === "by_via";
+              chartId === "by_via" ||
+              chartId === "by_contract_year";
             return (
               <article key={chartId} className={`card chart-card analysis-card-pad ${isChartFullWidth ? "chart-card-wide" : ""} ${dragOverChart === chartId ? "chart-drop-target" : ""} ${draggingChart === chartId ? "dragging-card" : ""}`} draggable onDragStart={(e) => { setDraggingChart(chartId); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", chartId); }} onDragEnd={() => { setDraggingChart(null); setDragOverChart(null); }} onDragOver={(e) => { e.preventDefault(); if (draggingChart && draggingChart !== chartId) setDragOverChart(chartId); }} onDrop={(e) => { e.preventDefault(); const fromId = (e.dataTransfer.getData("text/plain") || draggingChart || "") as ChartId; if (fromId) moveChart(fromId, chartId); setDraggingChart(null); setDragOverChart(null); }}>
                 <div className="chart-card-header">

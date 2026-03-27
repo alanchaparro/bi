@@ -99,6 +99,21 @@ class AuthUserUpdateIn(BaseModel):
     password: str | None = Field(default=None, min_length=6, max_length=256)
 
 
+class RoleNavItemMeta(BaseModel):
+    id: str
+    label: str
+
+
+class RoleNavMatrixOut(BaseModel):
+    roles: list[str]
+    nav_items: list[RoleNavItemMeta]
+    nav_by_role: dict[str, list[str]]
+
+
+class RoleNavMatrixPutIn(BaseModel):
+    nav_by_role: dict[str, list[str]]
+
+
 class MysqlConnectionIn(BaseModel):
     host: str = Field(min_length=1, max_length=255)
     port: int = Field(default=3306, ge=1, le=65535)

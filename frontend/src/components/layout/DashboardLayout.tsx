@@ -46,14 +46,23 @@ export function useSyncLive() {
   return ctx ?? { syncLive: null, scheduleLive: null, setSyncLive: () => {}, setScheduleLive: () => {} };
 }
 
-function groupNavItems() {
+function groupNavItems(items: readonly NavItem[]) {
   const map = new Map<string, NavItem[]>();
-  for (const item of NAV_ITEMS) {
+  for (const item of items) {
     const g = item.group ?? "";
     if (!map.has(g)) map.set(g, []);
     map.get(g)!.push(item);
   }
   return map;
+}
+
+/** Permisos `nav:<id>` vienen del backend; si no hay ninguno (tokens viejos), se muestra todo el menú. */
+function filterNavByPermissions(permissions: string[] | undefined): NavItem[] {
+  const list = permissions ?? [];
+  const navPerms = list.filter((p) => p.startsWith("nav:"));
+  if (navPerms.length === 0) return [...NAV_ITEMS];
+  const allowed = new Set(navPerms.map((p) => p.slice(4)));
+  return NAV_ITEMS.filter((item) => allowed.has(item.id));
 }
 
 function isActivePath(pathname: string, href: string) {
@@ -253,6 +262,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     [scheduleLive, syncLive]
   );
 
+  // Debe ir antes de cualquier return condicional (reglas de hooks).
+  const visibleNavItems = useMemo(
+    () => filterNavByPermissions(auth?.permissions),
+    [auth?.permissions]
+  );
+  const groups = useMemo(() => groupNavItems(visibleNavItems), [visibleNavItems]);
+  const canOpenConfigNav = Boolean(auth?.permissions?.includes("nav:config"));
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[var(--bg-color)]">
@@ -264,8 +281,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   if (!auth) {
     return null;
   }
-
-  const groups = groupNavItems();
   const showSync = Boolean(syncLive?.running);
   const showSchedule = Boolean((scheduleLive?.runningCount ?? 0) > 0);
   const syncPct = Math.max(0, Math.min(100, Math.round(syncLive?.progressPct ?? 0)));
@@ -395,29 +410,50 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="dashboard-header-actions text-xs text-[var(--text-secondary)]">
               <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Estado de sincronización">
-                {showSchedule && (
-                  <Link
-                    href="/config"
-                    className="header-pill header-pill--warn"
-                    title={`Actualizacion en progreso ${schedulePct > 0 ? `(${schedulePct}%)` : ""}`}
-                  >
-                    <span>Prog.</span>
-                    <span>{schedulePct}%</span>
-                  </Link>
-                )}
-                {showSync && (
-                  <Link
-                    href="/config"
-                    className={`header-pill ${
-                      syncTone === "error" ? "header-pill--error" : syncTone === "ok" ? "header-pill--ok" : syncTone === "warn" ? "header-pill--warn" : "header-pill--info"
-                    }`}
-                    title={`${syncLive?.message ?? "Sincronizando..."} | ${syncPct}% | ${headerLiveLabel}`}
-                  >
-                    <span>{syncPct}%</span>
-                    <span className="max-w-20 truncate">{String(syncLive?.currentDomain ?? "-")}</span>
-                    <span className="text-xs opacity-90">{headerLiveLabel}</span>
-                  </Link>
-                )}
+                {showSchedule &&
+                  (canOpenConfigNav ? (
+                    <Link
+                      href="/config"
+                      className="header-pill header-pill--warn"
+                      title={`Actualizacion en progreso ${schedulePct > 0 ? `(${schedulePct}%)` : ""}`}
+                    >
+                      <span>Prog.</span>
+                      <span>{schedulePct}%</span>
+                    </Link>
+                  ) : (
+                    <span
+                      className="header-pill header-pill--warn cursor-default"
+                      title={`Programación en curso (${schedulePct}%). Sin acceso a Configuración en el menú.`}
+                    >
+                      <span>Prog.</span>
+                      <span>{schedulePct}%</span>
+                    </span>
+                  ))}
+                {showSync &&
+                  (canOpenConfigNav ? (
+                    <Link
+                      href="/config"
+                      className={`header-pill ${
+                        syncTone === "error" ? "header-pill--error" : syncTone === "ok" ? "header-pill--ok" : syncTone === "warn" ? "header-pill--warn" : "header-pill--info"
+                      }`}
+                      title={`${syncLive?.message ?? "Sincronizando..."} | ${syncPct}% | ${headerLiveLabel}`}
+                    >
+                      <span>{syncPct}%</span>
+                      <span className="max-w-20 truncate">{String(syncLive?.currentDomain ?? "-")}</span>
+                      <span className="text-xs opacity-90">{headerLiveLabel}</span>
+                    </Link>
+                  ) : (
+                    <span
+                      className={`header-pill cursor-default ${
+                        syncTone === "error" ? "header-pill--error" : syncTone === "ok" ? "header-pill--ok" : syncTone === "warn" ? "header-pill--warn" : "header-pill--info"
+                      }`}
+                      title={`${syncLive?.message ?? "Sincronizando..."} | ${syncPct}% | Sin acceso a Configuración en el menú.`}
+                    >
+                      <span>{syncPct}%</span>
+                      <span className="max-w-20 truncate">{String(syncLive?.currentDomain ?? "-")}</span>
+                      <span className="text-xs opacity-90">{headerLiveLabel}</span>
+                    </span>
+                  ))}
               </div>
               {(showSchedule || showSync) ? <span className="hidden h-4 w-px bg-[var(--glass-border)] md:block" aria-hidden /> : null}
               <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Usuario y acciones">
