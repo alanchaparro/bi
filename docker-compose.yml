@@ -149,8 +149,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Detrás del proxy, el front llama a /api/v1 (mismo origen).
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
+        # Siempre mismo origen vía nginx (LAN). No usar ${NEXT_PUBLIC_API_BASE_URL} del .env:
+        # suele ser http://localhost:8000/... y rompe acceso por IP (CORS + localhost = PC del usuario).
+        NEXT_PUBLIC_API_BASE_URL: /api/v1
     profiles: ["prod-lan"]
 
   reverse-proxy:
