@@ -5011,8 +5011,53 @@ body.is-dragging-floating-filter {
   filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.18));
 }
 
+/* Hover: resalta la barra y amplía el % (efecto lupa) */
+.rend-vbar-hover-target {
+  cursor: pointer;
+}
+
+.rend-vbar-hover-target > rect {
+  transition:
+    opacity 0.16s ease,
+    filter 0.16s ease;
+}
+
+.rend-vbar-hover-target:hover > rect {
+  opacity: 1;
+  filter: brightness(1.14) drop-shadow(0 5px 14px rgba(0, 0, 0, 0.28));
+}
+
+.rend-vbar-pct-label {
+  transition:
+    transform 0.2s cubic-bezier(0.34, 1.45, 0.64, 1),
+    filter 0.2s ease;
+  transform: scale(1);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.rend-vbar-hover-target:hover .rend-vbar-pct-label {
+  transform: scale(1.62);
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4));
+}
+
+.rend-vbar-outlabel {
+  fill: var(--color-text);
+}
+
+.rend-vbar-inlabel {
+  fill: #f8fafc;
+  paint-order: stroke fill;
+  stroke: rgba(15, 23, 42, 0.35);
+  stroke-width: 0.6px;
+}
+
 :root[data-theme="light"] .rend-vbar-fill {
   filter: drop-shadow(0 2px 6px rgba(15, 23, 42, 0.12));
+}
+
+:root[data-theme="light"] .rend-vbar-hover-target:hover > rect {
+  filter: brightness(1.1) drop-shadow(0 4px 12px rgba(15, 23, 42, 0.22));
 }
 
 .rend-axis-text {

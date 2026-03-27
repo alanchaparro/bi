@@ -2537,6 +2537,9 @@ class AnalyticsService:
             'totalPaid': 0.0,
             'totalContracts': 0,
             'totalContractsPaid': 0,
+            'tramoStatsByGestionMonth': {},
+            'unStatsByGestionMonth': {},
+            'viaCStatsByGestionMonth': {},
             'tramoStats': {},
             'unStats': {},
             'viaCStats': {},
@@ -2578,13 +2581,25 @@ class AnalyticsService:
             stats['tramoStats'][tramo]['d'] += debt
             stats['tramoStats'][tramo]['p'] += paid
 
+            stats['tramoStatsByGestionMonth'].setdefault(month, {}).setdefault(tramo, {'d': 0.0, 'p': 0.0})
+            stats['tramoStatsByGestionMonth'][month][tramo]['d'] += debt
+            stats['tramoStatsByGestionMonth'][month][tramo]['p'] += paid
+
             stats['unStats'].setdefault(un, {'d': 0.0, 'p': 0.0})
             stats['unStats'][un]['d'] += debt
             stats['unStats'][un]['p'] += paid
 
+            stats['unStatsByGestionMonth'].setdefault(month, {}).setdefault(un, {'d': 0.0, 'p': 0.0})
+            stats['unStatsByGestionMonth'][month][un]['d'] += debt
+            stats['unStatsByGestionMonth'][month][un]['p'] += paid
+
             stats['viaCStats'].setdefault(via_c, {'d': 0.0, 'p': 0.0})
             stats['viaCStats'][via_c]['d'] += debt
             stats['viaCStats'][via_c]['p'] += paid
+
+            stats['viaCStatsByGestionMonth'].setdefault(month, {}).setdefault(via_c, {'d': 0.0, 'p': 0.0})
+            stats['viaCStatsByGestionMonth'][month][via_c]['d'] += debt
+            stats['viaCStatsByGestionMonth'][month][via_c]['p'] += paid
 
             stats['gestorStats'].setdefault(gestor, {'d': 0.0, 'p': 0.0})
             stats['gestorStats'][gestor]['d'] += debt
@@ -2593,6 +2608,13 @@ class AnalyticsService:
             stats['matrixStats'].setdefault(via_c, {})
             for via_real, amount in paid_details.items():
                 stats['matrixStats'][via_c][via_real] = float(stats['matrixStats'][via_c].get(via_real, 0.0)) + float(amount or 0.0)
+
+        gestion_selected = {str(v).strip() for v in (filters.gestion_month or []) if str(v).strip()}
+        if gestion_selected:
+            for m in sorted(gestion_selected, key=_month_serial):
+                stats['tramoStatsByGestionMonth'].setdefault(m, {})
+                stats['unStatsByGestionMonth'].setdefault(m, {})
+                stats['viaCStatsByGestionMonth'].setdefault(m, {})
 
         stats['meta'] = {
             'source': 'api-v1',
@@ -2764,27 +2786,50 @@ class AnalyticsService:
         categoria_filter = _normalize_str_set(filters.categoria)
         supervisor_filter = _normalize_str_set(filters.supervisor)
 
-        q = db.query(AnalyticsRendimientoAgg)
-        if un_filter:
-            q = q.filter(AnalyticsRendimientoAgg.un.in_(list(un_filter)))
-        if tramo_filter:
-            tramo_int = [int(t) for t in tramo_filter if str(t).isdigit()]
-            if tramo_int:
-                q = q.filter(AnalyticsRendimientoAgg.tramo.in_(tramo_int))
+        def _rendimiento_q(with_gestion: frozenset[str] | None):
+            qq = db.query(AnalyticsRendimientoAgg)
+            if un_filter:
+                qq = qq.filter(AnalyticsRendimientoAgg.un.in_(list(un_filter)))
+            if tramo_filter:
+                tramo_int = [int(t) for t in tramo_filter if str(t).isdigit()]
+                if tramo_int:
+                    qq = qq.filter(AnalyticsRendimientoAgg.tramo.in_(tramo_int))
+            if with_gestion is not None:
+                if not with_gestion:
+                    qq = qq.filter(AnalyticsRendimientoAgg.gestion_month == '__no_match__')
+                else:
+                    qq = qq.filter(AnalyticsRendimientoAgg.gestion_month.in_(set(with_gestion)))
+            if via_cobro_filter:
+                qq = qq.filter(AnalyticsRendimientoAgg.via_cobro.in_(list(via_cobro_filter)))
+            if categoria_filter:
+                qq = qq.filter(AnalyticsRendimientoAgg.categoria.in_(list(categoria_filter)))
+                if categoria_filter == {'VIGENTE'}:
+                    qq = qq.filter(AnalyticsRendimientoAgg.tramo <= 3)
+                elif categoria_filter == {'MOROSO'}:
+                    qq = qq.filter(AnalyticsRendimientoAgg.tramo > 3)
+            if supervisor_filter:
+                qq = qq.filter(AnalyticsRendimientoAgg.supervisor.in_(list(supervisor_filter)))
+            return qq
+
+        # Sin mes elegido ("Historia"): KPIs y tendencia siguen siendo multi-mes; barras por dimensión usan un solo corte.
+        q_no_gestion = _rendimiento_q(None)
+        _candidates = [
+            str(r[0]).strip()
+            for r in q_no_gestion.with_entities(AnalyticsRendimientoAgg.gestion_month).distinct().all()
+            if r[0] and str(r[0]).strip() and _month_serial(str(r[0]).strip()) > 0
+        ]
+        _latest_gestion = max(_candidates, key=_month_serial) if _candidates else None
+        gestion_for_bars: frozenset[str] | None
         if gestion_filter:
-            q = q.filter(AnalyticsRendimientoAgg.gestion_month.in_(gestion_filter))
-        if via_cobro_filter:
-            q = q.filter(AnalyticsRendimientoAgg.via_cobro.in_(list(via_cobro_filter)))
-        if categoria_filter:
-            q = q.filter(AnalyticsRendimientoAgg.categoria.in_(list(categoria_filter)))
-            if categoria_filter == {'VIGENTE'}:
-                q = q.filter(AnalyticsRendimientoAgg.tramo <= 3)
-            elif categoria_filter == {'MOROSO'}:
-                q = q.filter(AnalyticsRendimientoAgg.tramo > 3)
-        if supervisor_filter:
-            q = q.filter(AnalyticsRendimientoAgg.supervisor.in_(list(supervisor_filter)))
+            gestion_for_bars = frozenset(gestion_filter)
+        elif _latest_gestion:
+            gestion_for_bars = frozenset({_latest_gestion})
+        else:
+            gestion_for_bars = frozenset()
+
+        q_wide = _rendimiento_q(frozenset(gestion_filter) if gestion_filter else None)
         # Aggregate in SQL to avoid transferring full grain rows to Python on cache misses.
-        base = q.with_entities(
+        base = q_wide.with_entities(
             AnalyticsRendimientoAgg.gestion_month.label('gestion_month'),
             AnalyticsRendimientoAgg.tramo.label('tramo'),
             AnalyticsRendimientoAgg.un.label('un'),
@@ -2823,50 +2868,141 @@ class AnalyticsService:
             .group_by(base.c.gestion_month)
             .all()
         )
-        tramo_rows = (
-            db.query(
-                base.c.tramo,
-                func.coalesce(func.sum(base.c.debt_total), 0.0).label('d'),
-                func.coalesce(func.sum(paid_capped_expr), 0.0).label('p'),
+        tramo_stats_by_gestion_month: dict[str, dict[str, dict[str, float]]] = {}
+        un_stats_by_gestion_month: dict[str, dict[str, dict[str, float]]] = {}
+        via_c_stats_by_gestion_month: dict[str, dict[str, dict[str, float]]] = {}
+        if gestion_for_bars:
+            q_bars = _rendimiento_q(gestion_for_bars)
+            base_bars = q_bars.with_entities(
+                AnalyticsRendimientoAgg.gestion_month.label('gestion_month'),
+                AnalyticsRendimientoAgg.tramo.label('tramo'),
+                AnalyticsRendimientoAgg.un.label('un'),
+                AnalyticsRendimientoAgg.via_cobro.label('via_cobro'),
+                AnalyticsRendimientoAgg.supervisor.label('supervisor'),
+                AnalyticsRendimientoAgg.debt_total.label('debt_total'),
+                AnalyticsRendimientoAgg.paid_total.label('paid_total'),
+                AnalyticsRendimientoAgg.contracts_total.label('contracts_total'),
+                AnalyticsRendimientoAgg.contracts_paid.label('contracts_paid'),
+                AnalyticsRendimientoAgg.paid_via_cobrador.label('paid_via_cobrador'),
+                AnalyticsRendimientoAgg.paid_via_debito.label('paid_via_debito'),
+            ).subquery()
+            pe = base_bars.c.paid_total
+            pce = base_bars.c.paid_via_cobrador
+            pde = base_bars.c.paid_via_debito
+            tramo_rows = (
+                db.query(
+                    base_bars.c.tramo,
+                    func.coalesce(func.sum(base_bars.c.debt_total), 0.0).label('d'),
+                    func.coalesce(func.sum(pe), 0.0).label('p'),
+                )
+                .group_by(base_bars.c.tramo)
+                .all()
             )
-            .group_by(base.c.tramo)
-            .all()
-        )
-        un_rows = (
-            db.query(
-                base.c.un,
-                func.coalesce(func.sum(base.c.debt_total), 0.0).label('d'),
-                func.coalesce(func.sum(paid_capped_expr), 0.0).label('p'),
+            tramo_by_month_rows = (
+                db.query(
+                    base_bars.c.gestion_month,
+                    base_bars.c.tramo,
+                    func.coalesce(func.sum(base_bars.c.debt_total), 0.0).label('d'),
+                    func.coalesce(func.sum(pe), 0.0).label('p'),
+                )
+                .group_by(base_bars.c.gestion_month, base_bars.c.tramo)
+                .all()
             )
-            .group_by(base.c.un)
-            .all()
-        )
-        via_rows = (
-            db.query(
-                base.c.via_cobro,
-                func.coalesce(func.sum(base.c.debt_total), 0.0).label('d'),
-                func.coalesce(func.sum(paid_capped_expr), 0.0).label('p'),
-                func.coalesce(func.sum(paid_cobrador_capped_expr), 0.0).label('paid_cobrador'),
-                func.coalesce(func.sum(paid_debito_capped_expr), 0.0).label('paid_debito'),
+            for row in tramo_by_month_rows:
+                m = str(row.gestion_month or '').strip()
+                if not m:
+                    continue
+                t = str(row.tramo if row.tramo is not None else 0)
+                tramo_stats_by_gestion_month.setdefault(m, {})[t] = {
+                    'd': float(row.d or 0.0),
+                    'p': float(row.p or 0.0),
+                }
+            un_by_month_rows = (
+                db.query(
+                    base_bars.c.gestion_month,
+                    base_bars.c.un,
+                    func.coalesce(func.sum(base_bars.c.debt_total), 0.0).label('d'),
+                    func.coalesce(func.sum(pe), 0.0).label('p'),
+                )
+                .group_by(base_bars.c.gestion_month, base_bars.c.un)
+                .all()
             )
-            .group_by(base.c.via_cobro)
-            .all()
-        )
-        gestor_rows = (
-            db.query(
-                base.c.supervisor,
-                func.coalesce(func.sum(base.c.debt_total), 0.0).label('d'),
-                func.coalesce(func.sum(paid_capped_expr), 0.0).label('p'),
+            for row in un_by_month_rows:
+                m = str(row.gestion_month or '').strip()
+                if not m:
+                    continue
+                un_k = str(row.un or 'S/D').strip().upper() or 'S/D'
+                un_stats_by_gestion_month.setdefault(m, {})[un_k] = {
+                    'd': float(row.d or 0.0),
+                    'p': float(row.p or 0.0),
+                }
+            via_by_month_rows = (
+                db.query(
+                    base_bars.c.gestion_month,
+                    base_bars.c.via_cobro,
+                    func.coalesce(func.sum(base_bars.c.debt_total), 0.0).label('d'),
+                    func.coalesce(func.sum(pe), 0.0).label('p'),
+                )
+                .group_by(base_bars.c.gestion_month, base_bars.c.via_cobro)
+                .all()
             )
-            .group_by(base.c.supervisor)
-            .all()
-        )
+            for row in via_by_month_rows:
+                m = str(row.gestion_month or '').strip()
+                if not m:
+                    continue
+                via_k = str(row.via_cobro or 'DEBITO').strip().upper() or 'DEBITO'
+                via_c_stats_by_gestion_month.setdefault(m, {})[via_k] = {
+                    'd': float(row.d or 0.0),
+                    'p': float(row.p or 0.0),
+                }
+            _bars_months_sorted = sorted(gestion_for_bars, key=_month_serial)
+            for m in _bars_months_sorted:
+                tramo_stats_by_gestion_month.setdefault(m, {})
+                un_stats_by_gestion_month.setdefault(m, {})
+                via_c_stats_by_gestion_month.setdefault(m, {})
+            un_rows = (
+                db.query(
+                    base_bars.c.un,
+                    func.coalesce(func.sum(base_bars.c.debt_total), 0.0).label('d'),
+                    func.coalesce(func.sum(pe), 0.0).label('p'),
+                )
+                .group_by(base_bars.c.un)
+                .all()
+            )
+            via_rows = (
+                db.query(
+                    base_bars.c.via_cobro,
+                    func.coalesce(func.sum(base_bars.c.debt_total), 0.0).label('d'),
+                    func.coalesce(func.sum(pe), 0.0).label('p'),
+                    func.coalesce(func.sum(pce), 0.0).label('paid_cobrador'),
+                    func.coalesce(func.sum(pde), 0.0).label('paid_debito'),
+                )
+                .group_by(base_bars.c.via_cobro)
+                .all()
+            )
+            gestor_rows = (
+                db.query(
+                    base_bars.c.supervisor,
+                    func.coalesce(func.sum(base_bars.c.debt_total), 0.0).label('d'),
+                    func.coalesce(func.sum(pe), 0.0).label('p'),
+                )
+                .group_by(base_bars.c.supervisor)
+                .all()
+            )
+        else:
+            tramo_rows = []
+            un_rows = []
+            via_rows = []
+            gestor_rows = []
 
         stats = {
             'totalDebt': float(totals_row.debt or 0.0),
             'totalPaid': float(totals_row.paid or 0.0),
             'totalContracts': int(totals_row.contracts or 0),
             'totalContractsPaid': int(totals_row.contracts_paid or 0),
+            'tramoStatsByGestionMonth': tramo_stats_by_gestion_month,
+            'unStatsByGestionMonth': un_stats_by_gestion_month,
+            'viaCStatsByGestionMonth': via_c_stats_by_gestion_month,
             'kpis': {
                 'monto_a_cobrar_total': float(totals_row.debt or 0.0),
                 'cobrado_total': float(totals_row.paid or 0.0),
@@ -2921,11 +3057,13 @@ class AnalyticsService:
             gestor = str(row.supervisor or 'S/D').strip().upper() or 'S/D'
             stats['gestorStats'][gestor] = {'d': float(row.d or 0.0), 'p': float(row.p or 0.0)}
 
+        _bar_months_sorted = sorted(gestion_for_bars, key=_month_serial) if gestion_for_bars else []
         stats['meta'] = {
             'source': 'api-v2',
             'source_table': 'analytics_rendimiento_agg',
             'generated_at': datetime.utcnow().isoformat(),
             'portfolio_keys': int(totals_row.rows_count or 0),
+            'rendimiento_bars_gestion_months': _bar_months_sorted,
         }
         return stats
 

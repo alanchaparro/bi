@@ -314,8 +314,13 @@ function markCacheHitMeta<T>(value: T): T {
   return { ...value, meta: { ...existingMeta, cache_hit: true } } as T;
 }
 
-async function cachedAnalyticsPost<T>(path: string, payload: unknown, policy: AnalyticsCachePolicy): Promise<T> {
-  const key = buildAnalyticsCacheKey(path, payload);
+async function cachedAnalyticsPost<T>(
+  path: string,
+  payload: unknown,
+  policy: AnalyticsCachePolicy,
+  cacheKeySuffix = "",
+): Promise<T> {
+  const key = buildAnalyticsCacheKey(`${path}${cacheKeySuffix}`, payload);
   const now = Date.now();
   const hitMem = analyticsCacheMemory.get(key);
   if (hitMem && hitMem.expiresAt > now) {
@@ -732,6 +737,10 @@ export type RendimientoSummaryResponse = {
   totalPaid: number;
   totalContracts: number;
   totalContractsPaid: number;
+  /** Desglose por tramo y mes de gestión (barras agrupadas cuando hay varios meses). */
+  tramoStatsByGestionMonth?: Record<string, Record<string, { d: number; p: number }>>;
+  unStatsByGestionMonth?: Record<string, Record<string, { d: number; p: number }>>;
+  viaCStatsByGestionMonth?: Record<string, Record<string, { d: number; p: number }>>;
   tramoStats: Record<string, { d: number; p: number }>;
   unStats: Record<string, { d: number; p: number }>;
   viaCStats: Record<string, { d: number; p: number }>;
@@ -1309,7 +1318,12 @@ export async function getRendimientoSummary(payload: {
   categoria?: string[];
   tramo?: string[];
 }): Promise<RendimientoSummaryResponse> {
-  return cachedAnalyticsPost<RendimientoSummaryResponse>("/analytics/rendimiento-v2/summary", payload, "summary");
+  return cachedAnalyticsPost<RendimientoSummaryResponse>(
+    "/analytics/rendimiento-v2/summary",
+    payload,
+    "summary",
+    ":v3",
+  );
 }
 
 export async function getRendimientoFirstPaint(payload: {

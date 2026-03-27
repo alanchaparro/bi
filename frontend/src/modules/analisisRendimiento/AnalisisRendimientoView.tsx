@@ -74,6 +74,17 @@ const EMPTY_OPTIONS: Options = {
   supervisors: [],
 }
 
+/** Paleta secuencial alineada al análisis de cartera (barras por categoría / tramo). */
+const RENDIMIENTO_BAR_COLORS = [
+  'var(--color-chart-1)',
+  'var(--color-chart-2)',
+  'var(--color-chart-3)',
+  'var(--color-chart-4)',
+  'var(--color-chart-5)',
+  'var(--color-chart-6)',
+  'var(--color-chart-7)',
+]
+
 const pct = (num: number, den: number) => `${den > 0 ? ((num / den) * 100).toFixed(1) : '0.0'}%`
 const pctNum = (num: number, den: number) => (den > 0 ? (num / den) * 100 : 0)
 
@@ -170,12 +181,41 @@ function readStoredChartLabels(): boolean {
   }
 }
 
+/** Escala Y en % (tope 100): zoom cuando el máximo real es bajo, para separar barras cercanas a cero. */
+function buildPercentYAxis(values: Iterable<number>): { axisMax: number; yTicks: number[] } {
+  let m = 0
+  for (const v of values) {
+    if (Number.isFinite(v)) m = Math.max(m, v)
+  }
+  m = Math.max(0, Math.min(100, m))
+  if (m >= 92.5) {
+    return { axisMax: 100, yTicks: [0, 25, 50, 75, 100] }
+  }
+  if (m <= 0) {
+    return { axisMax: 25, yTicks: [0, 5, 10, 15, 20, 25] }
+  }
+  const target = Math.min(100, m * 1.12)
+  let step: number
+  if (target <= 30) step = 5
+  else if (target <= 60) step = 10
+  else step = 20
+  const axisMax = Math.min(100, Math.max(step, Math.ceil(target / step) * step))
+  const yTicks: number[] = []
+  for (let t = 0; t <= axisMax + 1e-9; t += step) {
+    yTicks.push(Math.round(t * 100) / 100)
+  }
+  return { axisMax, yTicks }
+}
+
 function toSummaryFromFirstPaint(data: Awaited<ReturnType<typeof getRendimientoFirstPaint>>): RendimientoSummaryResponse {
   return {
     totalDebt: Number(data?.totals?.totalDebt || 0),
     totalPaid: Number(data?.totals?.totalPaid || 0),
     totalContracts: Number(data?.totals?.totalContracts || 0),
     totalContractsPaid: Number(data?.totals?.totalContractsPaid || 0),
+    tramoStatsByGestionMonth: {},
+    unStatsByGestionMonth: {},
+    viaCStatsByGestionMonth: {},
     tramoStats: {},
     unStats: {},
     viaCStats: {},
@@ -262,28 +302,37 @@ function PercentLineChart({
 function PercentBarChart({
   data,
   color,
+  colors,
   showLabels,
   ariaLabel,
 }: {
   data: SeriesPoint[]
-  color: string
+  color?: string
+  colors?: string[]
   showLabels: boolean
   ariaLabel: string
 }) {
   const width = 980
   const height = 280
-  const padding = { top: 12, right: 16, bottom: 56, left: 42 }
+  const tiltX =
+    data.length > 5 || data.some((p) => (p.label || '').length > 12)
+  const padding = { top: 28, right: 16, bottom: tiltX ? 84 : 56, left: 42 }
   const plotW = Math.max(1, width - padding.left - padding.right)
   const plotH = Math.max(1, height - padding.top - padding.bottom)
   const gap = 10
-  const barWidth = Math.max(10, (plotW - Math.max(0, data.length - 1) * gap) / Math.max(1, data.length))
-  const yTicks = [0, 25, 50, 75, 100]
+  const barWidth = Math.max(12, Math.min(36, (plotW - Math.max(0, data.length - 1) * gap) / Math.max(1, data.length)))
+  const { axisMax, yTicks } = buildPercentYAxis(data.map((p) => p.value))
   const labelStep = data.length > 18 ? Math.ceil(data.length / 18) : 1
+
+  const barFill = (index: number) => {
+    if (colors?.length) return colors[index % colors.length]
+    return color || 'var(--color-chart-1)'
+  }
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="rend-chart-svg" role="img" aria-label={ariaLabel}>
       {yTicks.map((tick) => {
-        const y = padding.top + (1 - tick / 100) * plotH
+        const y = padding.top + (1 - tick / axisMax) * plotH
         return (
           <g key={tick}>
             <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} className="rend-grid-line" />
@@ -296,25 +345,195 @@ function PercentBarChart({
       {data.map((point, index) => {
         const x = padding.left + index * (barWidth + gap)
         const value = Math.max(0, Math.min(100, point.value))
-        const barHeight = (value / 100) * plotH
+        const barHeight = (Math.min(value, axisMax) / axisMax) * plotH
         const y = height - padding.bottom - barHeight
-        const pillRx = barWidth / 2
+        const cornerR = Math.min(10, barWidth * 0.42, barHeight > 1 ? Math.max(barHeight * 0.18, 3) : 0)
         const showX = index % labelStep === 0 || index === data.length - 1
+        const cx = x + barWidth / 2
+        const labelAboveY = y - 6
+        const putInside = showLabels && labelAboveY < padding.top + 2 && barHeight > 16
+        const lx = cx
+        const ly = height - padding.bottom + (tiltX ? 10 : 18)
         return (
           <g key={`${point.label}-${index}`}>
-            <rect x={x} y={y} width={barWidth} height={Math.max(barHeight, 0)} rx={pillRx} ry={pillRx} fill={color} opacity={0.98} className="rend-vbar-fill" />
-            {showLabels && barHeight > 18 ? (
+            <g className="rend-vbar-hover-target">
+              <rect
+                x={x}
+                y={y}
+                width={barWidth}
+                height={Math.max(barHeight, 0)}
+                rx={cornerR}
+                ry={cornerR}
+                fill={barFill(index)}
+                opacity={0.96}
+                className="rend-vbar-fill"
+              />
+              {showLabels && barHeight > 12 ? (
+                <text
+                  x={cx}
+                  y={putInside ? y + 15 : labelAboveY}
+                  textAnchor="middle"
+                  className={`rend-vbar-pct-label ${putInside ? 'rend-vbar-inlabel' : 'rend-vbar-outlabel'}`}
+                  fontSize="11"
+                  fontWeight={600}
+                >
+                  {value.toFixed(1)}%
+                </text>
+              ) : null}
+            </g>
+            {showX ? (
               <text
-                x={x + barWidth / 2}
-                y={y + barHeight / 2}
-                textAnchor="middle"
-                className="rend-label-text"
-                transform={`rotate(-90 ${x + barWidth / 2} ${y + barHeight / 2})`}
+                x={lx}
+                y={ly}
+                textAnchor={tiltX ? 'end' : 'middle'}
+                className="rend-axis-text"
+                fontSize={tiltX ? 10 : 11}
+                transform={tiltX ? `rotate(-38 ${lx} ${ly})` : undefined}
               >
-                {value.toFixed(1)}%
+                {point.label}
               </text>
             ) : null}
-            {showX ? <text x={x + barWidth / 2} y={height - padding.bottom + 18} textAnchor="middle" className="rend-axis-text">{point.label}</text> : null}
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
+/** Barras agrupadas: un cluster por categoría (tramo, UN, vía…), una barra redondeada por mes de gestión. */
+function GroupedPercentBarChart({
+  months,
+  categoryKeys,
+  byMonth,
+  formatCategory,
+  showLabels,
+  ariaLabel,
+}: {
+  months: string[]
+  categoryKeys: string[]
+  byMonth: Record<string, Record<string, { d: number; p: number }>>
+  formatCategory: (key: string) => string
+  showLabels: boolean
+  ariaLabel: string
+}) {
+  const width = 980
+  const height = 400
+  const tiltX = categoryKeys.some((c) => formatCategory(c).length > 11)
+  const axisLabelReserve = tiltX ? 72 : 44
+  const legendReserve = 48
+  const padding = { top: 24, right: 12, bottom: axisLabelReserve + legendReserve, left: 42 }
+  const plotW = Math.max(1, width - padding.left - padding.right)
+  const plotH = Math.max(1, height - padding.top - padding.bottom)
+  const nT = Math.max(1, categoryKeys.length)
+  const nM = Math.max(1, months.length)
+  const slotW = plotW / nT
+  const clusterPad = 6
+  const innerGap = 2
+  const barW = Math.max(4, Math.min(24, (slotW - 2 * clusterPad - (nM - 1) * innerGap) / nM))
+
+  const valueAt = (month: string, cat: string) =>
+    pctNum(Number(byMonth[month]?.[cat]?.p || 0), Number(byMonth[month]?.[cat]?.d || 0))
+
+  const allValues: number[] = []
+  for (const month of months) {
+    for (const cat of categoryKeys) {
+      allValues.push(valueAt(month, cat))
+    }
+  }
+  const { axisMax, yTicks } = buildPercentYAxis(allValues)
+
+  const monthColor = (mi: number) => RENDIMIENTO_BAR_COLORS[mi % RENDIMIENTO_BAR_COLORS.length]
+
+  const baselineY = padding.top + plotH
+  const categoryLabelY = baselineY + (tiltX ? 14 : 18)
+  const legendY = baselineY + axisLabelReserve + 4
+  const legendX0 = padding.left
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="rend-chart-svg" role="img" aria-label={ariaLabel}>
+      {yTicks.map((tick) => {
+        const y = padding.top + (1 - tick / axisMax) * plotH
+        return (
+          <g key={tick}>
+            <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} className="rend-grid-line" />
+            <text x={padding.left - 8} y={y + 4} textAnchor="end" className="rend-axis-text">{tick}%</text>
+          </g>
+        )
+      })}
+      <line x1={padding.left} y1={padding.top} x2={padding.left} y2={baselineY} className="rend-axis-line" />
+      <line x1={padding.left} y1={baselineY} x2={width - padding.right} y2={baselineY} className="rend-axis-line" />
+
+      {categoryKeys.map((cat, ti) => {
+        const slotLeft = padding.left + ti * slotW
+        const cxSlot = slotLeft + slotW / 2
+        const lx = cxSlot
+        const ly = categoryLabelY
+        return (
+          <g key={`cat-${cat}`}>
+            {months.map((month, mi) => {
+              const value = valueAt(month, cat)
+              const barHeight = (Math.max(0, Math.min(axisMax, value)) / axisMax) * plotH
+              const y = baselineY - barHeight
+              const x = slotLeft + clusterPad + mi * (barW + innerGap)
+              const cornerR = Math.min(10, barW * 0.42, barHeight > 1 ? Math.max(barHeight * 0.18, 3) : 0)
+              const labelAboveY = y - 4
+              const putInside = showLabels && labelAboveY < padding.top + 2 && barHeight > 14
+              const cxb = x + barW / 2
+              return (
+                <g key={`${cat}-${month}`}>
+                  <g className="rend-vbar-hover-target">
+                    <rect
+                      x={x}
+                      y={y}
+                      width={barW}
+                      height={Math.max(barHeight, 0)}
+                      rx={cornerR}
+                      ry={cornerR}
+                      fill={monthColor(mi)}
+                      opacity={0.96}
+                      className="rend-vbar-fill"
+                    />
+                    {showLabels && barHeight > 10 ? (
+                      <text
+                        x={cxb}
+                        y={putInside ? y + 13 : labelAboveY}
+                        textAnchor="middle"
+                        className={`rend-vbar-pct-label ${putInside ? 'rend-vbar-inlabel' : 'rend-vbar-outlabel'}`}
+                        fontSize={nM > 4 ? 9 : 10}
+                        fontWeight={600}
+                      >
+                        {value.toFixed(1)}%
+                      </text>
+                    ) : null}
+                  </g>
+                </g>
+              )
+            })}
+            <text
+              x={lx}
+              y={ly}
+              textAnchor={tiltX ? 'end' : 'middle'}
+              className="rend-axis-text"
+              fontSize={tiltX ? 9 : 11}
+              transform={tiltX ? `rotate(-35 ${lx} ${ly})` : undefined}
+            >
+              {formatCategory(cat)}
+            </text>
+          </g>
+        )
+      })}
+
+      <text x={legendX0} y={legendY - 6} className="rend-axis-text" fontSize="11" fontWeight={600}>
+        Mes de gestión:
+      </text>
+      {months.map((month, mi) => {
+        const lx = legendX0 + mi * 118
+        return (
+          <g key={`leg-${month}`}>
+            <rect x={lx} y={legendY} width={12} height={12} rx={3} fill={monthColor(mi)} opacity={0.96} />
+            <text x={lx + 16} y={legendY + 10} className="rend-axis-text" fontSize="10">
+              {month}
+            </text>
           </g>
         )
       })}
@@ -442,18 +661,8 @@ export function AnalisisRendimientoView() {
       setApplying(true)
       setError(null)
       setAppliedFilters(filters)
-      const fp = await getRendimientoFirstPaint({
-        gestion_month: filters.gestionMonths,
-        un: filters.uns,
-        tramo: filters.tramos,
-        via_cobro: filters.viasCobro,
-        via_pago: filters.viasPago,
-        categoria: filters.categorias,
-        supervisor: filters.supervisors,
-      })
-      setSummary(toSummaryFromFirstPaint(fp))
+      await loadSummary(filters, true)
       await markPerfReady('rendimiento')
-      void loadSummary(filters, true).catch((e: unknown) => setError(getApiErrorMessage(e)))
     } catch (e: unknown) {
       setError(getApiErrorMessage(e))
     } finally {
@@ -474,12 +683,8 @@ export function AnalisisRendimientoView() {
       const resetFilters: Filters = { ...EMPTY_FILTERS, gestionMonths: defaultMonth ? [defaultMonth] : [] }
       setFilters(resetFilters)
       setAppliedFilters(resetFilters)
-      const fp = await getRendimientoFirstPaint({
-        gestion_month: resetFilters.gestionMonths,
-      })
-      setSummary(toSummaryFromFirstPaint(fp))
+      await loadSummary(resetFilters, true)
       await markPerfReady('rendimiento')
-      void loadSummary(resetFilters, true).catch((e: unknown) => setError(getApiErrorMessage(e)))
     } catch (e: unknown) {
       setError(getApiErrorMessage(e))
     } finally {
@@ -525,6 +730,20 @@ export function AnalisisRendimientoView() {
     [summary?.tramoStats],
   )
 
+  const tramoGroupedChart = useMemo(() => {
+    const byMonth = summary?.tramoStatsByGestionMonth
+    if (!byMonth || typeof byMonth !== 'object') return null
+    const months = Object.keys(byMonth).sort((a, b) => monthSerial(a) - monthSerial(b))
+    if (months.length <= 1) return null
+    const tramoSet = new Set<string>()
+    for (const m of months) {
+      Object.keys(byMonth[m] || {}).forEach((t) => tramoSet.add(t))
+    }
+    const tramoKeys = [...tramoSet].sort((a, b) => Number(a) - Number(b))
+    if (tramoKeys.length === 0) return null
+    return { months, tramoKeys, byMonth }
+  }, [summary?.tramoStatsByGestionMonth])
+
   const unSeries = useMemo<SeriesPoint[]>(
     () =>
       Object.entries(summary?.unStats || {})
@@ -536,6 +755,20 @@ export function AnalisisRendimientoView() {
     [summary?.unStats],
   )
 
+  const unGroupedChart = useMemo(() => {
+    const byMonth = summary?.unStatsByGestionMonth
+    if (!byMonth || typeof byMonth !== 'object') return null
+    const months = Object.keys(byMonth).sort((a, b) => monthSerial(a) - monthSerial(b))
+    if (months.length <= 1) return null
+    const cat = new Set<string>()
+    for (const m of months) {
+      Object.keys(byMonth[m] || {}).forEach((k) => cat.add(k))
+    }
+    const categoryKeys = [...cat].sort((a, b) => a.localeCompare(b))
+    if (categoryKeys.length === 0) return null
+    return { months, categoryKeys, byMonth }
+  }, [summary?.unStatsByGestionMonth])
+
   const viaCobroSeries = useMemo<SeriesPoint[]>(
     () =>
       Object.entries(summary?.viaCStats || {})
@@ -546,6 +779,20 @@ export function AnalisisRendimientoView() {
         })),
     [summary?.viaCStats],
   )
+
+  const viaGroupedChart = useMemo(() => {
+    const byMonth = summary?.viaCStatsByGestionMonth
+    if (!byMonth || typeof byMonth !== 'object') return null
+    const months = Object.keys(byMonth).sort((a, b) => monthSerial(a) - monthSerial(b))
+    if (months.length <= 1) return null
+    const cat = new Set<string>()
+    for (const m of months) {
+      Object.keys(byMonth[m] || {}).forEach((k) => cat.add(k))
+    }
+    const categoryKeys = [...cat].sort((a, b) => a.localeCompare(b))
+    if (categoryKeys.length === 0) return null
+    return { months, categoryKeys, byMonth }
+  }, [summary?.viaCStatsByGestionMonth])
 
   const hasOptions = useMemo(
     () => Object.values(options).some((value) => Array.isArray(value) && value.length > 0),
@@ -892,47 +1139,92 @@ export function AnalisisRendimientoView() {
 
             <ChartSection
               title="Rendimiento por tramo"
-              subtitle="Lectura rápida por tramo con la categoría operativa vigente o moroso."
-              hasData={tramoSeries.length > 0}
+              subtitle={
+                tramoGroupedChart
+                  ? 'Una barra por cada mes de gestión seleccionado dentro de cada tramo (comparación entre cortes).'
+                  : 'Barras redondeadas por tramo en el corte de gestión elegido; si el resumen usa Historia, el desglose toma el último mes con datos.'
+              }
+              hasData={tramoGroupedChart ? tramoGroupedChart.tramoKeys.length > 0 : tramoSeries.length > 0}
               emptyMessage={emptyCopy.message}
               emptySuggestion={emptyCopy.suggestion}
             >
-              <PercentBarChart
-                data={tramoSeries}
-                color="var(--color-chart-2)"
-                showLabels={showChartLabels}
-                ariaLabel="Rendimiento por tramo en porcentaje"
-              />
+              {tramoGroupedChart ? (
+                <GroupedPercentBarChart
+                  months={tramoGroupedChart.months}
+                  categoryKeys={tramoGroupedChart.tramoKeys}
+                  byMonth={tramoGroupedChart.byMonth}
+                  formatCategory={(t) => `Tramo ${t}`}
+                  showLabels={showChartLabels}
+                  ariaLabel="Rendimiento por tramo comparando meses de gestión"
+                />
+              ) : (
+                <PercentBarChart
+                  data={tramoSeries}
+                  colors={RENDIMIENTO_BAR_COLORS}
+                  showLabels={showChartLabels}
+                  ariaLabel="Rendimiento por tramo en porcentaje"
+                />
+              )}
             </ChartSection>
 
             <ChartSection
               title="Rendimiento por unidad de negocio"
-              subtitle="Permite comparar la eficacia entre unidades de negocio de la base filtrada."
-              hasData={unSeries.length > 0}
+              subtitle={
+                unGroupedChart
+                  ? 'Una barra por mes de gestión dentro de cada UN (misma lógica de cortes que por tramo).'
+                  : 'Mismo corte que las barras por tramo: mes(es) seleccionados o último mes disponible con Historia.'
+              }
+              hasData={unGroupedChart ? unGroupedChart.categoryKeys.length > 0 : unSeries.length > 0}
               emptyMessage={emptyCopy.message}
               emptySuggestion={emptyCopy.suggestion}
             >
-              <PercentBarChart
-                data={unSeries}
-                color="var(--color-chart-3)"
-                showLabels={showChartLabels}
-                ariaLabel="Rendimiento por unidad de negocio en porcentaje"
-              />
+              {unGroupedChart ? (
+                <GroupedPercentBarChart
+                  months={unGroupedChart.months}
+                  categoryKeys={unGroupedChart.categoryKeys}
+                  byMonth={unGroupedChart.byMonth}
+                  formatCategory={(u) => u}
+                  showLabels={showChartLabels}
+                  ariaLabel="Rendimiento por unidad de negocio comparando meses de gestión"
+                />
+              ) : (
+                <PercentBarChart
+                  data={unSeries}
+                  colors={RENDIMIENTO_BAR_COLORS}
+                  showLabels={showChartLabels}
+                  ariaLabel="Rendimiento por unidad de negocio en porcentaje"
+                />
+              )}
             </ChartSection>
 
             <ChartSection
               title="Rendimiento por vía de cobro"
-              subtitle="Cruza la intención operativa de cobro con el resultado agregado de cobranzas."
-              hasData={viaCobroSeries.length > 0}
+              subtitle={
+                viaGroupedChart
+                  ? 'Una barra por mes de gestión dentro de cada vía de cobro.'
+                  : 'Comparación por vía de cobro en el mismo corte que los otros desgloses.'
+              }
+              hasData={viaGroupedChart ? viaGroupedChart.categoryKeys.length > 0 : viaCobroSeries.length > 0}
               emptyMessage={emptyCopy.message}
               emptySuggestion={emptyCopy.suggestion}
             >
-              <PercentBarChart
-                data={viaCobroSeries}
-                color="var(--color-chart-4)"
-                showLabels={showChartLabels}
-                ariaLabel="Rendimiento por vía de cobro en porcentaje"
-              />
+              {viaGroupedChart ? (
+                <GroupedPercentBarChart
+                  months={viaGroupedChart.months}
+                  categoryKeys={viaGroupedChart.categoryKeys}
+                  byMonth={viaGroupedChart.byMonth}
+                  formatCategory={(v) => v}
+                  showLabels={showChartLabels}
+                  ariaLabel="Rendimiento por vía de cobro comparando meses de gestión"
+                />
+              ) : (
+                <PercentBarChart
+                  data={viaCobroSeries}
+                  colors={RENDIMIENTO_BAR_COLORS}
+                  showLabels={showChartLabels}
+                  ariaLabel="Rendimiento por vía de cobro en porcentaje"
+                />
+              )}
             </ChartSection>
           </div>
         </div>

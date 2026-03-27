@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
-from app.core.analytics_cache import get as cache_get, set as cache_set
+from app.core.analytics_cache import RENDIMIENTO_V2_SUMMARY_CACHE_SCOPE, get as cache_get, set as cache_set
 from app.core.config import settings
 from app.core.deps import require_permission, write_rate_limiter
 from app.db.session import get_db
@@ -260,6 +260,13 @@ def _normalize_rendimiento_v2_summary_payload(result: dict | None) -> dict:
     if stats:
         if 'kpis' not in payload and isinstance(stats.get('kpis'), dict):
             payload['kpis'] = dict(stats.get('kpis') or {})
+        for _bk in (
+            'tramoStatsByGestionMonth',
+            'unStatsByGestionMonth',
+            'viaCStatsByGestionMonth',
+        ):
+            if _bk not in payload and _bk in stats and isinstance(stats.get(_bk), dict):
+                payload[_bk] = dict(stats.get(_bk) or {})
         if 'charts' not in payload:
             payload['charts'] = {
                 'trend': dict(stats.get('trendStats') or {}),
@@ -300,14 +307,14 @@ def rendimiento_summary_v2(
     db: Session = Depends(get_db),
     user=Depends(require_permission('analytics:read')),
 ):
-    cached = cache_get('rendimiento-v2/summary', filters)
+    cached = cache_get(RENDIMIENTO_V2_SUMMARY_CACHE_SCOPE, filters)
     if cached is not None:
         normalized = _normalize_rendimiento_v2_summary_payload(cached)
         if _has_complete_rendimiento_v2_kpis(normalized):
             return _decorate_meta(db, normalized, cache_hit=True, source_table='analytics_rendimiento_agg')
     result = AnalyticsService.fetch_rendimiento_summary_v2(db, filters)
     normalized = _normalize_rendimiento_v2_summary_payload(result)
-    cache_set('rendimiento-v2/summary', filters, normalized, ttl_seconds=RENDIMIENTO_V2_SUMMARY_CACHE_TTL)
+    cache_set(RENDIMIENTO_V2_SUMMARY_CACHE_SCOPE, filters, normalized, ttl_seconds=RENDIMIENTO_V2_SUMMARY_CACHE_TTL)
     return _decorate_meta(db, normalized, cache_hit=False, source_table='analytics_rendimiento_agg')
 
 

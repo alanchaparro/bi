@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.core.analytics_cache import set as cache_set
+from app.core.analytics_cache import RENDIMIENTO_V2_SUMMARY_CACHE_SCOPE, set as cache_set
 from app.schemas.analytics import AnalyticsFilters, CobranzasCohorteFirstPaintIn, CobranzasCohorteIn, PortfolioSummaryIn
 from app.services.analytics_service import AnalyticsService
 
@@ -22,7 +22,7 @@ def prewarm_analytics_cache_after_sync(db: Session, domain: str, append_log) -> 
             rendimiento_options = AnalyticsService.fetch_rendimiento_options_v2(db, base_filters)
             cache_set("rendimiento-v2/options", base_filters, rendimiento_options, ttl_seconds=120)
             rendimiento_summary = AnalyticsService.fetch_rendimiento_summary_v2(db, base_filters)
-            cache_set("rendimiento-v2/summary", base_filters, rendimiento_summary, ttl_seconds=300)
+            cache_set(RENDIMIENTO_V2_SUMMARY_CACHE_SCOPE, base_filters, rendimiento_summary, ttl_seconds=300)
             rendimiento_fp = AnalyticsService.fetch_rendimiento_first_paint_v2(db, base_filters)
             cache_set("rendimiento-v2/first-paint", base_filters, rendimiento_fp, ttl_seconds=180)
             anuales_options = AnalyticsService.fetch_anuales_options_v2(db, base_filters)

@@ -93,7 +93,12 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
    - Windows: `REINICIAR.bat` -> `scripts/restart_stack_fresh.ps1`.
    - Linux/macOS: `reiniciar.sh`.
    - Flujo: down con `--rmi local`, `docker builder prune -f`, `build --pull --no-cache`, `up -d` perfil prod.
-4. Estos launchers son contrato operativo: cambios en compose/bootstrap/env no deben romperlos.
+4. **Acceso por red local (LAN), una sola URL**:
+   - Windows: `INICIAR_LAN.bat` (raiz) -> `scripts/start_lan.ps1` -> perfil Docker Compose `prod-lan` (nginx en `LAN_HTTP_PORT`, por defecto 80; front con API bajo `/api/v1` en el mismo origen).
+   - Linux/macOS: `iniciar_lan.sh` (raiz).
+   - **Primera instalación**: conviene completar bootstrap con `INICIAR.bat` / `iniciar.sh` (perfil `prod`) al menos una vez; luego `INICIAR_LAN` puede sustituir el `up` diario para uso desde otras PCs en la LAN.
+   - **Bajar todo**: igual que siempre — `DETENER.bat` / `detener.sh` (`--profile "*"`).
+5. Estos launchers son contrato operativo: cambios en compose/bootstrap/env no deben romperlos.
 
 ## Contratos y UX
 1. Frontend analytics consume rutas v2 por defecto.
@@ -151,7 +156,7 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
    - escaneo de secretos sin hallazgos
    - confirmacion de que no hay credenciales reales en diffs
    - confirmacion de que `.env`/llaves no forman parte del commit
-7. Si el cambio toca Docker/compose/bootstrap/scripts: validar `INICIAR.bat`/`iniciar.sh`, `DETENER.bat`/`detener.sh` y `REINICIAR.bat`/`reiniciar.sh`.
+7. Si el cambio toca Docker/compose/bootstrap/scripts: validar `INICIAR.bat`/`iniciar.sh`, `INICIAR_LAN.bat`/`iniciar_lan.sh`, `DETENER.bat`/`detener.sh` y `REINICIAR.bat`/`reiniciar.sh`.
 8. Si el cambio toca frontend de analytics, validar fronteras de `desacople.md` (sin marcadores legacy en flujo nuevo).
 9. Validar `optimo.md` como canónico de pendientes: registrar impacto en hardware/UX, evidencia antes/despues y estado consistente con `bugs.md`/`bugs_visual.md`.
 10. Si el cambio requiere validación funcional o de regresión, registrar la corrida en `qa.md` con evidencia y enlazar cualquier hallazgo a su canónico correspondiente.

@@ -17,6 +17,9 @@ _cache: OrderedDict[str, tuple[Any, float, str, dict[str, Any]]] = OrderedDict()
 _DEFAULT_TTL_SECONDS = 60
 _MAX_ENTRIES = 1000
 _lock = Lock()
+
+# Nombre de scope para cache_get/set (no es la ruta HTTP). Subir :vN si cambia la forma del JSON cacheado.
+RENDIMIENTO_V2_SUMMARY_CACHE_SCOPE = 'rendimiento-v2/summary:v3'
 _hits_by_endpoint: dict[str, int] = defaultdict(int)
 _misses_by_endpoint: dict[str, int] = defaultdict(int)
 

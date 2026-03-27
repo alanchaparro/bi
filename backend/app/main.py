@@ -11,7 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.v1.router import router as v1_router
 from app.core.config import settings
 from app.core.prod_check import validate_production_config
-from app.core.analytics_cache import set as cache_set
+from app.core.analytics_cache import RENDIMIENTO_V2_SUMMARY_CACHE_SCOPE, set as cache_set
 from app.db.bootstrap import bootstrap_database_with_demo_probe, ensure_runtime_schema, ensure_sync_schema_compatibility
 from app.db.session import SessionLocal
 from app.schemas.analytics import AnalyticsFilters, CobranzasCohorteFirstPaintIn, CobranzasCohorteIn, PortfolioSummaryIn
@@ -148,7 +148,7 @@ def _prewarm_analytics_cache_on_startup() -> None:
         rendimiento_options = AnalyticsService.fetch_rendimiento_options_v2(db, base)
         cache_set('rendimiento-v2/options', base, rendimiento_options, ttl_seconds=120)
         rendimiento_summary = AnalyticsService.fetch_rendimiento_summary_v2(db, base)
-        cache_set('rendimiento-v2/summary', base, rendimiento_summary, ttl_seconds=300)
+        cache_set(RENDIMIENTO_V2_SUMMARY_CACHE_SCOPE, base, rendimiento_summary, ttl_seconds=300)
         rendimiento_fp = AnalyticsService.fetch_rendimiento_first_paint_v2(db, base)
         cache_set('rendimiento-v2/first-paint', base, rendimiento_fp, ttl_seconds=180)
 

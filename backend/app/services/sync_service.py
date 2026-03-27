@@ -17,7 +17,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from app.core.analytics_cache import invalidate_endpoint, invalidate_prefix
+from app.core.analytics_cache import RENDIMIENTO_V2_SUMMARY_CACHE_SCOPE, invalidate_endpoint, invalidate_prefix
 from app.core.config import settings
 from app.db.session import SessionLocal, engine
 from app.domain import canonical_un, canonical_via, categoria_from_tramo, category_expr_for_tramo, default_un_mappings
@@ -3508,7 +3508,7 @@ def _execute_job(
                 lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
             )
             invalidated_rend_v2_summary = invalidate_endpoint(
-                'rendimiento-v2/summary',
+                RENDIMIENTO_V2_SUMMARY_CACHE_SCOPE,
                 lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
             )
             invalidated_anuales_v2_options = invalidate_endpoint(
@@ -3579,7 +3579,7 @@ def _execute_job(
         if domain == 'cobranzas':
             target_months_set = set(ordered_refresh_target_months)
             invalidated_rend_v2_summary = invalidate_endpoint(
-                'rendimiento-v2/summary',
+                RENDIMIENTO_V2_SUMMARY_CACHE_SCOPE,
                 lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
             )
             invalidated_anuales_v2_summary = invalidate_endpoint(
@@ -3660,7 +3660,7 @@ def _execute_job(
                 lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
             )
             invalidated_rend_v2_summary = invalidate_endpoint(
-                'rendimiento-v2/summary',
+                RENDIMIENTO_V2_SUMMARY_CACHE_SCOPE,
                 lambda filters: _invalidate_when_months_overlap(filters, target_months_set, 'gestion_month'),
             )
             invalidated_anuales_v2_options = invalidate_endpoint(
@@ -4321,7 +4321,7 @@ class SyncService:
                 'portfolio_corte_summary': invalidate_endpoint('portfolio/corte/summary', lambda _: True),
                 'portfolio_corte_v2_summary': invalidate_endpoint('portfolio-corte-v2/summary', lambda _: True),
                 'cobranzas_cohorte_summary': invalidate_endpoint('cobranzas-cohorte/summary', lambda _: True),
-                'rendimiento_v2_summary': invalidate_endpoint('rendimiento-v2/summary', lambda _: True),
+                'rendimiento_v2_summary': invalidate_endpoint(RENDIMIENTO_V2_SUMMARY_CACHE_SCOPE, lambda _: True),
                 'anuales_v2_summary': invalidate_endpoint('anuales-v2/summary', lambda _: True),
                 'portfolio_corte_first_paint': invalidate_endpoint('portfolio-corte-v2/first-paint', lambda _: True),
                 'cobranzas_cohorte_first_paint': invalidate_endpoint('cobranzas-cohorte-v2/first-paint', lambda _: True),

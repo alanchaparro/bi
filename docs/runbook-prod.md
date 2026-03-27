@@ -172,6 +172,9 @@ Copy-Item .env.prod-lan .env -Force
 - `MYSQL_PASSWORD`
 
 ### 9.2 Levantar perfil LAN
+Windows (recomendado): doble clic en **`INICIAR_LAN.bat`** en la raiz del repo (equivale a bajar todos los perfiles del proyecto y subir `prod-lan`).
+
+Manual:
 ```powershell
 docker compose --profile prod-lan up -d --build
 ```
