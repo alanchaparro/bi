@@ -12,7 +12,18 @@ function getEnv(key: string): string {
   return "";
 }
 
-export const API_BASE_URL = getEnv("NEXT_PUBLIC_API_BASE_URL") || getEnv("VITE_API_BASE_URL") || "http://localhost:8000/api/v1";
+function viteApiBaseUrl(): string {
+  if (typeof import.meta === "undefined") return "";
+  const v = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_BASE_URL;
+  return v ? String(v) : "";
+}
+
+// Next.js solo inyecta en el bundle del cliente referencias *directas* a process.env.NEXT_PUBLIC_*.
+// Si se usa getEnv("NEXT_PUBLIC_..."), en el navegador queda vacío y cae en el fallback localhost (rompe LAN/proxy).
+export const API_BASE_URL =
+  (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_API_BASE_URL : undefined) ||
+  viteApiBaseUrl() ||
+  "http://localhost:8000/api/v1";
 export const USE_FRONTEND_PERF_TELEMETRY = (getEnv("NEXT_PUBLIC_USE_FRONTEND_PERF_TELEMETRY") || getEnv("VITE_USE_FRONTEND_PERF_TELEMETRY") || "1").trim() !== "0";
 export const USE_STRICT_UI_TOKENS = (getEnv("NEXT_PUBLIC_USE_STRICT_UI_TOKENS") || getEnv("VITE_USE_STRICT_UI_TOKENS") || "1").trim() !== "0";
 export const USE_UI_IOS_REFINEMENT = (getEnv("NEXT_PUBLIC_USE_UI_IOS_REFINEMENT") || getEnv("VITE_USE_UI_IOS_REFINEMENT") || "0").trim() === "1";
