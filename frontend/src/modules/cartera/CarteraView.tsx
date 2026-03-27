@@ -5,6 +5,7 @@ import { EmptyState } from '../../components/feedback/EmptyState'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { LoadingState } from '../../components/feedback/LoadingState'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
+import { FloatingQuickFilters } from '../../components/filters/FloatingQuickFilters'
 import { getPortfolioCorteOptions, getPortfolioCorteSummary } from '../../shared/api'
 import type { PortfolioCorteSummaryResponse } from '../../shared/api'
 import { getApiErrorMessage } from '../../shared/apiErrors'
@@ -52,6 +53,9 @@ export function CarteraView() {
   }>({ supervisors: [], uns: [], vias: [], years: [], months: [], categories: [], tramos: [] })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [floatOpen, setFloatOpen] = useState(false)
+  const [floatMonths, setFloatMonths] = useState<string[]>([])
+  const [floatUns, setFloatUns] = useState<string[]>([])
 
   const loadOptions = useCallback(async (ctx: BrokersFilters) => {
     const res = await getPortfolioCorteOptions(filtersToCortePayload(ctx))
@@ -139,6 +143,19 @@ export function CarteraView() {
     setDraftFilters(EMPTY_BROKERS_FILTERS)
     await applyFilters(EMPTY_BROKERS_FILTERS)
   }, [applyFilters])
+
+  const openFloatFilters = useCallback(() => {
+    setFloatMonths(draftFilters.months)
+    setFloatUns(draftFilters.uns)
+    setFloatOpen(true)
+  }, [draftFilters.months, draftFilters.uns])
+
+  const applyFloatFilters = useCallback(async () => {
+    const next = { ...draftFilters, months: floatMonths, uns: floatUns }
+    setDraftFilters(next)
+    setFloatOpen(false)
+    await applyFilters(next)
+  }, [applyFilters, draftFilters, floatMonths, floatUns])
 
   const kpis = summary?.kpis
   const totalCartera = Number(kpis?.total_cartera ?? 0)
@@ -247,6 +264,31 @@ export function CarteraView() {
           </div>
         </>
       )}
+
+      <FloatingQuickFilters
+        isOpen={floatOpen}
+        onOpen={openFloatFilters}
+        onCollapse={() => setFloatOpen(false)}
+        onApply={() => void applyFloatFilters()}
+        applyDisabled={loading || !floatMonths.length}
+        applying={loading}
+      >
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Mes de gestión"
+          options={options.months}
+          selected={floatMonths}
+          onChange={setFloatMonths}
+        />
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Unidad de negocio"
+          options={options.uns}
+          selected={floatUns}
+          onChange={setFloatUns}
+          placeholder="Todas"
+        />
+      </FloatingQuickFilters>
     </section>
   )
 }

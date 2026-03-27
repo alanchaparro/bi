@@ -22,7 +22,8 @@ describe('analytics shared components', () => {
     )
 
     expect(screen.getByText('Fuente: cartera_fact + cobranzas_fact')).toBeTruthy()
-    expect(screen.getByText('Actualizado: 2026-03-19T12:00:00Z')).toBeTruthy()
+    expect(screen.getByText(/Actualizado:/)).toBeTruthy()
+    expect(screen.getByLabelText('Metadata de analytics').textContent).toMatch(/Actualizado:.*\/3\//)
     expect(screen.getByText('Cache hit')).toBeTruthy()
     expect(screen.getByText('Pipeline: v2.1.0')).toBeTruthy()
   })

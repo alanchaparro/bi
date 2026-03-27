@@ -414,9 +414,10 @@ class AnalyticsService:
         freshness_map = {str(row[0] or '').strip().lower(): row[1] for row in freshness_rows}
         max_dt: datetime | None = None
         for name in tables:
-            dt = freshness_map.get(name)
-            if dt is None:
-                dt = AnalyticsService._latest_timestamp_for_source(db, name)
+            dt_tracker = freshness_map.get(name)
+            dt_live = AnalyticsService._latest_timestamp_for_source(db, name)
+            candidates = [d for d in (dt_tracker, dt_live) if d is not None]
+            dt = max(candidates) if candidates else None
             if dt is not None and (max_dt is None or dt > max_dt):
                 max_dt = dt
         return max_dt.isoformat() if max_dt is not None else None

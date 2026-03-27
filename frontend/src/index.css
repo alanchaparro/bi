@@ -854,14 +854,14 @@ body.sidebar-open .tabs-nav {
 }
 
 .app-content {
-  max-width: 1400px;
+  max-width: 1610px;
   margin: 0 auto;
   padding: 2rem;
 }
 
 @media (min-width: 1025px) {
   .app-content {
-    max-width: 1140px;
+    max-width: 1310px;
     padding: 0.75rem 0.88rem 1rem;
   }
 }
@@ -872,7 +872,7 @@ body.sidebar-open .tabs-nav {
 }
 
 .analysis-filters-grid {
-  max-width: 1080px;
+  max-width: 1240px;
   gap: 0.95rem 1rem;
   transition: opacity 0.25s ease, transform 0.2s ease;
 }
@@ -1542,7 +1542,9 @@ body.sidebar-open .tabs-nav {
   border-color: color-mix(in srgb, var(--color-border) 98%, transparent);
   box-shadow: 0 14px 28px rgba(2, 6, 23, 0.14);
   background: linear-gradient(180deg, color-mix(in srgb, var(--table-bg) 94%, transparent) 0%, color-mix(in srgb, var(--table-bg) 100%, transparent) 100%);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 @media (min-width: 1025px) {
@@ -1562,6 +1564,70 @@ body.sidebar-open .tabs-nav {
 
 .analysis-table-wrap-annual {
   background: linear-gradient(180deg, color-mix(in srgb, var(--table-bg) 85%, transparent) 0%, color-mix(in srgb, var(--table-bg) 96%, transparent) 100%);
+}
+
+/*
+ * Cobranzas cohorte — pocas filas fijas (tramos 0–7): sin max-height para no recortar la última fila.
+ * .table-wrap más abajo fuerza overflow-y: hidden; este selector más específico lo anula aquí.
+ */
+.table-wrap.analysis-table-wrap--cohorte-resumen {
+  max-height: none;
+  overflow-y: visible;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.analysis-table-wrap--cohorte-resumen .cohorte-resumen-table {
+  min-width: 64rem;
+  width: 100%;
+  table-layout: auto;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.analysis-table-wrap--cohorte-resumen .cohorte-resumen-table th.num,
+.analysis-table-wrap--cohorte-resumen .cohorte-resumen-table td.num {
+  white-space: nowrap;
+  padding-inline: 0.75rem;
+  vertical-align: middle;
+  line-height: 1.4;
+}
+
+/* Montos largos (Gs. + miles con puntos): una sola línea estable */
+.analysis-table-wrap--cohorte-resumen .cohorte-resumen-table th:nth-child(5),
+.analysis-table-wrap--cohorte-resumen .cohorte-resumen-table td:nth-child(5),
+.analysis-table-wrap--cohorte-resumen .cohorte-resumen-table th:nth-child(6),
+.analysis-table-wrap--cohorte-resumen .cohorte-resumen-table td:nth-child(6) {
+  min-width: 15.5rem;
+}
+
+.analysis-table-wrap--cohorte-resumen .cohorte-resumen-table tbody tr:last-child td {
+  padding-bottom: 0.55rem;
+}
+
+.analysis-table-wrap--cohorte-resumen .cohorte-resumen-tfoot td {
+  padding-top: 0.65rem;
+  padding-bottom: 1rem;
+  font-weight: 750;
+  border-top: 2px solid color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--table-bg));
+  vertical-align: middle;
+}
+
+.analysis-table-wrap--cohorte-resumen .cohorte-resumen-tfoot td.analysis-key-cell {
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.analysis-table-section--cohorte-resumen {
+  padding-bottom: 1.25rem;
+}
+
+/* Panel cohorte: sin recorte (Tailwind overflow-hidden en Card tapaba última fila). */
+.cohorte-panel-root.analysis-panel-card,
+.cohorte-panel-root.analysis-panel-card [data-slot='base'] {
+  overflow: visible;
 }
 
 .analysis-table-wrap-monthly {
@@ -1707,7 +1773,7 @@ body.sidebar-open .tabs-nav {
 .analysis-panel-card {
   width: 100%;
   min-width: 0;
-  max-width: 1100px;
+  max-width: 1270px;
   margin-inline: auto;
   position: relative;
   overflow: visible;
@@ -1723,7 +1789,7 @@ body.sidebar-open .tabs-nav {
 
 @media (min-width: 1025px) {
   .analysis-panel-card {
-    max-width: 940px;
+    max-width: 1080px;
     padding: 0.88rem 0.96rem 0.96rem;
     box-shadow: 0 12px 24px rgba(3, 7, 18, 0.16);
   }
@@ -1869,6 +1935,10 @@ body.sidebar-open .tabs-nav {
   display: grid;
   grid-template-columns: repeat(2, minmax(320px, 1fr));
   gap: 1rem;
+}
+
+.charts-grid > .chart-card {
+  min-width: 0;
 }
 
 .chart-card {
@@ -3905,7 +3975,7 @@ label.input-label {
   white-space: nowrap;
 }
 
-.rolo-floating-filter-wrap {
+.analytics-floating-filter-wrap {
   position: fixed;
   right: 0;
   top: 50%;
@@ -3916,7 +3986,7 @@ label.input-label {
   gap: 0.35rem;
 }
 
-.rolo-floating-drag-btn {
+.analytics-floating-drag-btn {
   position: absolute;
   top: 0.2rem;
   right: 0.55rem;
@@ -3933,15 +4003,15 @@ label.input-label {
   touch-action: none;
 }
 
-.rolo-floating-drag-btn:active {
+.analytics-floating-drag-btn:active {
   cursor: grabbing;
 }
 
-.rolo-floating-filter-fab {
+.analytics-floating-filter-fab {
   box-shadow: 0 10px 24px color-mix(in srgb, var(--color-primary) 24%, transparent);
 }
 
-.rolo-floating-filter-fab-vertical {
+.analytics-floating-filter-fab-vertical {
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
   min-height: 120px;
@@ -3951,7 +4021,7 @@ label.input-label {
   letter-spacing: 0.04em;
 }
 
-.rolo-floating-filter-card {
+.analytics-floating-filter-card {
   width: min(340px, calc(100vw - 1.2rem));
   padding: 0.75rem;
   padding-top: 1.05rem;
@@ -3961,19 +4031,19 @@ label.input-label {
   margin-right: 0.55rem;
 }
 
-.rolo-floating-filter-title {
+.analytics-floating-filter-title {
   font-size: 0.82rem;
   font-weight: 700;
   margin-bottom: 0.55rem;
 }
 
-.rolo-floating-filter-grid {
+.analytics-floating-filter-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 0.55rem;
 }
 
-.rolo-floating-filter-actions {
+.analytics-floating-filter-actions {
   margin-top: 0.55rem;
   display: flex;
   justify-content: flex-end;
@@ -3981,7 +4051,7 @@ label.input-label {
 }
 
 @media (max-width: 820px) {
-  .rolo-floating-filter-wrap {
+  .analytics-floating-filter-wrap {
     right: 0;
     left: auto;
     top: auto;
@@ -3990,16 +4060,16 @@ label.input-label {
     width: auto;
   }
 
-  .rolo-floating-drag-btn {
+  .analytics-floating-drag-btn {
     top: -0.25rem;
     right: 0.35rem;
   }
 
-  .rolo-floating-filter-card {
+  .analytics-floating-filter-card {
     width: min(340px, calc(100vw - 0.9rem));
   }
 
-  .rolo-floating-filter-fab-vertical {
+  .analytics-floating-filter-fab-vertical {
     min-height: auto;
     writing-mode: horizontal-tb;
     border-top-right-radius: var(--radius-md);
@@ -4156,6 +4226,11 @@ body.is-dragging-floating-filter {
 
 .table-wrap tbody tr:hover td {
   background: color-mix(in srgb, var(--color-primary) 12%, var(--table-row-hover));
+}
+
+/* Análisis: .table-wrap usa overflow-y hidden y recortaba la última fila con scroll interno */
+.table-wrap.analysis-table-wrap {
+  overflow-y: auto;
 }
 
 .table-scroll-hint {
@@ -4951,6 +5026,21 @@ body.is-dragging-floating-filter {
   margin-top: 0.75rem;
 }
 
+/* Cobranzas cohorte: el panel usa HeroUI Card sin .analysis-card; grid 2×2 explícito */
+.cohorte-kpi-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+  transition: opacity 0.25s ease;
+}
+
+@media (max-width: 640px) {
+  .cohorte-kpi-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .kpi-card .analysis-kpi-note.kpi-card-footnote {
   margin-top: 0.42rem;
   font-size: 0.72rem;
@@ -4997,6 +5087,48 @@ body.is-dragging-floating-filter {
   overflow: visible;
 }
 
+/* Análisis cartera: barras tipo rendimiento ocupan todo el ancho del card (grid/flex). */
+.rend-count-bar-chart {
+  width: 100%;
+  min-width: 0;
+}
+
+.rend-count-bar-chart .rend-chart-svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.rend-stack-svg {
+  min-height: 220px;
+}
+
+.rend-stack-inbar-text {
+  paint-order: stroke fill;
+  stroke: rgba(15, 23, 42, 0.38);
+  stroke-width: 0.5px;
+}
+
+:root[data-theme="light"] .rend-stack-inbar-text {
+  stroke: rgba(15, 23, 42, 0.45);
+}
+
+
+.rend-count-bar-legend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+  gap: 0.15rem 1rem;
+  align-items: start;
+}
+
+.rend-count-bar-legend-vertical {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+  width: 100%;
+}
+
 .rend-axis-line {
   stroke: color-mix(in srgb, var(--color-border) 85%, transparent);
   stroke-width: 1;
@@ -5039,6 +5171,16 @@ body.is-dragging-floating-filter {
 .rend-vbar-hover-target:hover .rend-vbar-pct-label {
   transform: scale(1.62);
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4));
+}
+
+/* Apilado cartera: zoom de etiquetas anima font-size; hover sigue la lupa de .rend-vbar-pct-label. */
+.rend-stack-bar-label.rend-vbar-pct-label {
+  transition:
+    font-size 0.22s ease,
+    transform 0.2s cubic-bezier(0.34, 1.45, 0.64, 1),
+    filter 0.2s ease;
+  transform-box: fill-box;
+  transform-origin: center center;
 }
 
 .rend-vbar-outlabel {

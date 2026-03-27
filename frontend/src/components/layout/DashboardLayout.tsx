@@ -442,7 +442,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
-        <main className="dashboard-main-content overflow-x-auto px-3 pb-6 pt-3 lg:px-4 lg:pt-4 xl:px-5 xl:pt-5">
+        <main className="dashboard-main-content overflow-x-auto px-2.5 pb-6 pt-3 lg:px-3 lg:pt-4 xl:px-4 xl:pt-5">
           <div className="container-main dashboard-page-enter">{children}</div>
         </main>
       </div>

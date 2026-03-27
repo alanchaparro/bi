@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@heroui/react'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
+import { FloatingQuickFilters } from '../../components/filters/FloatingQuickFilters'
 import { SegmentedControl } from '../../components/filters/SegmentedControl'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
@@ -577,6 +578,11 @@ export function AnalisisRendimientoView() {
   const [draggingKpi, setDraggingKpi] = useState<KpiId | null>(null)
   const [dragOverKpi, setDragOverKpi] = useState<KpiId | null>(null)
   const [showChartLabels, setShowChartLabels] = useState<boolean>(() => readStoredChartLabels())
+  const [floatOpen, setFloatOpen] = useState(false)
+  const [floatGestion, setFloatGestion] = useState<string[]>([])
+  const [floatUns, setFloatUns] = useState<string[]>([])
+  const [floatCategoria, setFloatCategoria] = useState<string>('')
+  const [floatViasCobro, setFloatViasCobro] = useState<string[]>([])
 
   useEffect(() => {
     try {
@@ -656,19 +662,47 @@ export function AnalisisRendimientoView() {
     void boot()
   }, [loadSummary])
 
-  const onApply = useCallback(async () => {
-    try {
-      setApplying(true)
-      setError(null)
-      setAppliedFilters(filters)
-      await loadSummary(filters, true)
-      await markPerfReady('rendimiento')
-    } catch (e: unknown) {
-      setError(getApiErrorMessage(e))
-    } finally {
-      setApplying(false)
+  const commitAndLoad = useCallback(
+    async (next: Filters) => {
+      try {
+        setApplying(true)
+        setError(null)
+        setFilters(next)
+        setAppliedFilters(next)
+        await loadSummary(next, true)
+        await markPerfReady('rendimiento')
+      } catch (e: unknown) {
+        setError(getApiErrorMessage(e))
+      } finally {
+        setApplying(false)
+      }
+    },
+    [loadSummary],
+  )
+
+  const onApply = useCallback(() => void commitAndLoad(filters), [commitAndLoad, filters])
+
+  const openFloatFilters = useCallback(() => {
+    setFloatGestion(filters.gestionMonths)
+    setFloatUns(filters.uns)
+    setFloatCategoria((filters.categorias[0] || '').toUpperCase())
+    setFloatViasCobro(filters.viasCobro)
+    setFloatOpen(true)
+  }, [filters.categorias, filters.gestionMonths, filters.uns, filters.viasCobro])
+
+  const applyFloatFilters = useCallback(async () => {
+    const next: Filters = {
+      ...filters,
+      gestionMonths: floatGestion,
+      uns: floatUns,
+      categorias: floatCategoria ? [floatCategoria] : [],
+      viasCobro: floatViasCobro,
     }
-  }, [filters, loadSummary])
+    await commitAndLoad(next)
+    setFloatOpen(false)
+  }, [commitAndLoad, filters, floatCategoria, floatGestion, floatUns, floatViasCobro])
+
+  const hasUnOptions = options.uns.length > 0
 
   const clearFilters = useCallback(() => {
     const defaultMonth = options.defaultGestionMonth || options.gestionMonths?.[options.gestionMonths.length - 1] || ''
@@ -1229,6 +1263,56 @@ export function AnalisisRendimientoView() {
           </div>
         </div>
       ) : null}
+
+      <FloatingQuickFilters
+        isOpen={floatOpen}
+        onOpen={openFloatFilters}
+        onCollapse={() => setFloatOpen(false)}
+        onApply={() => void applyFloatFilters()}
+        applyDisabled={applying || loadingSummary || loadingOptions || !floatGestion.length}
+        applying={applying || loadingSummary}
+      >
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Mes de gestión"
+          options={options.gestionMonths}
+          selected={floatGestion}
+          onChange={setFloatGestion}
+          placeholder="Historia"
+        />
+        {hasUnOptions ? (
+          <MultiSelectFilter
+            className="analysis-filter-control"
+            label="Unidad de negocio"
+            options={options.uns}
+            selected={floatUns}
+            onChange={setFloatUns}
+            placeholder="Todas"
+          />
+        ) : (
+          <>
+            <MultiSelectFilter
+              className="analysis-filter-control"
+              label="Vía de cobro"
+              options={options.viasCobro}
+              selected={floatViasCobro}
+              onChange={setFloatViasCobro}
+              placeholder="Todas"
+            />
+            <SegmentedControl
+              className="analysis-filter-control"
+              label="Categoría"
+              options={[
+                { value: '', label: 'Todas' },
+                { value: 'VIGENTE', label: 'Vigente' },
+                { value: 'MOROSO', label: 'Moroso' },
+              ]}
+              value={floatCategoria}
+              onChange={(value) => setFloatCategoria(value)}
+            />
+          </>
+        )}
+      </FloatingQuickFilters>
     </section>
   )
 }

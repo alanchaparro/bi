@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Skeleton } from "@heroui/react";
 import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter";
+import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
 import { ActiveFilterChips, type FilterChip } from "../../components/filters/ActiveFilterChips";
 import { SegmentedControl } from "../../components/filters/SegmentedControl";
 import { ToastStack, type ToastMessage, type ToastType } from "../../components/feedback/ToastStack";
@@ -12,6 +13,8 @@ import { AnalyticsPageHeader } from "../../components/analytics/AnalyticsPageHea
 import { AnalyticsMetaBadges } from "../../components/analytics/AnalyticsMetaBadges";
 import { AnalysisSelectionSummary } from "../../components/analytics/AnalysisSelectionSummary";
 import { MetricExplainer } from "../../components/analytics/MetricExplainer";
+import { RendimientoStyleCountBarChart } from "../../components/analytics/RendimientoStyleCountBarChart";
+import { RendimientoStyleStackedColumnChart } from "../../components/analytics/RendimientoStyleStackedColumnChart";
 import {
   getPortfolioCorteFirstPaint,
   getPortfolioCorteOptions,
@@ -63,8 +66,8 @@ const DEFAULT_CHART_ORDER: ChartId[] = [
   "series_vig_mor_month",
   "series_via_month",
   "by_un",
-  "by_tramo",
   "by_via",
+  "by_tramo",
   "by_contract_year",
 ];
 const DEFAULT_KPI_ORDER: KpiId[] = ["total", "monto", "vigentes", "morosos", "cobrador", "debito"];
@@ -105,16 +108,8 @@ const BAR_SEQUENTIAL_DARK = [
 ] as const;
 const STORAGE_KPI_MODE = "analisis_cartera_kpi_mode_v1";
 
-/** Superficie del badge dentro de la barra (inline para ganar a estilos globales de UI kit). */
-function stackBarInbarBadgeStyle(isLight: boolean): React.CSSProperties {
-  return {
-    background: isLight ? "rgba(15, 23, 42, 0.94)" : "rgba(8, 10, 14, 0.92)",
-    color: "#f8fafc",
-    border: "none",
-    borderRadius: 4,
-    boxShadow: isLight ? "0 1px 4px rgba(15, 23, 42, 0.18)" : "0 2px 8px rgba(0, 0, 0, 0.42)",
-  };
-}
+/** Tramos canónicos 0..7 (AGENTS.md); donut y leyenda siempre completos y en orden fijo. */
+const TRAMO_DONUT_KEYS = [0, 1, 2, 3, 4, 5, 6, 7] as const;
 
 const formatPct = (value: number, total: number) => `${((Number(value || 0) / Math.max(1, Number(total || 0))) * 100).toFixed(1)}%`;
 
@@ -237,11 +232,16 @@ function DonutChart({ data, isLight = false, colors = CHART_COLORS }: { data: Ar
             const hoverOffset = isHovered ? 8 : 0;
             const tx = Math.cos(mid) * hoverOffset;
             const ty = Math.sin(mid) * hoverOffset;
+            const dataIdx = data.findIndex((x) => x.label === d.label);
+            const colorIdx = dataIdx >= 0 ? dataIdx : idx;
+            if (d.value <= 0) {
+              return null;
+            }
             return (
               <path
                 key={d.label}
                 d={path}
-                fill={colors[idx % colors.length]}
+                fill={colors[colorIdx % colors.length]}
                 className={`analysis-donut-segment ${isHovered ? "is-hovered" : ""}`}
                 style={{ transform: `translate(${tx}px, ${ty}px)` }}
                 onMouseEnter={() => setHoveredLabel(d.label)}
@@ -291,386 +291,6 @@ function DonutChart({ data, isLight = false, colors = CHART_COLORS }: { data: Ar
   );
 }
 
-function BarChart({ data, isLight = false, colors = CHART_COLORS }: { data: Array<{ label: string; value: number }>; isLight?: boolean; colors?: string[] }) {
-  const [hidden, setHidden] = useState<Record<string, boolean>>({});
-  const visible = data.filter((d) => !hidden[d.label]);
-  const max = Math.max(1, ...visible.map((d) => d.value));
-  const total = Math.max(1, visible.reduce((acc, d) => acc + Number(d.value || 0), 0));
-  const textColor = "var(--color-text)";
-  const textMutedColor = "var(--color-text-muted)";
-  const trackBg = "var(--chart-grid)";
-
-  useEffect(() => {
-    const labels = new Set(data.map((d) => d.label));
-    setHidden((prev) => {
-      const next: Record<string, boolean> = {};
-      Object.entries(prev).forEach(([k, v]) => {
-        if (labels.has(k)) next[k] = v;
-      });
-      return next;
-    });
-  }, [data]);
-
-  const toggle = (label: string) => setHidden((prev) => ({ ...prev, [label]: !prev[label] }));
-
-  return (
-    <div className={`analysis-bars-wrap ${isLight ? "analysis-bars-wrap--light" : ""}`.trim()}>
-      {data.map((d, idx) => {
-        const isHidden = !!hidden[d.label];
-        const widthPct = isHidden ? 0 : Math.max(3, Math.round((d.value / max) * 100));
-        return (
-          <button
-            key={d.label}
-            type="button"
-            onClick={() => toggle(d.label)}
-            title={isHidden ? "Mostrar serie" : "Ocultar serie"}
-            style={{ background: "transparent", border: "none", padding: 0, textAlign: "left", cursor: "pointer", color: isHidden ? textMutedColor : textColor }}
-          >
-            <div className="analysis-bars-row-meta">
-              <span style={{ textDecoration: isHidden ? "line-through" : "none" }}>{d.label}</span>
-              <span>{formatCount(d.value)} ({formatPct(d.value, total)})</span>
-            </div>
-            <div className="analysis-bars-track" style={{ background: trackBg }}>
-              <div
-                className="analysis-bars-fill"
-                style={{
-                  width: `${widthPct}%`,
-                  background: colors[idx % colors.length],
-                }}
-              />
-            </div>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function StackedColumnChart({
-  data,
-  aLabel,
-  bLabel,
-  aColor = "var(--color-chart-1)",
-  bColor = "var(--color-chart-5)",
-  isLight = false,
-  labelZoomStorageKey,
-}: {
-  data: Array<{ label: string; a: number; b: number }>;
-  aLabel: string;
-  bLabel: string;
-  aColor?: string;
-  bColor?: string;
-  isLight?: boolean;
-  labelZoomStorageKey?: string;
-}) {
-  const [hidden, setHidden] = useState<{ a: boolean; b: boolean }>({ a: false, b: false });
-  const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
-  const [showBarPercent, setShowBarPercent] = useState<boolean>(() => {
-    if (!labelZoomStorageKey) return true;
-    const raw = window.localStorage.getItem(`${labelZoomStorageKey}_show_pct`);
-    if (raw == null) return true;
-    return raw === "1";
-  });
-  const [showBarNumbers, setShowBarNumbers] = useState<boolean>(() => {
-    if (!labelZoomStorageKey) return true;
-    const raw = window.localStorage.getItem(`${labelZoomStorageKey}_show_num`);
-    if (raw == null) return true;
-    return raw === "1";
-  });
-  const [labelZoom, setLabelZoom] = useState<number>(() => {
-    if (!labelZoomStorageKey) return 100;
-    const raw = window.localStorage.getItem(labelZoomStorageKey);
-    const parsed = Number(raw || 100);
-    if (!Number.isFinite(parsed)) return 100;
-    return Math.min(200, Math.max(70, parsed));
-  });
-  const rawMaxY = Math.max(1, ...data.map((d) => (hidden.a ? 0 : Number(d.a || 0)) + (hidden.b ? 0 : Number(d.b || 0))));
-  const maxY = Math.max(1, rawMaxY * 1.08);
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((r) => Math.round(maxY * r));
-  const chartHeight = 320;
-  const barWidth = data.length <= 1 ? 56 : data.length <= 3 ? 36 : data.length <= 8 ? 20 : 14;
-  const barGap = data.length <= 3 ? 10 : data.length <= 8 ? 7 : 4;
-  const useFluidBars = data.length >= 6;
-  const centerSparseBars = data.length <= 3;
-  const yAxisWidth = 96;
-  const barTotalPct = (value: number) => Math.max(0, Math.min(100, (value / Math.max(1, maxY)) * 100));
-  const axisBorder = isLight ? "1.2px solid var(--chart-grid)" : "1px solid var(--chart-grid)";
-  const legendBtnClass = `analysis-legend-btn min-w-0 w-auto p-0 ${isLight ? "analysis-legend-btn--light" : ""}`.trim();
-  const labelZoomScale = Math.max(0.7, Math.min(2, labelZoom / 100));
-  const zoomOutDisabled = labelZoom <= 70;
-  const zoomInDisabled = labelZoom >= 200;
-  const showAnyBarDetail = showBarPercent || showBarNumbers;
-  const labelWidthBase = showBarPercent && showBarNumbers ? 56 : 40;
-  const labelAwareBarMinWidth = showAnyBarDetail ? Math.max(barWidth, Math.round(labelWidthBase * labelZoomScale)) : barWidth;
-  const horizontalDetailLayout = showAnyBarDetail && labelAwareBarMinWidth >= 62;
-  const chartBarWidthForLayout = useFluidBars ? labelAwareBarMinWidth : barWidth;
-  const chartMinWidth = Math.max(280, data.length * (chartBarWidthForLayout + barGap) + 24);
-  const stackWrapStyle = { "--analysis-stack-label-zoom": String(labelZoomScale) } as React.CSSProperties;
-
-  useEffect(() => {
-    if (!labelZoomStorageKey) return;
-    window.localStorage.setItem(labelZoomStorageKey, String(labelZoom));
-  }, [labelZoom, labelZoomStorageKey]);
-  useEffect(() => {
-    if (!labelZoomStorageKey) return;
-    window.localStorage.setItem(`${labelZoomStorageKey}_show_pct`, showBarPercent ? "1" : "0");
-  }, [showBarPercent, labelZoomStorageKey]);
-  useEffect(() => {
-    if (!labelZoomStorageKey) return;
-    window.localStorage.setItem(`${labelZoomStorageKey}_show_num`, showBarNumbers ? "1" : "0");
-  }, [showBarNumbers, labelZoomStorageKey]);
-
-  return (
-    <div className="analysis-stack-wrap" style={stackWrapStyle}>
-      <div className="analysis-stack-legend">
-        <Button size="sm" variant="ghost" className={legendBtnClass} data-hidden={hidden.a ? "true" : undefined} aria-label={hidden.a ? "Mostrar serie" : "Ocultar serie"} onPress={() => setHidden((s) => ({ ...s, a: !s.a }))}>
-          <span className="analysis-legend-swatch-sm" style={{ background: aColor }} />{aLabel}
-        </Button>
-        <Button size="sm" variant="ghost" className={legendBtnClass} data-hidden={hidden.b ? "true" : undefined} aria-label={hidden.b ? "Mostrar serie" : "Ocultar serie"} onPress={() => setHidden((s) => ({ ...s, b: !s.b }))}>
-          <span className="analysis-legend-swatch-sm" style={{ background: bColor }} />{bLabel}
-        </Button>
-        <div className="analysis-stack-detail-controls">
-          <span className="analysis-stack-detail-label">Etiquetas:</span>
-          <Button size="sm" variant="ghost" className={`${legendBtnClass} analysis-stack-detail-btn`.trim()} data-hidden={!showBarPercent ? "true" : undefined} aria-label="Mostrar u ocultar porcentajes en barras" onPress={() => setShowBarPercent((prev) => !prev)}>
-            Ver %
-          </Button>
-          <Button size="sm" variant="ghost" className={`${legendBtnClass} analysis-stack-detail-btn`.trim()} data-hidden={!showBarNumbers ? "true" : undefined} aria-label="Mostrar u ocultar números en barras" onPress={() => setShowBarNumbers((prev) => !prev)}>
-            Ver #
-          </Button>
-        </div>
-        <div className="analysis-stack-zoom">
-          <span className="analysis-stack-zoom-label">Zoom etiquetas</span>
-          <Button size="sm" variant="ghost" className={legendBtnClass} isDisabled={zoomOutDisabled} onPress={() => setLabelZoom((prev) => Math.max(70, prev - 10))} aria-label="Reducir zoom de etiquetas">
-            -
-          </Button>
-          <span className="analysis-stack-zoom-value">{labelZoom}%</span>
-          <Button size="sm" variant="ghost" className={legendBtnClass} isDisabled={zoomInDisabled} onPress={() => setLabelZoom((prev) => Math.min(200, prev + 10))} aria-label="Aumentar zoom de etiquetas">
-            +
-          </Button>
-        </div>
-      </div>
-      <div className="analysis-stack-hoverline">
-        {(() => {
-          if (!hoveredLabel) return <span className="analysis-hover-hint">Pasa el mouse sobre una barra para ver porcentajes</span>;
-          const row = data.find((d) => d.label === hoveredLabel);
-          const a = hidden.a ? 0 : Number(row?.a || 0);
-          const b = hidden.b ? 0 : Number(row?.b || 0);
-          const total = Math.max(1, a + b);
-          const aPct = ((a / total) * 100).toFixed(1);
-          const bPct = ((b / total) * 100).toFixed(1);
-          return (
-            <>
-              <span className="analysis-stack-hover-label">{hoveredLabel}</span>
-              <span className="analysis-stack-hover-badge">
-                <span className="analysis-legend-swatch-xs" style={{ background: aColor }} />
-                {aLabel}: {formatCount(a)} ({aPct}%)
-              </span>
-              <span className="analysis-stack-hover-badge">
-                <span className="analysis-legend-swatch-xs" style={{ background: bColor }} />
-                {bLabel}: {formatCount(b)} ({bPct}%)
-              </span>
-            </>
-          );
-        })()}
-      </div>
-      <div className="analysis-chart-scroll">
-        <div style={{ width: "100%", minWidth: chartMinWidth, display: "grid", gridTemplateColumns: `${yAxisWidth}px 1fr`, gap: "0.55rem" }}>
-          <div style={{ position: "relative", height: chartHeight }}>
-            {yTicks.map((tick, idx) => {
-              const isBottomTick = idx === 0;
-              const isTopTick = idx === yTicks.length - 1;
-              return (
-                <div
-                  key={tick}
-                  className="analysis-axis-tick"
-                  style={
-                    isTopTick
-                      ? { bottom: "calc(100% - 0.95rem)", transform: "none" }
-                      : {
-                          bottom: `${(idx / (yTicks.length - 1)) * 100}%`,
-                          transform: isBottomTick ? "translateY(0)" : "translateY(50%)",
-                        }
-                  }
-                >
-                  {formatCount(tick)}
-                </div>
-              );
-            })}
-          </div>
-          <div style={{ position: "relative", height: chartHeight, borderLeft: axisBorder, borderBottom: axisBorder, display: "flex", alignItems: "flex-end", justifyContent: centerSparseBars ? "center" : "flex-start", gap: `${barGap}px`, padding: "0.85rem 0.25rem 0 0.1rem", width: "100%" }}>
-            {yTicks.map((tick, idx) => {
-              const edge = idx === 0 || idx === yTicks.length - 1;
-              return (
-                <div
-                  key={`grid-${tick}`}
-                  className={edge ? "analysis-stack-hgrid analysis-stack-hgrid--edge" : "analysis-stack-hgrid"}
-                  style={{ bottom: `${(idx / (yTicks.length - 1)) * 100}%` }}
-                />
-              );
-            })}
-            {data.map((d) => {
-              const a = hidden.a ? 0 : Number(d.a || 0);
-              const b = hidden.b ? 0 : Number(d.b || 0);
-              const rowTotal = Math.max(1, a + b);
-              const aShare = ((a / rowTotal) * 100).toFixed(1);
-              const bShare = ((b / rowTotal) * 100).toFixed(1);
-              const aPct = barTotalPct(a);
-              const bPct = barTotalPct(b);
-              const isHovered = hoveredLabel === d.label;
-              const totalPct = Math.max(aPct + bPct, 0);
-              const minPctForDetails = horizontalDetailLayout ? 20 : 14;
-              const showInsideDetails = showAnyBarDetail && totalPct >= minPctForDetails;
-              const aDetail = showBarPercent && showBarNumbers ? `V ${aShare}% | ${formatCount(a)}` : showBarPercent ? `V ${aShare}%` : `V ${formatCount(a)}`;
-              const bDetail = showBarPercent && showBarNumbers ? `M ${bShare}% | ${formatCount(b)}` : showBarPercent ? `M ${bShare}%` : `M ${formatCount(b)}`;
-              const inbarPctNum = showBarPercent && showBarNumbers;
-              const inbarDualLines = (key: "a" | "b") =>
-                key === "a" ? (
-                  <>
-                    <span className="analysis-stack-bar-inbar-sub">V {aShare}%</span>
-                    <span className="analysis-stack-bar-inbar-sub">{formatCount(a)}</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="analysis-stack-bar-inbar-sub">M {bShare}%</span>
-                    <span className="analysis-stack-bar-inbar-sub">{formatCount(b)}</span>
-                  </>
-                );
-              return (
-                <div
-                  key={d.label}
-                  onMouseEnter={() => setHoveredLabel(d.label)}
-                  onMouseLeave={() => setHoveredLabel((prev) => (prev === d.label ? null : prev))}
-                  style={{
-                    flex: useFluidBars ? "1 1 0" : "0 0 auto",
-                    width: useFluidBars ? undefined : `${barWidth}px`,
-                    minWidth: useFluidBars ? `${labelAwareBarMinWidth}px` : `${barWidth}px`,
-                    height: "100%",
-                    position: "relative",
-                    cursor: "pointer",
-                    overflow: "visible",
-                  }}
-                  title={`${d.label} | ${aLabel}: ${formatCount(a)} | ${bLabel}: ${formatCount(b)} | Total: ${formatCount(a + b)}`}
-                >
-                  <div
-                    className="analysis-stack-bar-pill"
-                    style={{
-                      position: "absolute",
-                      left: "6%",
-                      right: "6%",
-                      bottom: 0,
-                      height: `${totalPct}%`,
-                      overflow: "visible",
-                      pointerEvents: "none",
-                      transform: isHovered ? "scaleX(0.94) translateY(-3px)" : "scaleX(1) translateY(0)",
-                      transformOrigin: "center bottom",
-                      filter: isHovered ? "brightness(1.06) saturate(1.05)" : "none",
-                      transition: "transform 320ms cubic-bezier(0.22, 1, 0.36, 1), filter 320ms ease, box-shadow 320ms ease",
-                      willChange: "transform, filter",
-                    }}
-                  >
-                    {aPct > 0 && (
-                      <div
-                        className="analysis-stack-seg analysis-stack-seg--a"
-                        style={{
-                          position: "absolute",
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          height: `${aPct}%`,
-                          background: aColor,
-                          borderBottomLeftRadius: "999px",
-                          borderBottomRightRadius: "999px",
-                          borderTopLeftRadius: bPct > 0 ? 0 : "999px",
-                          borderTopRightRadius: bPct > 0 ? 0 : "999px",
-                        }}
-                      />
-                    )}
-                    {bPct > 0 && (
-                      <div
-                        className="analysis-stack-seg analysis-stack-seg--b"
-                        style={{
-                          position: "absolute",
-                          left: 0,
-                          right: 0,
-                          bottom: `${aPct}%`,
-                          height: `${bPct}%`,
-                          minHeight: b > 0 ? "1.5px" : undefined,
-                          background: bColor,
-                          borderTopLeftRadius: "999px",
-                          borderTopRightRadius: "999px",
-                        }}
-                      />
-                    )}
-                    {showInsideDetails ? (
-                      <div className={`analysis-stack-bar-overlay ${horizontalDetailLayout ? "analysis-stack-bar-overlay--horizontal" : ""}`.trim()}>
-                        {horizontalDetailLayout ? (
-                          <>
-                            {!hidden.b ? (
-                              <div className="analysis-stack-bar-tag analysis-stack-bar-tag--inbar" style={stackBarInbarBadgeStyle(isLight)}>
-                                <span className="analysis-stack-bar-tag-main analysis-stack-bar-tag-main--inbar-fill" style={{ color: "inherit" }}>
-                                  {inbarPctNum ? (
-                                    <span className="analysis-stack-bar-inbar-metric-col">{inbarDualLines("b")}</span>
-                                  ) : (
-                                    bDetail
-                                  )}
-                                </span>
-                              </div>
-                            ) : null}
-                            {!hidden.a ? (
-                              <div className="analysis-stack-bar-tag analysis-stack-bar-tag--inbar" style={stackBarInbarBadgeStyle(isLight)}>
-                                <span className="analysis-stack-bar-tag-main analysis-stack-bar-tag-main--inbar-fill" style={{ color: "inherit" }}>
-                                  {inbarPctNum ? (
-                                    <span className="analysis-stack-bar-inbar-metric-col">{inbarDualLines("a")}</span>
-                                  ) : (
-                                    aDetail
-                                  )}
-                                </span>
-                              </div>
-                            ) : null}
-                          </>
-                        ) : (
-                          <div className="analysis-stack-bar-tag analysis-stack-bar-tag--inbar analysis-stack-bar-tag--inbar-duo" style={stackBarInbarBadgeStyle(isLight)}>
-                            {!hidden.b ? (
-                              <span className="analysis-stack-bar-tag-main analysis-stack-bar-tag-inbar-line analysis-stack-bar-tag-main--inbar-fill" style={{ color: "inherit" }}>
-                                {inbarPctNum ? <span className="analysis-stack-bar-inbar-metric-col">{inbarDualLines("b")}</span> : bDetail}
-                              </span>
-                            ) : null}
-                            {!hidden.a ? (
-                              <span className="analysis-stack-bar-tag-main analysis-stack-bar-tag-inbar-line analysis-stack-bar-tag-main--inbar-fill" style={{ color: "inherit" }}>
-                                {inbarPctNum ? <span className="analysis-stack-bar-inbar-metric-col">{inbarDualLines("a")}</span> : aDetail}
-                              </span>
-                            ) : null}
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div />
-          <div className="analysis-stack-labels" style={{ gap: `${barGap}px`, marginTop: "0.22rem" }}>
-            {data.map((d) => (
-              <div
-                key={`lbl-${d.label}`}
-                className="analysis-bar-label"
-                style={{
-                  minWidth: `${barWidth}px`,
-                  width: useFluidBars ? undefined : `${barWidth}px`,
-                  flex: useFluidBars ? "1 1 0" : "0 0 auto",
-                }}
-              >
-                {d.label}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function AnalisisCarteraView() {
   const summaryRequestSeq = useRef(0);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
@@ -695,6 +315,10 @@ export function AnalisisCarteraView() {
   const [kpiMode, setKpiMode] = useState<KpiMode>(() => (window.localStorage.getItem(STORAGE_KPI_MODE) as KpiMode) || "filters");
   const [showFullAmounts, setShowFullAmounts] = useState<boolean>(() => window.localStorage.getItem(STORAGE_AMOUNT_VIEW) === "full");
   const [toastQueue, setToastQueue] = useState<ToastMessage[]>([]);
+  const [floatOpen, setFloatOpen] = useState(false);
+  const [floatClose, setFloatClose] = useState<string[]>([]);
+  const [floatGestion, setFloatGestion] = useState<string[]>([]);
+  const [floatUns, setFloatUns] = useState<string[]>([]);
   const isLightTheme = useIsLightTheme();
   const chartPalette = isLightTheme ? CHART_COLORS_LIGHT : CHART_COLORS;
   const barSequentialPalette = isLightTheme ? [...BAR_SEQUENTIAL_LIGHT] : [...BAR_SEQUENTIAL_DARK];
@@ -846,12 +470,18 @@ export function AnalisisCarteraView() {
     void markPerfReady("cartera");
   }, [loadingKpis, loadingSummary, optionsReady, summaryData]);
 
-  const applyFilters = useCallback(async () => {
-    if (loadingOptions) return;
-    setIsApplyingFilters(true);
-    setAppliedFilters(filters);
-    await Promise.all([loadSummary(filters, "apply"), loadKpiSummary(filters)]);
-  }, [filters, loadSummary, loadKpiSummary, loadingOptions]);
+  const applyFiltersFrom = useCallback(
+    async (next: Filters) => {
+      if (loadingOptions) return;
+      setIsApplyingFilters(true);
+      setFilters(next);
+      setAppliedFilters(next);
+      await Promise.all([loadSummary(next, "apply"), loadKpiSummary(next)]);
+    },
+    [loadKpiSummary, loadSummary, loadingOptions],
+  );
+
+  const applyFilters = useCallback(() => void applyFiltersFrom(filters), [applyFiltersFrom, filters]);
 
   const clearFilters = useCallback(() => setFilters(DEFAULT_FILTERS), []);
   const resetDefaults = useCallback(async () => {
@@ -862,6 +492,23 @@ export function AnalisisCarteraView() {
   }, [loadSummary, loadKpiSummary]);
 
   const options = optionsData?.options || {};
+  const hasCloseMonthsOption = useMemo(() => (options.close_months || []).length > 0, [options.close_months]);
+
+  const openFloatFilters = useCallback(() => {
+    setFloatClose(filters.closeMonths);
+    setFloatGestion(filters.gestionMonths);
+    setFloatUns(filters.uns);
+    setFloatOpen(true);
+  }, [filters.closeMonths, filters.gestionMonths, filters.uns]);
+
+  const applyFloatFilters = useCallback(async () => {
+    const next = hasCloseMonthsOption
+      ? { ...filters, closeMonths: floatClose, uns: floatUns }
+      : { ...filters, gestionMonths: floatGestion, uns: floatUns };
+    await applyFiltersFrom(next);
+    setFloatOpen(false);
+  }, [applyFiltersFrom, filters, floatClose, floatGestion, floatUns, hasCloseMonthsOption]);
+
   const expectedGestionMonths = useMemo(() => {
     if (appliedFilters.gestionMonths.length) {
       return enumerateMonths(appliedFilters.gestionMonths);
@@ -882,7 +529,13 @@ export function AnalisisCarteraView() {
   }, [appliedFilters.closeMonths, appliedFilters.gestionMonths]);
 
   const byUn = useMemo(() => Object.entries(summaryData?.charts?.by_un || {}).map(([label, value]) => ({ label, value: Number(value || 0) })).sort((a, b) => b.value - a.value).slice(0, 8), [summaryData]);
-  const byTramo = useMemo(() => Object.entries(summaryData?.charts?.by_tramo || {}).map(([label, value]) => ({ label: `Tramo ${label}`, value: Number(value || 0) })).sort((a, b) => b.value - a.value).slice(0, 6), [summaryData]);
+  const byTramo = useMemo(() => {
+    const raw = summaryData?.charts?.by_tramo || {};
+    return TRAMO_DONUT_KEYS.map((k) => ({
+      label: `Tramo ${k}`,
+      value: Number(raw[String(k)] ?? 0),
+    }));
+  }, [summaryData]);
   const byVia = useMemo(() => Object.entries(summaryData?.charts?.by_via || {}).map(([label, value]) => ({ label: String(label), value: Number(value || 0) })).sort((a, b) => b.value - a.value), [summaryData]);
   const byContractYear = useMemo(() => {
     const rows = Object.entries(summaryData?.charts?.by_contract_year || {}).map(([label, value]) => ({ label: String(label), value: Number(value || 0) })).filter((x) => x.label && x.label !== "null");
@@ -922,12 +575,58 @@ export function AnalisisCarteraView() {
   }, []);
 
   const chartCards: Record<ChartId, { title: string; content: React.ReactElement }> = {
-    series_vig_mor_month: { title: "Cartera por Gestión: Vigente vs Moroso", content: <StackedColumnChart data={vigMorByMonth} aLabel="Vigente" bLabel="Moroso" aColor="var(--color-state-ok)" bColor="var(--color-state-warn)" isLight={isLightTheme} labelZoomStorageKey="analisis_cartera_zoom_vig_mor_v1" /> },
-    series_via_month: { title: "Cartera por Gestión: Cobrador vs Débito", content: <StackedColumnChart data={viaByMonth} aLabel="Cobrador" bLabel="Débito" aColor="var(--color-chart-1)" bColor="var(--color-chart-2)" isLight={isLightTheme} labelZoomStorageKey="analisis_cartera_zoom_via_v1" /> },
-    by_un: { title: "Contratos por Unidad de Negocio", content: <BarChart data={byUn} isLight={isLightTheme} colors={barSequentialPalette} /> },
+    series_vig_mor_month: {
+      title: "Cartera por Gestión: Vigente vs Moroso",
+      content: (
+        <RendimientoStyleStackedColumnChart
+          data={vigMorByMonth}
+          aLabel="Vigente"
+          bLabel="Moroso"
+          aColor="var(--color-state-ok)"
+          bColor="var(--color-state-warn)"
+          isLight={isLightTheme}
+          labelZoomStorageKey="analisis_cartera_zoom_vig_mor_v1"
+        />
+      ),
+    },
+    series_via_month: {
+      title: "Cartera por Gestión: Cobrador vs Débito",
+      content: (
+        <RendimientoStyleStackedColumnChart
+          data={viaByMonth}
+          aLabel="Cobrador"
+          bLabel="Débito"
+          aColor="var(--color-chart-1)"
+          bColor="var(--color-chart-2)"
+          isLight={isLightTheme}
+          labelZoomStorageKey="analisis_cartera_zoom_via_v1"
+        />
+      ),
+    },
+    by_un: {
+      title: "Contratos por Unidad de Negocio",
+      content: (
+        <RendimientoStyleCountBarChart data={byUn} colors={barSequentialPalette} ariaLabel="Contratos por unidad de negocio" />
+      ),
+    },
     by_tramo: { title: "Contratos por Tramo", content: <DonutChart data={byTramo} isLight={isLightTheme} colors={chartPalette} /> },
-    by_via: { title: "Contratos por vía de cobro", content: <BarChart data={byVia} isLight={isLightTheme} colors={barSequentialPalette} /> },
-    by_contract_year: { title: "Contratos por Año de Contrato", content: <BarChart data={byContractYear} isLight={isLightTheme} colors={barSequentialPalette} /> },
+    by_via: {
+      title: "Contratos por vía de cobro",
+      content: (
+        <RendimientoStyleCountBarChart data={byVia} colors={barSequentialPalette} ariaLabel="Contratos por vía de cobro" />
+      ),
+    },
+    by_contract_year: {
+      title: "Contratos por Año de Contrato",
+      content: (
+        <RendimientoStyleCountBarChart
+          data={byContractYear}
+          colors={barSequentialPalette}
+          ariaLabel="Contratos por año de contrato"
+          legendLayout="vertical"
+        />
+      ),
+    },
   };
 
   const kpiCards: Record<KpiId, { title: string; value: string; fullValue?: string; valueColor?: string; borderColor: string; icon: KpiIconId; isHero?: boolean; isZeroHint?: boolean }> = {
@@ -1158,9 +857,13 @@ export function AnalisisCarteraView() {
         <div className={`charts-grid ${loadingSummary ? "summary-grid-loading" : ""}`}>
           {chartOrder.map((chartId) => {
             const card = chartCards[chartId];
-            const isWideStacked = chartId === "series_vig_mor_month" || chartId === "series_via_month";
+            const isChartFullWidth =
+              chartId === "series_vig_mor_month" ||
+              chartId === "series_via_month" ||
+              chartId === "by_un" ||
+              chartId === "by_via";
             return (
-              <article key={chartId} className={`card chart-card analysis-card-pad ${isWideStacked ? "chart-card-wide" : ""} ${dragOverChart === chartId ? "chart-drop-target" : ""} ${draggingChart === chartId ? "dragging-card" : ""}`} draggable onDragStart={(e) => { setDraggingChart(chartId); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", chartId); }} onDragEnd={() => { setDraggingChart(null); setDragOverChart(null); }} onDragOver={(e) => { e.preventDefault(); if (draggingChart && draggingChart !== chartId) setDragOverChart(chartId); }} onDrop={(e) => { e.preventDefault(); const fromId = (e.dataTransfer.getData("text/plain") || draggingChart || "") as ChartId; if (fromId) moveChart(fromId, chartId); setDraggingChart(null); setDragOverChart(null); }}>
+              <article key={chartId} className={`card chart-card analysis-card-pad ${isChartFullWidth ? "chart-card-wide" : ""} ${dragOverChart === chartId ? "chart-drop-target" : ""} ${draggingChart === chartId ? "dragging-card" : ""}`} draggable onDragStart={(e) => { setDraggingChart(chartId); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", chartId); }} onDragEnd={() => { setDraggingChart(null); setDragOverChart(null); }} onDragOver={(e) => { e.preventDefault(); if (draggingChart && draggingChart !== chartId) setDragOverChart(chartId); }} onDrop={(e) => { e.preventDefault(); const fromId = (e.dataTransfer.getData("text/plain") || draggingChart || "") as ChartId; if (fromId) moveChart(fromId, chartId); setDraggingChart(null); setDragOverChart(null); }}>
                 <div className="chart-card-header">
                   <h3 className="analysis-chart-title">{card.title}</h3>
                   <div className="analysis-chart-actions">
@@ -1177,6 +880,41 @@ export function AnalisisCarteraView() {
       )}
         </>
       )}
+
+      <FloatingQuickFilters
+        isOpen={floatOpen}
+        onOpen={openFloatFilters}
+        onCollapse={() => setFloatOpen(false)}
+        onApply={() => void applyFloatFilters()}
+        applyDisabled={loadingOptions || isApplyingFilters || (hasCloseMonthsOption ? !floatClose.length : !floatGestion.length)}
+        applying={isApplyingFilters}
+      >
+        {hasCloseMonthsOption ? (
+          <MultiSelectFilter
+            className="analysis-filter-control"
+            label="Mes de cierre"
+            options={options.close_months || []}
+            selected={floatClose}
+            onChange={setFloatClose}
+          />
+        ) : (
+          <MultiSelectFilter
+            className="analysis-filter-control"
+            label="Mes de gestión"
+            options={options.gestion_months || []}
+            selected={floatGestion}
+            onChange={setFloatGestion}
+          />
+        )}
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Unidad de negocio"
+          options={options.uns || []}
+          selected={floatUns}
+          onChange={setFloatUns}
+          placeholder="Todas"
+        />
+      </FloatingQuickFilters>
     </section>
   );
 }

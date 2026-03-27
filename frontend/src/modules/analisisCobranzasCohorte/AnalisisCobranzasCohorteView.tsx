@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Card } from '@heroui/react'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
+import { FloatingQuickFilters } from '../../components/filters/FloatingQuickFilters'
 import { SegmentedControl } from '../../components/filters/SegmentedControl'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
 import { AnalyticsMetaBadges } from '../../components/analytics/AnalyticsMetaBadges'
@@ -12,11 +13,9 @@ import { EmptyState } from '../../components/feedback/EmptyState'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { LoadingState } from '../../components/feedback/LoadingState'
 import {
-  getCobranzasCohorteDetail,
   getCobranzasCohorteFirstPaint,
   getCobranzasCohorteOptions,
   markPerfReady,
-  type CobranzasCohorteDetailResponse,
   type CobranzasCohorteFirstPaintResponse,
   type CobranzasCohorteSummaryResponse,
 } from '../../shared/api'
@@ -62,6 +61,9 @@ const EMPTY_FILTERS: Filters = {
   categorias: [],
   supervisors: [],
 }
+
+/** Tope canónico de tramo (cuotas_vencidas ≥ 7 → 7); la tabla debe listar siempre 0..7. */
+const COHORTE_TRAMO_MAX = 7
 
 const COHORTE_KPI_ORDER_STORAGE = 'analisis_cobranzas_cohorte_kpi_order_v1'
 const DEFAULT_KPI_ORDER: KpiId[] = [
@@ -153,19 +155,20 @@ const monthMinusOne = (mmYYYY: string | undefined | null): string => {
 export function AnalisisCobranzasCohorteView() {
   const [loadingOptions, setLoadingOptions] = useState(true)
   const [loadingSummary, setLoadingSummary] = useState(false)
-  const [loadingDetail, setLoadingDetail] = useState(false)
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [options, setOptions] = useState<Options>(EMPTY_OPTIONS)
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [appliedFilters, setAppliedFilters] = useState<Filters>(EMPTY_FILTERS)
   const [summary, setSummary] = useState<CobranzasCohorteFirstPaintResponse | CobranzasCohorteSummaryResponse | null>(null)
-  const [detailRows, setDetailRows] = useState<CobranzasCohorteDetailResponse['items']>([])
-  const [detailPage, setDetailPage] = useState(1)
-  const [detailHasNext, setDetailHasNext] = useState(false)
   const [kpiOrder, setKpiOrder] = useState<KpiId[]>(() => readStoredOrder(DEFAULT_KPI_ORDER))
   const [draggingKpi, setDraggingKpi] = useState<KpiId | null>(null)
   const [dragOverKpi, setDragOverKpi] = useState<KpiId | null>(null)
+  const [floatOpen, setFloatOpen] = useState(false)
+  const [floatCutoff, setFloatCutoff] = useState('')
+  const [floatUns, setFloatUns] = useState<string[]>([])
+  const [floatVia, setFloatVia] = useState('')
+  const [floatCategoria, setFloatCategoria] = useState('')
 
   useEffect(() => {
     try {
@@ -189,28 +192,6 @@ export function AnalisisCobranzasCohorteView() {
       setSummary(data)
     } finally {
       if (withLoader) setLoadingSummary(false)
-    }
-  }, [])
-
-  const loadDetail = useCallback(async (next: Filters, page: number, append: boolean) => {
-    setLoadingDetail(true)
-    try {
-      const detail = await getCobranzasCohorteDetail({
-        cutoff_month: next.cutoffMonth || undefined,
-        un: next.uns,
-        via_cobro: next.vias,
-        categoria: next.categorias,
-        supervisor: next.supervisors,
-        page,
-        page_size: 24,
-        sort_by: 'sale_month',
-        sort_dir: 'asc',
-      })
-      setDetailRows((prev) => (append ? [...prev, ...(detail.items || [])] : (detail.items || [])))
-      setDetailPage(detail.page || page)
-      setDetailHasNext(Boolean(detail.has_next))
-    } finally {
-      setLoadingDetail(false)
     }
   }, [])
 
@@ -243,7 +224,6 @@ export function AnalisisCobranzasCohorteView() {
         setAppliedFilters(nextFilters)
         setApplying(true)
         await loadFirstPaint(nextFilters, true)
-        await loadDetail(nextFilters, 1, false)
         await markPerfReady('cohorte')
       } catch (e: unknown) {
         setError(getApiErrorMessage(e))
@@ -254,21 +234,48 @@ export function AnalisisCobranzasCohorteView() {
     }
 
     void boot()
-  }, [loadDetail, loadFirstPaint])
+  }, [loadFirstPaint])
 
-  const onApply = useCallback(async () => {
-    try {
-      setApplying(true)
-      setError(null)
-      setAppliedFilters(filters)
-      await loadFirstPaint(filters)
-      await loadDetail(filters, 1, false)
-    } catch (e: unknown) {
-      setError(getApiErrorMessage(e))
-    } finally {
-      setApplying(false)
+  const commitAndLoad = useCallback(
+    async (next: Filters) => {
+      try {
+        setApplying(true)
+        setError(null)
+        setFilters(next)
+        setAppliedFilters(next)
+        await loadFirstPaint(next)
+      } catch (e: unknown) {
+        setError(getApiErrorMessage(e))
+      } finally {
+        setApplying(false)
+      }
+    },
+    [loadFirstPaint],
+  )
+
+  const onApply = useCallback(() => void commitAndLoad(filters), [commitAndLoad, filters])
+
+  const openFloatFilters = useCallback(() => {
+    setFloatCutoff(filters.cutoffMonth)
+    setFloatUns(filters.uns)
+    setFloatVia((filters.vias[0] || '').toUpperCase())
+    setFloatCategoria((filters.categorias[0] || '').toUpperCase())
+    setFloatOpen(true)
+  }, [filters.categorias, filters.cutoffMonth, filters.uns, filters.vias])
+
+  const hasUnOptions = options.uns.length > 0
+
+  const applyFloatFilters = useCallback(async () => {
+    const next: Filters = {
+      ...filters,
+      cutoffMonth: floatCutoff,
+      uns: hasUnOptions ? floatUns : filters.uns,
+      vias: hasUnOptions ? filters.vias : floatVia === '' ? [] : [floatVia],
+      categorias: hasUnOptions ? filters.categorias : floatCategoria === '' ? [] : [floatCategoria],
     }
-  }, [filters, loadDetail, loadFirstPaint])
+    await commitAndLoad(next)
+    setFloatOpen(false)
+  }, [commitAndLoad, filters, floatCategoria, floatCutoff, floatUns, floatVia, hasUnOptions])
 
   const clearFilters = useCallback(() => {
     setFilters({
@@ -291,31 +298,29 @@ export function AnalisisCobranzasCohorteView() {
       setFilters(resetFilters)
       setAppliedFilters(resetFilters)
       await loadFirstPaint(resetFilters)
-      await loadDetail(resetFilters, 1, false)
     } catch (e: unknown) {
       setError(getApiErrorMessage(e))
     } finally {
       setApplying(false)
     }
-  }, [loadDetail, loadFirstPaint, options.cutoffMonths])
+  }, [loadFirstPaint, options.cutoffMonths])
 
   const retryLastRequest = useCallback(async () => {
     try {
       setApplying(true)
       setError(null)
       await loadFirstPaint(appliedFilters)
-      await loadDetail(appliedFilters, 1, false)
     } catch (e: unknown) {
       setError(getApiErrorMessage(e))
     } finally {
       setApplying(false)
     }
-  }, [appliedFilters, loadDetail, loadFirstPaint])
+  }, [appliedFilters, loadFirstPaint])
 
   useEffect(() => {
-    if (!summary || loadingSummary || loadingDetail || applying) return
+    if (!summary || loadingSummary || applying) return
     void markPerfReady('cohorte')
-  }, [applying, detailRows.length, loadingDetail, loadingSummary, summary])
+  }, [applying, loadingSummary, summary])
 
   const totals = summary?.totals
   const selectedCategoria = (filters.categorias[0] || '').toUpperCase()
@@ -333,14 +338,50 @@ export function AnalisisCobranzasCohorteView() {
   }, [totals?.cobrado, totals?.pagaron])
 
   const byTramoEntries = useMemo(() => {
+    const emptyTramoRow: NonNullable<CobranzasCohorteSummaryResponse['by_tramo']>[string] = {
+      activos: 0,
+      pagaron: 0,
+      deberia: 0,
+      cobrado: 0,
+      pct_pago_contratos: 0,
+      pct_cobertura_monto: 0,
+    }
     const byTramo = summary?.by_tramo || {}
     const tramoEntries = Object.entries(byTramo)
     if (tramoEntries.length > 0) {
-      return tramoEntries.sort((a, b) => Number(a[0] || 0) - Number(b[0] || 0))
+      const map = new Map(
+        tramoEntries.map(([k, v]) => {
+          const n = Number.parseInt(String(k), 10)
+          return [Number.isFinite(n) ? String(n) : '0', v]
+        }),
+      )
+      const maxFromApi = Math.max(0, ...[...map.keys()].map((k) => Number.parseInt(k, 10) || 0))
+      const upTo = Math.max(COHORTE_TRAMO_MAX, maxFromApi)
+      return Array.from({ length: upTo + 1 }, (_, i) => {
+        const key = String(i)
+        const row = map.get(key)
+        return [key, row ?? emptyTramoRow] as [string, NonNullable<CobranzasCohorteSummaryResponse['by_tramo']>[string]]
+      })
     }
     return Object.entries(summary?.by_year || {}).sort((a, b) => Number(b[0] || 0) - Number(a[0] || 0))
   }, [summary?.by_tramo, summary?.by_year])
   const usesTramoBreakdown = useMemo(() => Object.keys(summary?.by_tramo || {}).length > 0, [summary?.by_tramo])
+
+  const cohorteResumenTableTotals = useMemo(() => {
+    let activos = 0
+    let pagaron = 0
+    let deberia = 0
+    let cobrado = 0
+    for (const [, row] of byTramoEntries) {
+      activos += Number(row.activos || 0)
+      pagaron += Number(row.pagaron || 0)
+      deberia += Number(row.deberia || 0)
+      cobrado += Number(row.cobrado || 0)
+    }
+    const pctPagoContratos = activos > 0 ? pagaron / activos : 0
+    const pctCoberturaMonto = deberia > 0 ? cobrado / deberia : 0
+    return { activos, pagaron, deberia, cobrado, pctPagoContratos, pctCoberturaMonto }
+  }, [byTramoEntries])
 
   const activeFilterChips = useMemo<FilterChip[]>(() => {
     const blocks: Array<{ key: MultiValueFilterKey; label: string }> = [
@@ -362,7 +403,7 @@ export function AnalisisCobranzasCohorteView() {
     }))
   }, [])
 
-  const hasRows = detailRows.length > 0 || byTramoEntries.length > 0
+  const hasRows = byTramoEntries.length > 0
   const noCohorteData = options.cutoffMonths.length === 0
 
   const moveKpi = useCallback((fromId: KpiId, toId: KpiId) => {
@@ -462,7 +503,7 @@ export function AnalisisCobranzasCohorteView() {
 
   return (
     <section className="analysis-card-wrap">
-      <Card className="analysis-panel-card border border-[var(--color-border)] shadow-lg overflow-hidden p-6">
+      <Card className="cohorte-panel-root analysis-panel-card border border-[var(--color-border)] shadow-lg overflow-visible p-6">
         <AnalyticsPageHeader
         kicker="COHORTE"
         pill="Analytics v2"
@@ -599,10 +640,8 @@ export function AnalisisCobranzasCohorteView() {
 
           {applying && summary ? <LoadingState message="Actualizando resultados..." className="summary-loading-note" /> : null}
           {loadingSummary && !summary ? <LoadingState message="Cargando resumen inicial..." className="summary-loading-note" /> : null}
-          {loadingDetail && summary ? <LoadingState message="Cargando detalle..." className="summary-loading-note" /> : null}
-
-          <div className={`analysis-results data-transition ${applying || loadingSummary || loadingDetail ? 'data-transition--loading' : ''}`}>
-            <div className="summary-grid rendimiento-kpi-summary-grid">
+          <div className={`analysis-results data-transition ${applying || loadingSummary ? 'data-transition--loading' : ''}`}>
+            <div className="summary-grid cohorte-kpi-summary-grid rendimiento-kpi-summary-grid">
               {kpiOrder.map((kpiId) => {
                 const card = kpiCards[kpiId]
                 const isDragging = draggingKpi === kpiId
@@ -662,13 +701,17 @@ export function AnalisisCobranzasCohorteView() {
 
             {!hasRows ? <EmptyState className="analysis-empty" message="Sin datos para los filtros seleccionados." suggestion="Ajusta los filtros y vuelve a aplicar para ver resultados." /> : null}
 
-            <div className="analysis-table-section">
+            <div className="analysis-table-section analysis-table-section--cohorte-resumen">
               <p className="analysis-table-caption">
                 {usesTramoBreakdown ? 'Resumen de efectividad por tramo.' : 'Resumen de efectividad por año de venta.'}
               </p>
-              <p className="table-scroll-hint">Desliza la tabla horizontalmente para revisar todas las métricas.</p>
-              <div className="table-wrap analysis-table-wrap analysis-table-wrap-annual">
-                <table>
+              <p className="table-scroll-hint">
+                {usesTramoBreakdown
+                  ? 'Incluye tramos 0 al 7. Si el panel es estrecho, desplázate horizontalmente en la tabla.'
+                  : 'Desliza la tabla horizontalmente para revisar todas las métricas.'}
+              </p>
+              <div className="table-wrap analysis-table-wrap analysis-table-wrap-annual analysis-table-wrap--cohorte-resumen">
+                <table className="cohorte-resumen-table">
                   <thead>
                     <tr>
                       <th>{usesTramoBreakdown ? 'Tramo' : 'Año'}</th>
@@ -693,53 +736,86 @@ export function AnalisisCobranzasCohorteView() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="analysis-table-section">
-              <p className="analysis-table-caption">Detalle mensual por cohorte de contratos.</p>
-              <p className="table-scroll-hint">Desliza la tabla horizontalmente para revisar todas las métricas.</p>
-              <div className="table-wrap analysis-table-wrap analysis-table-wrap-monthly">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Mes/Año Contrato</th>
-                      <th className="num">Activos</th>
-                      <th className="num">Pagaron</th>
-                      <th className="num">% Pago Contratos</th>
-                      <th className="num">Debería</th>
-                      <th className="num">Cobrado</th>
-                      <th className="num">% Cobertura Monto</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(detailRows || []).map((row) => (
-                      <tr key={row.sale_month}>
-                        <td className="analysis-key-cell">{row.sale_month}</td>
-                        <td className="num">{formatCount(row.activos || 0)}</td>
-                        <td className="num">{formatCount(row.pagaron || 0)}</td>
-                        <td className="num">{pct(row.pct_pago_contratos || 0)}</td>
-                        <td className="num">{formatGsFull(row.deberia || 0)}</td>
-                        <td className="num">{formatGsFull(row.cobrado || 0)}</td>
-                        <td className="num">{pct(row.pct_cobertura_monto || 0)}</td>
+                  {hasRows ? (
+                    <tfoot className="cohorte-resumen-tfoot">
+                      <tr>
+                        <td className="analysis-key-cell">Total</td>
+                        <td className="num">{formatCount(cohorteResumenTableTotals.activos)}</td>
+                        <td className="num">{formatCount(cohorteResumenTableTotals.pagaron)}</td>
+                        <td className="num">{pct(cohorteResumenTableTotals.pctPagoContratos)}</td>
+                        <td className="num">{formatGsFull(cohorteResumenTableTotals.deberia)}</td>
+                        <td className="num">{formatGsFull(cohorteResumenTableTotals.cobrado)}</td>
+                        <td className="num">{pct(cohorteResumenTableTotals.pctCoberturaMonto)}</td>
                       </tr>
-                    ))}
-                  </tbody>
+                    </tfoot>
+                  ) : null}
                 </table>
               </div>
-              {detailHasNext ? (
-                <div className="analysis-detail-more-wrap">
-                  <Button variant="outline" onPress={() => void loadDetail(appliedFilters, detailPage + 1, true)} isDisabled={loadingDetail || applying}>
-                    {loadingDetail ? 'Cargando...' : 'Cargar más'}
-                  </Button>
-                </div>
-              ) : null}
             </div>
           </div>
         </>
       ) : null}
       </Card>
+
+      {!loadingOptions ? (
+        <FloatingQuickFilters
+          isOpen={floatOpen}
+          onOpen={openFloatFilters}
+          onCollapse={() => setFloatOpen(false)}
+          onApply={() => void applyFloatFilters()}
+          applyDisabled={applying || loadingSummary || noCohorteData || !floatCutoff}
+          applying={applying || loadingSummary}
+        >
+          <div className="analysis-filter-control">
+            <label className="input-label" id="float-cutoff-month-label">Mes de cobro</label>
+            <select
+              className="input input-heroui-tokens w-full min-h-10 rounded-lg border border-[var(--color-border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--color-text)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              value={floatCutoff}
+              onChange={(e) => setFloatCutoff(e.target.value)}
+              aria-labelledby="float-cutoff-month-label"
+            >
+              {options.cutoffMonths.map((month) => (
+                <option key={month} value={month}>{month}</option>
+              ))}
+            </select>
+          </div>
+          {hasUnOptions ? (
+            <MultiSelectFilter
+              className="analysis-filter-control"
+              label="Unidad de negocio"
+              options={options.uns}
+              selected={floatUns}
+              onChange={setFloatUns}
+              placeholder="Todos"
+            />
+          ) : (
+            <>
+              <SegmentedControl
+                className="analysis-filter-control"
+                label="Vía de cobro"
+                options={[
+                  { value: '', label: 'Todos' },
+                  { value: 'DEBITO', label: 'Débito' },
+                  { value: 'COBRADOR', label: 'Cobrador' },
+                ]}
+                value={floatVia}
+                onChange={(v) => setFloatVia(v)}
+              />
+              <SegmentedControl
+                className="analysis-filter-control"
+                label="Categoría"
+                options={[
+                  { value: '', label: 'Todas' },
+                  { value: 'VIGENTE', label: 'Vigente' },
+                  { value: 'MOROSO', label: 'Moroso' },
+                ]}
+                value={floatCategoria}
+                onChange={(v) => setFloatCategoria(v)}
+              />
+            </>
+          )}
+        </FloatingQuickFilters>
+      ) : null}
     </section>
   )
 }

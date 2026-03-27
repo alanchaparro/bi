@@ -15,3 +15,13 @@ export function formatGsCompact(value: number): string {
   if (abs >= 1_000) return `Gs. ${(numeric / 1_000).toFixed(1)}K`;
   return `Gs. ${Math.round(numeric)}`;
 }
+
+/** Timestamps analytics/sync: API suele devolver UTC naive sin sufijo; alineado a Config (parse como UTC). */
+export function formatAnalyticsTimestampForDisplay(value?: string | null): string {
+  if (value == null || String(value).trim() === "") return "";
+  const raw = String(value).trim();
+  const normalized = /[zZ]|[+\-]\d{2}:?\d{2}$/.test(raw) ? raw : `${raw}Z`;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleString("es-PY", { dateStyle: "short", timeStyle: "medium" });
+}

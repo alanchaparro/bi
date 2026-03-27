@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@heroui/react";
 import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter";
+import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
 import { ActiveFilterChips, type FilterChip } from "../../components/filters/ActiveFilterChips";
 import { AnalyticsPageHeader } from "../../components/analytics/AnalyticsPageHeader";
 import { AnalyticsMetaBadges } from "../../components/analytics/AnalyticsMetaBadges";
@@ -59,6 +60,10 @@ export function AnalisisAnualesView() {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<Filters>(EMPTY_FILTERS);
   const [summary, setSummary] = useState<AnualesSummaryResponse | null>(null);
+  const [floatOpen, setFloatOpen] = useState(false);
+  const [floatUns, setFloatUns] = useState<string[]>([]);
+  const [floatYears, setFloatYears] = useState<string[]>([]);
+  const [floatContractMonths, setFloatContractMonths] = useState<string[]>([]);
 
   const loadSummary = useCallback(async (next: Filters) => {
     setLoadingSummary(true);
@@ -104,26 +109,51 @@ export function AnalisisAnualesView() {
     void boot();
   }, [loadSummary]);
 
-  const onApply = useCallback(async () => {
-    try {
-      setApplying(true);
-      setError(null);
-      setAppliedFilters(filters);
-      const fp = await getAnualesFirstPaint({
-        un: filters.uns,
-        anio: filters.years,
-        contract_month: filters.contractMonths,
-      });
-      setSummary({ rows: fp.rows_top || [], cutoff: fp.cutoff || "-", meta: fp.meta });
-      await markPerfReady("anuales");
-      void loadSummary(filters).catch((e: unknown) => setError(getApiErrorMessage(e)));
-    } catch (e: unknown) {
-      setError(getApiErrorMessage(e));
-      setLoadingSummary(false);
-    } finally {
-      setApplying(false);
-    }
-  }, [filters, loadSummary]);
+  const commitAndLoad = useCallback(
+    async (next: Filters) => {
+      try {
+        setApplying(true);
+        setError(null);
+        setFilters(next);
+        setAppliedFilters(next);
+        const fp = await getAnualesFirstPaint({
+          un: next.uns,
+          anio: next.years,
+          contract_month: next.contractMonths,
+        });
+        setSummary({ rows: fp.rows_top || [], cutoff: fp.cutoff || "-", meta: fp.meta });
+        await markPerfReady("anuales");
+        void loadSummary(next).catch((e: unknown) => setError(getApiErrorMessage(e)));
+      } catch (e: unknown) {
+        setError(getApiErrorMessage(e));
+        setLoadingSummary(false);
+      } finally {
+        setApplying(false);
+      }
+    },
+    [loadSummary],
+  );
+
+  const onApply = useCallback(() => void commitAndLoad(filters), [commitAndLoad, filters]);
+
+  const openFloatFilters = useCallback(() => {
+    setFloatUns(filters.uns);
+    setFloatYears(filters.years);
+    setFloatContractMonths(filters.contractMonths);
+    setFloatOpen(true);
+  }, [filters.contractMonths, filters.uns, filters.years]);
+
+  const applyFloatFilters = useCallback(async () => {
+    const next: Filters = {
+      uns: floatUns,
+      years: floatYears,
+      contractMonths: floatContractMonths,
+    };
+    await commitAndLoad(next);
+    setFloatOpen(false);
+  }, [commitAndLoad, floatContractMonths, floatUns, floatYears]);
+
+  const hasUnOptions = options.uns.length > 0;
 
   const clearFilters = useCallback(() => {
     setFilters(EMPTY_FILTERS);
@@ -339,6 +369,42 @@ export function AnalisisAnualesView() {
         </div>
         </div>
       ) : null}
+
+      <FloatingQuickFilters
+        isOpen={floatOpen}
+        onOpen={openFloatFilters}
+        onCollapse={() => setFloatOpen(false)}
+        onApply={() => void applyFloatFilters()}
+        applyDisabled={applying || loadingOptions || loadingSummary}
+        applying={applying || loadingSummary}
+      >
+        {hasUnOptions ? (
+          <MultiSelectFilter
+            className="analysis-filter-control"
+            label="Unidad de negocio"
+            options={options.uns}
+            selected={floatUns}
+            onChange={setFloatUns}
+            placeholder="Todas"
+          />
+        ) : null}
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Año de contrato"
+          options={options.years}
+          selected={floatYears}
+          onChange={setFloatYears}
+          placeholder="Todos"
+        />
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Mes/Año de contrato"
+          options={options.contractMonths}
+          selected={floatContractMonths}
+          onChange={setFloatContractMonths}
+          placeholder="Todos"
+        />
+      </FloatingQuickFilters>
     </section>
   );
 }
