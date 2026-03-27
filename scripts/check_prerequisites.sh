@@ -83,17 +83,47 @@ attempt_docker_install() {
   return 1
 }
 
+# Compose v2 como plugin CLI (cuando apt no trae el paquete docker-compose-plugin, p. ej. solo docker.io).
+# https://docs.docker.com/compose/install/linux/
+install_compose_v2_binary() {
+  have_sudo || return 1
+  local ver="${DOCKER_COMPOSE_INSTALL_VERSION:-v2.32.4}"
+  local arch raw
+  raw=$(uname -m)
+  case "$raw" in
+    x86_64) arch=x86_64 ;;
+    aarch64|arm64) arch=aarch64 ;;
+    *) return 1 ;;
+  esac
+  local url="https://github.com/docker/compose/releases/download/${ver}/docker-compose-linux-${arch}"
+  local dest=/usr/local/lib/docker/cli-plugins/docker-compose
+  sudo mkdir -p /usr/local/lib/docker/cli-plugins
+  if command -v curl >/dev/null 2>&1; then
+    sudo curl -fsSL "$url" -o "$dest" || return 1
+  elif command -v wget >/dev/null 2>&1; then
+    sudo wget -qO "$dest" "$url" || return 1
+  else
+    return 1
+  fi
+  sudo chmod +x "$dest"
+}
+
 attempt_compose_plugin_install() {
   [[ "$NO_INSTALL" == true ]] && return 1
   have_sudo || return 1
   set +e
   if command -v apt-get >/dev/null 2>&1; then
     sudo apt-get update -y
-    sudo apt-get install -y docker-compose-plugin
+    sudo apt-get install -y docker-compose-plugin 2>/dev/null || true
   elif command -v dnf >/dev/null 2>&1; then
     sudo dnf install -y docker-compose-plugin 2>/dev/null || true
   elif command -v pacman >/dev/null 2>&1; then
     sudo pacman -Sy --needed --noconfirm docker-compose 2>/dev/null || true
+  fi
+  # Ubuntu/Debian: a veces no existe el paquete plugin; instalar binario oficial.
+  if command -v docker >/dev/null 2>&1 && ! docker compose version >/dev/null 2>&1; then
+    [[ "$QUIET" == true ]] || echo -e "\033[0;36m[INFO]\033[0m Instalando Docker Compose v2 (binario GitHub)..."
+    install_compose_v2_binary || true
   fi
   set -e
   return 0
