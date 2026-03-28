@@ -111,6 +111,12 @@ Reglas:
 ### Segmented control
 Aplicación obligatoria cuando un filtro de selección única tiene `<= 3` opciones fijas.
 
+Implementación en código: `SegmentedControl` (`frontend/src/components/filters/SegmentedControl.tsx`) con clases `.analytics-segmented*` en `frontend/src/index.css` (carril tipo píldora, activo con gradiente pizarra → teal).
+
+**Categoría** (`Todas | Vigente | Moroso`): siempre segmented donde aplique la regla de negocio.
+
+**Vía de cobro / pago**: `ViaSegmentedOrMulti` — segmented si hay `<= 6` vías y como máximo una vía seleccionada; si no, `MultiSelectFilter` (varias vías o lista larga).
+
 Estilo esperado:
 - cápsula contenedora neutra
 - activo con relleno claro y lectura inmediata

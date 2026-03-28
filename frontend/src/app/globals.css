@@ -139,7 +139,8 @@ html {
     --container-max: 1700px;
     --touch-min: 34px;
     --header-height: 2.85rem;
-    --sidebar-width: 12.75rem;
+    /* Ancho legible para ítems largos (“Rendimiento de Cartera”, etc.) */
+    --sidebar-width: 15.5rem;
     --radius-md: 11px;
     --radius-lg: 14px;
   }
@@ -507,10 +508,10 @@ body {
 
 .dashboard-sidebar-link {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.65rem;
   min-height: 44px;
-  padding: 0 0.7rem 0 0.55rem;
+  padding: 0.42rem 0.7rem 0.42rem 0.55rem;
   border-radius: var(--radius-md);
   font-size: 0.915rem;
   font-weight: 540;
@@ -606,15 +607,17 @@ body {
 .dashboard-sidebar-link-text {
   flex: 1;
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .dashboard-sidebar-link-icon {
   flex-shrink: 0;
   width: 26px;
   height: 26px;
+  margin-top: 0.1em;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -650,7 +653,7 @@ body {
 
 .dashboard-sidebar-sublink {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.55rem;
   min-height: var(--touch-min);
   padding: 0.35rem 0.7rem;
@@ -675,8 +678,10 @@ body {
 }
 
 .dashboard-sidebar-sublink-dot {
+  flex-shrink: 0;
   width: 6px;
   height: 6px;
+  margin-top: 0.45em;
   border-radius: 999px;
   background: currentColor;
   opacity: 0.72;
@@ -684,9 +689,32 @@ body {
 
 .dashboard-sidebar-sublink-text {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+/* Pie del sidebar: colapsar sin depender solo del botón del header */
+.dashboard-sidebar-footer {
+  margin-top: auto;
+  border-top: 1px solid var(--sidebar-border);
+  padding: 0.55rem 0.6rem 0.75rem;
+  background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--sidebar-bg) 88%, transparent) 40%);
+}
+
+.dashboard-sidebar-collapse-btn {
+  width: 100%;
+  justify-content: flex-start;
+  font-size: 0.8rem;
+  font-weight: 500;
+  min-height: var(--touch-min);
+}
+
+@media (min-width: 1024px) {
+  .dashboard-sidebar-collapse-btn {
+    min-height: 36px;
+  }
 }
 
 :root[data-theme="light"] .dashboard-sidebar-link-icon {

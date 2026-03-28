@@ -255,16 +255,16 @@ export function RendimientoStyleStackedColumnChart({
               const rB = cornerR(barWidth, hb);
               const aDetail =
                 showBarPercent && showBarNumbers
-                  ? `V ${aShare}% ${formatCount(a)}`
+                  ? `${aLabel} ${aShare}% ${formatCount(a)}`
                   : showBarPercent
-                    ? `V ${aShare}%`
-                    : `V ${formatCount(a)}`;
+                    ? `${aLabel} ${aShare}%`
+                    : `${aLabel} ${formatCount(a)}`;
               const bDetail =
                 showBarPercent && showBarNumbers
-                  ? `M ${bShare}% ${formatCount(b)}`
+                  ? `${bLabel} ${bShare}% ${formatCount(b)}`
                   : showBarPercent
-                    ? `M ${bShare}%`
-                    : `M ${formatCount(b)}`;
+                    ? `${bLabel} ${bShare}%`
+                    : `${bLabel} ${formatCount(b)}`;
               const lx = cx;
               const ly = baselineY + (verticalXLabels ? 8 : 16);
               const isHovered = hoveredLabel === d.label;

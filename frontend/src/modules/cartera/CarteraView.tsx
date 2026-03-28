@@ -5,6 +5,8 @@ import { EmptyState } from '../../components/feedback/EmptyState'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { LoadingState } from '../../components/feedback/LoadingState'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
+import { SegmentedControl } from '../../components/filters/SegmentedControl'
+import { ViaSegmentedOrMulti } from '../../components/filters/ViaSegmentedOrMulti'
 import { FloatingQuickFilters } from '../../components/filters/FloatingQuickFilters'
 import { getPortfolioCorteOptions, getPortfolioCorteSummary } from '../../shared/api'
 import type { PortfolioCorteSummaryResponse } from '../../shared/api'
@@ -191,8 +193,22 @@ export function CarteraView() {
       <div className="rendimiento-filters-panel cartera-filters-grid-3">
         <MultiSelectFilter label="Supervisor" options={options.supervisors} selected={draftFilters.supervisors} onChange={(values) => setDraftFilters((prev) => ({ ...prev, supervisors: values }))} />
         <MultiSelectFilter label="UN" options={options.uns} selected={draftFilters.uns} onChange={(values) => setDraftFilters((prev) => ({ ...prev, uns: values }))} />
-        <MultiSelectFilter label="Vía de cobro" options={options.vias} selected={draftFilters.vias} onChange={(values) => setDraftFilters((prev) => ({ ...prev, vias: values }))} />
-        <MultiSelectFilter label="Categoría" options={options.categories} selected={draftFilters.categorias} onChange={(values) => setDraftFilters((prev) => ({ ...prev, categorias: values }))} />
+        <ViaSegmentedOrMulti
+          label="Vía de cobro"
+          options={options.vias}
+          selected={draftFilters.vias}
+          onChange={(values) => setDraftFilters((prev) => ({ ...prev, vias: values }))}
+        />
+        <SegmentedControl
+          label="Categoría"
+          options={[
+            { value: '', label: 'Todas' },
+            { value: 'VIGENTE', label: 'Vigente' },
+            { value: 'MOROSO', label: 'Moroso' },
+          ]}
+          value={(draftFilters.categorias[0] || '').toUpperCase()}
+          onChange={(categoria) => setDraftFilters((prev) => ({ ...prev, categorias: categoria ? [categoria] : [] }))}
+        />
         <MultiSelectFilter label="Tramo" options={options.tramos} selected={draftFilters.tramos} onChange={(values) => setDraftFilters((prev) => ({ ...prev, tramos: values }))} />
         <MultiSelectFilter label="Año de contrato" options={options.years} selected={draftFilters.years} onChange={(values) => setDraftFilters((prev) => ({ ...prev, years: values }))} />
         <MultiSelectFilter label="Mes de gestión" options={options.months} selected={draftFilters.months} onChange={(values) => setDraftFilters((prev) => ({ ...prev, months: values }))} />

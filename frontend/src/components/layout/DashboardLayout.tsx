@@ -62,7 +62,23 @@ function filterNavByPermissions(permissions: string[] | undefined): NavItem[] {
   const navPerms = list.filter((p) => p.startsWith("nav:"));
   if (navPerms.length === 0) return [...NAV_ITEMS];
   const allowed = new Set(navPerms.map((p) => p.slice(4)));
-  return NAV_ITEMS.filter((item) => allowed.has(item.id));
+
+  const out: NavItem[] = [];
+  for (const item of NAV_ITEMS as readonly NavItem[]) {
+    const selfOk = allowed.has(item.id);
+    const rawChildren = item.children;
+    if (rawChildren?.length) {
+      const kids = rawChildren.filter((c) => allowed.has(c.id));
+      if (!selfOk && kids.length === 0) continue;
+      out.push({
+        ...item,
+        children: kids.length ? kids : undefined,
+      });
+      continue;
+    }
+    if (selfOk) out.push(item);
+  }
+  return out;
 }
 
 function isActivePath(pathname: string, href: string) {
@@ -333,7 +349,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           <div className="dashboard-sidebar-brand-title">EPEM</div>
           <div className="dashboard-sidebar-brand-note">Accesos principales del frente analítico.</div>
         </div>
-        <nav className="dashboard-sidebar-nav flex flex-1 flex-col overflow-y-auto overflow-x-hidden pb-6" aria-label="Menú principal">
+        <nav className="dashboard-sidebar-nav flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-2" aria-label="Menú principal">
           {Array.from(groups.entries()).map(([groupName, items]) => (
             <div key={groupName || "default"} className="dashboard-sidebar-group">
               {groupName ? <div className="dashboard-sidebar-group-label">{groupName}</div> : null}
@@ -350,6 +366,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                         className={`dashboard-sidebar-link ${isActive ? "is-active" : ""} ${isRendimiento ? "sidebar-item-rendimiento" : ""}`}
                         aria-current={isActive ? "page" : undefined}
                         aria-label={item.label}
+                        title={item.label}
                         data-testid={item.id === "config" ? "nav-config" : isRendimiento ? "nav-rendimiento-cartera" : undefined}
                       >
                         <span className="dashboard-sidebar-link-icon" aria-hidden>
@@ -360,7 +377,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                       {showChildren ? (
                         <div className="dashboard-sidebar-submenu is-open">
                           {item.children?.map((child) => {
-                            const isChildActive = pathname === child.href;
+                            const isChildActive = isActivePath(pathname, child.href);
                             return (
                               <Link
                                 key={child.id}
@@ -369,6 +386,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                                 className={`dashboard-sidebar-sublink ${isChildActive ? "is-active" : ""}`}
                                 aria-current={isChildActive ? "page" : undefined}
                                 aria-label={child.label}
+                                title={child.label}
                               >
                                 <span className="dashboard-sidebar-sublink-dot" aria-hidden />
                                 <span className="dashboard-sidebar-sublink-text">{child.label}</span>
@@ -384,6 +402,21 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </div>
           ))}
         </nav>
+        <div className="dashboard-sidebar-footer hidden shrink-0 lg:block">
+          <Button
+            variant="outline"
+            size="sm"
+            className="dashboard-sidebar-collapse-btn border-[var(--sidebar-border)] text-[var(--color-text)] hover:bg-[var(--sidebar-hover-bg)]"
+            aria-label="Colapsar menú lateral"
+            data-testid="sidebar-collapse-in-panel"
+            onPress={() => setSidebarOpen(false)}
+          >
+            <span className="inline-flex w-full items-center justify-start gap-2">
+              <ChevronLeftIcon />
+              <span>Colapsar menú</span>
+            </span>
+          </Button>
+        </div>
       </aside>
       <div
         className={`dashboard-shell min-h-screen overflow-x-visible transition-[padding-left] duration-300 ease-out ${sidebarOpen ? "dashboard-shell--with-sidebar" : "dashboard-shell--without-sidebar"}`}

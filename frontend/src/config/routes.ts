@@ -45,12 +45,7 @@ export const NAV_ITEMS = [
     label: "Análisis de Cartera",
     href: ROUTES.analisisCartera,
     group: "Análisis de Cartera",
-  },
-  {
-    id: "roloCartera",
-    label: "Rolo de Cartera",
-    href: ROUTES.roloCartera,
-    group: "Análisis de Cartera",
+    children: [{ id: "roloCartera", label: "Rolo de Cartera", href: ROUTES.roloCartera }],
   },
   { id: "analisisCarteraAnuales", label: "Análisis Anuales", href: ROUTES.analisisAnuales, group: "Análisis de Cartera" },
   { id: "analisisCarteraRendimiento", label: "Rendimiento de Cartera", href: ROUTES.rendimiento, group: "Análisis de Cartera" },

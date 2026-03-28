@@ -244,18 +244,23 @@ def _normalize_contract_id_for_lookup(cid: str | int | None) -> str:
     return s
 
 
-def _nest_un_by_gestion_month(rows: list[tuple]) -> dict[str, dict[str, int]]:
-    """gestion_month -> { un -> contracts_total } para tabla pivote en resumen cartera."""
+def _nest_un_by_period(rows: list[tuple]) -> dict[str, dict[str, int]]:
+    """periodo (gestion_month o close_month) -> { clave_dim -> contracts_total } (UN, vía, etc.)."""
     out: dict[str, dict[str, int]] = {}
-    for gestion_m, un, cnt in rows:
-        gm = str(gestion_m or '').strip()
+    for period_key, un, cnt in rows:
+        pk = str(period_key or '').strip()
         u = str(un or '').strip()
-        if not gm or not u:
+        if not pk or not u:
             continue
-        if gm not in out:
-            out[gm] = {}
-        out[gm][u] = int(cnt or 0)
+        if pk not in out:
+            out[pk] = {}
+        out[pk][u] = int(cnt or 0)
     return out
+
+
+def _nest_un_by_gestion_month(rows: list[tuple]) -> dict[str, dict[str, int]]:
+    """Compat: gestion_month -> { un -> contracts_total }."""
+    return _nest_un_by_period(rows)
 
 
 def _normalize_str_set(values: list[str]) -> set[str]:
@@ -1057,6 +1062,15 @@ class AnalyticsService:
             .group_by(CarteraCorteAgg.gestion_month, CarteraCorteAgg.un)
             .all()
         )
+        by_un_close_rows = (
+            base.with_entities(
+                CarteraCorteAgg.close_month,
+                CarteraCorteAgg.un,
+                func.coalesce(func.sum(CarteraCorteAgg.contracts_total), 0),
+            )
+            .group_by(CarteraCorteAgg.close_month, CarteraCorteAgg.un)
+            .all()
+        )
         by_tramo_rows = (
             base.with_entities(CarteraCorteAgg.tramo, func.coalesce(func.sum(CarteraCorteAgg.contracts_total), 0))
             .group_by(CarteraCorteAgg.tramo)
@@ -1065,6 +1079,24 @@ class AnalyticsService:
         by_via_rows = (
             base.with_entities(CarteraCorteAgg.via_cobro, func.coalesce(func.sum(CarteraCorteAgg.contracts_total), 0))
             .group_by(CarteraCorteAgg.via_cobro)
+            .all()
+        )
+        by_via_gestion_rows = (
+            base.with_entities(
+                CarteraCorteAgg.gestion_month,
+                CarteraCorteAgg.via_cobro,
+                func.coalesce(func.sum(CarteraCorteAgg.contracts_total), 0),
+            )
+            .group_by(CarteraCorteAgg.gestion_month, CarteraCorteAgg.via_cobro)
+            .all()
+        )
+        by_via_close_rows = (
+            base.with_entities(
+                CarteraCorteAgg.close_month,
+                CarteraCorteAgg.via_cobro,
+                func.coalesce(func.sum(CarteraCorteAgg.contracts_total), 0),
+            )
+            .group_by(CarteraCorteAgg.close_month, CarteraCorteAgg.via_cobro)
             .all()
         )
         by_contract_year_rows = (
@@ -1108,8 +1140,11 @@ class AnalyticsService:
             'charts': {
                 'by_un': {str(k): int(v or 0) for k, v in by_un_rows},
                 'by_un_by_gestion_month': _nest_un_by_gestion_month(by_un_gestion_rows),
+                'by_un_by_close_month': _nest_un_by_period(by_un_close_rows),
                 'by_tramo': {str(k): int(v or 0) for k, v in by_tramo_rows},
                 'by_via': {str(k): int(v or 0) for k, v in by_via_rows},
+                'by_via_by_gestion_month': _nest_un_by_period(by_via_gestion_rows),
+                'by_via_by_close_month': _nest_un_by_period(by_via_close_rows),
                 'by_contract_year': {str(k): int(v or 0) for k, v in by_contract_year_rows if k is not None},
                 'series_vigente_moroso_by_month': {
                     str(month): {'vigente': int(v or 0), 'moroso': int(m or 0)}

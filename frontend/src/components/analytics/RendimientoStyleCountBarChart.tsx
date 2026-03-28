@@ -17,7 +17,25 @@ export type BuildCountYAxisOptions = {
   axisTight?: boolean;
   /** Con `axisTight`: seguir afinando mientras `axisMax / max(datos)` supere este ratio (por defecto 1.22; ~1.06 = casi sin aire). */
   maxAxisToDataRatio?: number;
+  /**
+   * Tope de marcas en el eje Y (evita pasos de 1 con `axisTight` y valores ~200k → miles de números apilados).
+   * Por defecto 10.
+   */
+  maxYTicks?: number;
 };
+
+/** Paso “legible” ≥ minStep (1 / 2 / 5 × 10ⁿ). */
+function niceStepAtLeast(minStep: number): number {
+  const ms = Math.max(minStep, 1e-9);
+  const pow10 = 10 ** Math.floor(Math.log10(ms));
+  const norm = ms / pow10;
+  let f = 1;
+  if (norm > 5) f = 10;
+  else if (norm > 2) f = 5;
+  else if (norm > 1) f = 2;
+  else f = 1;
+  return f * pow10;
+}
 
 /** Eje en unidades de conteo, con cabeza sobre el máximo para separar valores cercanos al tope. */
 export function buildCountYAxis(
@@ -34,6 +52,9 @@ export function buildCountYAxis(
   }
   const headroom = options?.headroom ?? 1.12;
   const target = m * headroom;
+  const maxYTicks = Math.max(4, Math.min(16, options?.maxYTicks ?? 10));
+  const minStepFloor = niceStepAtLeast(target / Math.max(2, maxYTicks - 1));
+
   const rawStep = target / 4;
   const pow10 = 10 ** Math.floor(Math.log10(Math.max(rawStep, 1e-9)));
   const norm = rawStep / pow10;
@@ -42,7 +63,7 @@ export function buildCountYAxis(
   else if (norm > 2) f = 5;
   else if (norm > 1) f = 2;
   else f = 1;
-  let step = f * pow10;
+  let step = Math.max(f * pow10, minStepFloor);
   let axisMax = Math.max(step, Math.ceil(target / step) * step);
 
   if (options?.axisTight) {
@@ -52,6 +73,7 @@ export function buildCountYAxis(
       guard += 1;
       const newStep = step / 2;
       if (newStep < 1) break;
+      if (newStep < minStepFloor) break;
       const newMax = Math.max(m, Math.ceil(target / newStep) * newStep);
       if (newMax < axisMax - 0.5 && newMax >= m * 0.999) {
         step = newStep;
@@ -62,10 +84,23 @@ export function buildCountYAxis(
     }
   }
 
-  const yTicks: number[] = [];
-  for (let t = 0; t <= axisMax + 1e-9; t += step) {
-    yTicks.push(Math.round(t));
+  const buildTicks = (s: number, max: number) => {
+    const ticks: number[] = [];
+    for (let t = 0; t <= max + 1e-9; t += s) {
+      ticks.push(Math.round(t));
+    }
+    return ticks;
+  };
+
+  let yTicks = buildTicks(step, axisMax);
+
+  if (yTicks.length > maxYTicks) {
+    step = niceStepAtLeast(axisMax / Math.max(2, maxYTicks - 1));
+    step = Math.max(step, minStepFloor);
+    axisMax = Math.max(step, Math.ceil(target / step) * step);
+    yTicks = buildTicks(step, axisMax);
   }
+
   return { axisMax, yTicks };
 }
 

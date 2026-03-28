@@ -5,6 +5,7 @@ import { EmptyState } from "../../components/feedback/EmptyState"
 import { ErrorState } from "../../components/feedback/ErrorState"
 import { LoadingState } from "../../components/feedback/LoadingState"
 import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter"
+import { ViaSegmentedOrMulti } from "../../components/filters/ViaSegmentedOrMulti"
 
 type Row = {
   year: string
@@ -99,7 +100,12 @@ export function BrokersView(props: Props) {
       <div className="grid-cards">
         <MultiSelectFilter label="Supervisor" options={props.options.supervisors} selected={draft.supervisors} onChange={(v) => setFilter("supervisors", v)} />
         <MultiSelectFilter label="UN" options={props.options.uns} selected={draft.uns} onChange={(v) => setFilter("uns", v)} />
-        <MultiSelectFilter label="Vía" options={props.options.vias} selected={draft.vias} onChange={(v) => setFilter("vias", v)} />
+        <ViaSegmentedOrMulti
+          label="Vía"
+          options={props.options.vias}
+          selected={draft.vias}
+          onChange={(v) => setFilter("vias", v)}
+        />
         <MultiSelectFilter label="Año" options={props.options.years} selected={draft.years} onChange={(v) => setFilter("years", v)} />
         <MultiSelectFilter label="Mes" options={props.options.months} selected={draft.months} onChange={(v) => setFilter("months", v)} />
       </div>

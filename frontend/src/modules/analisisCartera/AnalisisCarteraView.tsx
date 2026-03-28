@@ -4,6 +4,7 @@ import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter";
 import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
 import { ActiveFilterChips, type FilterChip } from "../../components/filters/ActiveFilterChips";
 import { SegmentedControl } from "../../components/filters/SegmentedControl";
+import { ViaSegmentedOrMulti } from "../../components/filters/ViaSegmentedOrMulti";
 import { ToastStack, type ToastMessage, type ToastType } from "../../components/feedback/ToastStack";
 import { LoadingState } from "../../components/feedback/LoadingState";
 import { AnalysisFiltersSkeleton } from "../../components/feedback/AnalysisFiltersSkeleton";
@@ -15,6 +16,7 @@ import { AnalysisSelectionSummary } from "../../components/analytics/AnalysisSel
 import { MetricExplainer } from "../../components/analytics/MetricExplainer";
 import { RendimientoStyleCountBarChart } from "../../components/analytics/RendimientoStyleCountBarChart";
 import { RendimientoStyleStackedColumnChart } from "../../components/analytics/RendimientoStyleStackedColumnChart";
+import { UnByPeriodStackedColumnChart } from "../../components/analytics/UnByPeriodStackedColumnChart";
 import {
   getPortfolioCorteFirstPaint,
   getPortfolioCorteOptions,
@@ -528,7 +530,71 @@ export function AnalisisCarteraView() {
     return [];
   }, [appliedFilters.closeMonths, appliedFilters.gestionMonths]);
 
-  const byUn = useMemo(() => Object.entries(summaryData?.charts?.by_un || {}).map(([label, value]) => ({ label, value: Number(value || 0) })).sort((a, b) => b.value - a.value).slice(0, 8), [summaryData]);
+  /** Gráfico UN por período (cierre o gestión), sin acumular varios meses en una sola barra. */
+  const byUnPeriodChart = useMemo(() => {
+    const charts = summaryData?.charts;
+    const byClose = charts?.by_un_by_close_month;
+    const byGestion = charts?.by_un_by_gestion_month;
+    const preferClose = appliedFilters.closeMonths.length > 0;
+    const nested = preferClose ? (byClose ?? {}) : (byGestion ?? {});
+    const periodAxisHint = preferClose ? "cierre" : "gestión";
+
+    let periods: string[] = [];
+    if (preferClose && appliedFilters.closeMonths.length > 0) {
+      periods = [...appliedFilters.closeMonths].filter((m) => monthRank(m) > 0).sort((a, b) => monthRank(a) - monthRank(b));
+    } else if (!preferClose && appliedFilters.gestionMonths.length > 0) {
+      periods = enumerateMonths(appliedFilters.gestionMonths);
+    } else if (preferClose) {
+      const keys = Object.keys(nested).filter((k) => monthRank(k) > 0);
+      periods = [...new Set(keys)].sort((a, b) => monthRank(a) - monthRank(b));
+    } else if (expectedGestionMonths.length > 0) {
+      periods = expectedGestionMonths;
+    } else {
+      const keys = Object.keys(nested).filter((k) => monthRank(k) > 0);
+      periods = [...new Set(keys)].sort((a, b) => monthRank(a) - monthRank(b));
+    }
+
+    return { nested, periods, periodAxisHint };
+  }, [
+    summaryData?.charts?.by_un_by_close_month,
+    summaryData?.charts?.by_un_by_gestion_month,
+    appliedFilters.closeMonths,
+    appliedFilters.gestionMonths,
+    expectedGestionMonths,
+  ]);
+
+  const byViaPeriodChart = useMemo(() => {
+    const charts = summaryData?.charts;
+    const byClose = charts?.by_via_by_close_month;
+    const byGestion = charts?.by_via_by_gestion_month;
+    const preferClose = appliedFilters.closeMonths.length > 0;
+    const nested = preferClose ? (byClose ?? {}) : (byGestion ?? {});
+    const periodAxisHint = preferClose ? "cierre" : "gestión";
+
+    let periods: string[] = [];
+    if (preferClose && appliedFilters.closeMonths.length > 0) {
+      periods = [...appliedFilters.closeMonths].filter((m) => monthRank(m) > 0).sort((a, b) => monthRank(a) - monthRank(b));
+    } else if (!preferClose && appliedFilters.gestionMonths.length > 0) {
+      periods = enumerateMonths(appliedFilters.gestionMonths);
+    } else if (preferClose) {
+      const keys = Object.keys(nested).filter((k) => monthRank(k) > 0);
+      periods = [...new Set(keys)].sort((a, b) => monthRank(a) - monthRank(b));
+    } else if (expectedGestionMonths.length > 0) {
+      periods = expectedGestionMonths;
+    } else {
+      const keys = Object.keys(nested).filter((k) => monthRank(k) > 0);
+      periods = [...new Set(keys)].sort((a, b) => monthRank(a) - monthRank(b));
+    }
+
+    return { nested, periods, periodAxisHint };
+  }, [
+    summaryData?.charts?.by_via_by_close_month,
+    summaryData?.charts?.by_via_by_gestion_month,
+    appliedFilters.closeMonths,
+    appliedFilters.gestionMonths,
+    expectedGestionMonths,
+  ]);
+
   const byTramo = useMemo(() => {
     const raw = summaryData?.charts?.by_tramo || {};
     return TRAMO_DONUT_KEYS.map((k) => ({
@@ -536,7 +602,6 @@ export function AnalisisCarteraView() {
       value: Number(raw[String(k)] ?? 0),
     }));
   }, [summaryData]);
-  const byVia = useMemo(() => Object.entries(summaryData?.charts?.by_via || {}).map(([label, value]) => ({ label: String(label), value: Number(value || 0) })).sort((a, b) => b.value - a.value), [summaryData]);
   const byContractYear = useMemo(() => {
     const rows = Object.entries(summaryData?.charts?.by_contract_year || {}).map(([label, value]) => ({ label: String(label), value: Number(value || 0) })).filter((x) => x.label && x.label !== "null");
     return yearSort === "asc" ? rows.sort((a, b) => a.value - b.value || Number(a.label) - Number(b.label)) : rows.sort((a, b) => b.value - a.value || Number(a.label) - Number(b.label));
@@ -606,14 +671,29 @@ export function AnalisisCarteraView() {
     by_un: {
       title: "Contratos por Unidad de Negocio",
       content: (
-        <RendimientoStyleCountBarChart data={byUn} colors={barSequentialPalette} ariaLabel="Contratos por unidad de negocio" />
+        <UnByPeriodStackedColumnChart
+          periods={byUnPeriodChart.periods}
+          nested={byUnPeriodChart.nested}
+          colors={barSequentialPalette}
+          periodAxisHint={byUnPeriodChart.periodAxisHint}
+          isLight={isLightTheme}
+          ariaLabel={`Contratos por unidad de negocio por mes de ${byUnPeriodChart.periodAxisHint}`}
+        />
       ),
     },
     by_tramo: { title: "Contratos por Tramo", content: <DonutChart data={byTramo} isLight={isLightTheme} colors={chartPalette} /> },
     by_via: {
       title: "Contratos por vía de cobro",
       content: (
-        <RendimientoStyleCountBarChart data={byVia} colors={barSequentialPalette} ariaLabel="Contratos por vía de cobro" />
+        <UnByPeriodStackedColumnChart
+          periods={byViaPeriodChart.periods}
+          nested={byViaPeriodChart.nested}
+          colors={barSequentialPalette}
+          periodAxisHint={byViaPeriodChart.periodAxisHint}
+          breakdownEntityLabel="vía de cobro"
+          isLight={isLightTheme}
+          ariaLabel={`Contratos por vía de cobro por mes de ${byViaPeriodChart.periodAxisHint}`}
+        />
       ),
     },
     by_contract_year: {
@@ -700,7 +780,13 @@ export function AnalisisCarteraView() {
         <MultiSelectFilter className="analysis-filter-control" label="Unidad de negocio" options={options.uns || []} selected={filters.uns} onChange={(uns) => setFilters((f) => ({ ...f, uns }))} />
         <MultiSelectFilter className="analysis-filter-control" label="Supervisor" options={options.supervisors || []} selected={filters.supervisors} onChange={(supervisors) => setFilters((f) => ({ ...f, supervisors }))} />
         <MultiSelectFilter className="analysis-filter-control" label="Año de contrato" options={options.contract_years || []} selected={filters.years} onChange={(years) => setFilters((f) => ({ ...f, years }))} />
-        <MultiSelectFilter className="analysis-filter-control" label="Vía de cobro" options={options.vias || []} selected={filters.vias} onChange={(vias) => setFilters((f) => ({ ...f, vias }))} />
+        <ViaSegmentedOrMulti
+          className="analysis-filter-control"
+          label="Vía de cobro"
+          options={options.vias || []}
+          selected={filters.vias}
+          onChange={(vias) => setFilters((f) => ({ ...f, vias }))}
+        />
         <MultiSelectFilter className="analysis-filter-control" label="Tramo" options={options.tramos || []} selected={filters.tramos} onChange={(tramos) => setFilters((f) => ({ ...f, tramos }))} />
         <SegmentedControl
           className="analysis-filter-control"
@@ -789,7 +875,7 @@ export function AnalisisCarteraView() {
           onChange={(v) => setKpiMode(v as KpiMode)}
           isDisabled={isApplyingFilters}
           size="md"
-          fullWidth={false}
+          fullWidth
           aria-label="Criterio de KPIs: último cierre o filtros acumulados"
         />
         {loadingSummary || loadingKpis ? <LoadingState message="Cargando resumen..." className="summary-loading-note" /> : null}

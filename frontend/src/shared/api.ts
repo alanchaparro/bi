@@ -624,8 +624,14 @@ export type PortfolioCorteSummaryResponse = {
     by_un?: Record<string, number>;
     /** Mes de gestión MM/YYYY → UN → contratos (corte) */
     by_un_by_gestion_month?: Record<string, Record<string, number>>;
+    /** Mes de cierre MM/YYYY → UN → contratos (sin acumular entre cierres en el gráfico por período) */
+    by_un_by_close_month?: Record<string, Record<string, number>>;
     by_tramo?: Record<string, number>;
     by_via?: Record<string, number>;
+    /** Mes de gestión → vía → contratos */
+    by_via_by_gestion_month?: Record<string, Record<string, number>>;
+    /** Mes de cierre → vía → contratos */
+    by_via_by_close_month?: Record<string, Record<string, number>>;
     by_contract_year?: Record<string, number>;
     series_vigente_moroso_by_month?: Record<string, { vigente?: number; moroso?: number }>;
     series_cobrador_debito_by_month?: Record<string, { cobrador?: number; debito?: number }>;

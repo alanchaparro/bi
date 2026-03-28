@@ -5,6 +5,7 @@ import { AnalyticsPageHeader } from "../../components/analytics/AnalyticsPageHea
 import { AnalysisSelectionSummary } from "../../components/analytics/AnalysisSelectionSummary";
 import { MetricExplainer } from "../../components/analytics/MetricExplainer";
 import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter";
+import { ViaSegmentedOrMulti } from "../../components/filters/ViaSegmentedOrMulti";
 import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
 import { EmptyState } from "../../components/feedback/EmptyState";
 import { ErrorState } from "../../components/feedback/ErrorState";
@@ -266,7 +267,13 @@ export function AnalisisRoloCarteraView() {
           />
           <MultiSelectFilter className="analysis-filter-control" label="Unidad de negocio" options={options.uns || []} selected={filters.uns} onChange={(uns) => setFilters((prev) => ({ ...prev, uns }))} />
           <MultiSelectFilter className="analysis-filter-control" label="Supervisor" options={options.supervisors || []} selected={filters.supervisors} onChange={(supervisors) => setFilters((prev) => ({ ...prev, supervisors }))} />
-          <MultiSelectFilter className="analysis-filter-control" label="Vía de cobro" options={options.vias || []} selected={filters.vias} onChange={(vias) => setFilters((prev) => ({ ...prev, vias }))} />
+          <ViaSegmentedOrMulti
+            className="analysis-filter-control"
+            label="Vía de cobro"
+            options={options.vias || []}
+            selected={filters.vias}
+            onChange={(vias) => setFilters((prev) => ({ ...prev, vias }))}
+          />
           <MultiSelectFilter className="analysis-filter-control" label="Año de contrato" options={options.contract_years || []} selected={filters.years} onChange={(years) => setFilters((prev) => ({ ...prev, years }))} />
         </div>
         <div className="analysis-actions-row analysis-actions">

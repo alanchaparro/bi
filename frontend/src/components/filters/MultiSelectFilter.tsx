@@ -50,6 +50,8 @@ export function MultiSelectFilter({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const listboxRef = useRef<HTMLDivElement>(null);
+  /** Evita repetir foco en búsqueda / reset de índice en cada click (saltaba el scroll al inicio). */
+  const listOpenSessionRef = useRef(false);
   const filtered = useMemo(() => filterOptions(options, q), [options, q]);
   const listboxId = `${label.replace(/\s+/g, "-").toLowerCase()}-listbox`;
   const optionIdBase = `${listboxId}-option`;
@@ -73,13 +75,23 @@ export function MultiSelectFilter({
   useEffect(() => {
     if (!open) {
       setIsClosing(false);
+      listOpenSessionRef.current = false;
       return;
     }
-    const firstSelected = filtered.findIndex((v) => selected.includes(v));
-    setActiveIndex(firstSelected >= 0 ? firstSelected : 0);
-    const t = window.setTimeout(() => searchRef.current?.focus(), 0);
-    return () => window.clearTimeout(t);
-  }, [filtered, open, selected]);
+
+    if (!listOpenSessionRef.current) {
+      listOpenSessionRef.current = true;
+      const firstSelected = filtered.findIndex((v) => selected.includes(v));
+      setActiveIndex(firstSelected >= 0 ? firstSelected : 0);
+      const t = window.setTimeout(() => searchRef.current?.focus(), 0);
+      return () => window.clearTimeout(t);
+    }
+
+    setActiveIndex((i) => {
+      if (filtered.length === 0) return 0;
+      return Math.min(Math.max(0, i), filtered.length - 1);
+    });
+  }, [open, filtered]);
 
   useEffect(() => {
     if (!open) return;
@@ -122,6 +134,18 @@ export function MultiSelectFilter({
     const has = selected.includes(value);
     if (has) onChange(selected.filter((v) => v !== value));
     else onChange([...selected, value]);
+  };
+
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((v) => selected.includes(v));
+
+  const selectAllVisible = () => {
+    if (filtered.length === 0) return;
+    onChange([...new Set([...selected, ...filtered])]);
+  };
+
+  const deselectAll = () => {
+    onChange([]);
   };
 
   const moveActive = (delta: number) => {
@@ -208,7 +232,7 @@ export function MultiSelectFilter({
             role="listbox"
             aria-multiselectable="true"
             aria-activedescendant={activeOptionId}
-            className={`multi-select-listbox ${isClosing ? "multi-select-listbox-closing" : "multi-select-listbox-open"}`}
+            className={`multi-select-listbox multi-select-listbox--scroll-body ${isClosing ? "multi-select-listbox-closing" : "multi-select-listbox-open"}`}
             onKeyDown={onListboxKeyDown}
             onMouseDown={(e) => e.stopPropagation()}
             tabIndex={-1}
@@ -225,6 +249,39 @@ export function MultiSelectFilter({
               aria-label={`Buscar en ${label}`}
               className="multi-select-search input-heroui-tokens"
             />
+            <div
+              className="multi-select-bulk"
+              role="toolbar"
+              aria-label={`Selección masiva en ${label}`}
+            >
+              <button
+                type="button"
+                className="multi-select-bulk-btn"
+                disabled={filtered.length === 0 || allFilteredSelected}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  selectAllVisible();
+                }}
+              >
+                Seleccionar todo
+              </button>
+              <span className="multi-select-bulk-sep" aria-hidden>
+                ·
+              </span>
+              <button
+                type="button"
+                className="multi-select-bulk-btn"
+                disabled={selected.length === 0}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deselectAll();
+                }}
+              >
+                Deseleccionar todo
+              </button>
+            </div>
             <div className="multi-select-options">
               {filtered.map((v, idx) => (
                 <button

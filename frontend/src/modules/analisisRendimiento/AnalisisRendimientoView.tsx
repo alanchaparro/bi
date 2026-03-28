@@ -3,6 +3,7 @@ import { Button } from '@heroui/react'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
 import { FloatingQuickFilters } from '../../components/filters/FloatingQuickFilters'
 import { SegmentedControl } from '../../components/filters/SegmentedControl'
+import { ViaSegmentedOrMulti } from '../../components/filters/ViaSegmentedOrMulti'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
 import { AnalyticsMetaBadges } from '../../components/analytics/AnalyticsMetaBadges'
@@ -986,21 +987,19 @@ export function AnalisisRendimientoView() {
               onChange={(values) => setFilters((prev) => ({ ...prev, tramos: values }))}
               placeholder="Todos"
             />
-            <MultiSelectFilter
+            <ViaSegmentedOrMulti
               className="analysis-filter-control"
               label="Vía de cobro"
               options={options.viasCobro}
               selected={filters.viasCobro}
               onChange={(values) => setFilters((prev) => ({ ...prev, viasCobro: values }))}
-              placeholder="Todas"
             />
-            <MultiSelectFilter
+            <ViaSegmentedOrMulti
               className="analysis-filter-control"
               label="Vía de pago"
               options={options.viasPago}
               selected={filters.viasPago}
               onChange={(values) => setFilters((prev) => ({ ...prev, viasPago: values }))}
-              placeholder="Todas"
             />
             <SegmentedControl
               className="analysis-filter-control"
@@ -1291,13 +1290,12 @@ export function AnalisisRendimientoView() {
           />
         ) : (
           <>
-            <MultiSelectFilter
+            <ViaSegmentedOrMulti
               className="analysis-filter-control"
               label="Vía de cobro"
               options={options.viasCobro}
               selected={floatViasCobro}
               onChange={setFloatViasCobro}
-              placeholder="Todas"
             />
             <SegmentedControl
               className="analysis-filter-control"
