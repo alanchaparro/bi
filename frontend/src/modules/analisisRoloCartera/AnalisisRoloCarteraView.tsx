@@ -235,26 +235,33 @@ export function AnalisisRoloCarteraView() {
         pill="Analytics v2"
         title="Rolo de cartera"
         subtitle="Conciliación del vigente entre cierre actual y cierre anterior para detectar qué KPI explicó el movimiento neto."
-        meta={<AnalyticsMetaBadges meta={summaryData?.meta || optionsData?.meta} />}
-      />
-      <MetricExplainer
-        items={[
-          {
-            label: "Fórmula del rolo",
-            formula: "vigente final = vigente inicial + ventas + recuperados - culminados - caídos",
-            note: "Se compara el cierre analizado contra el cierre inmediatamente anterior.",
-          },
-          {
-            label: "Ventas nuevas",
-            formula: "contract_month = cierre analizado",
-            note: "Ejemplo: para 02/2026, ventas nuevas son todos los contratos con fecha de contrato 02/2026.",
-          },
-          {
-            label: "Culminados vigentes",
-            formula: "vigentes del cierre anterior que culminaron en el cierre analizado",
-            note: "Salen de la cartera vigente base del rolo.",
-          },
-        ]}
+        meta={
+          <div className="analysis-meta-row--with-info">
+            <div className="analysis-meta-chips-cluster">
+              <AnalyticsMetaBadges meta={summaryData?.meta || optionsData?.meta} embed />
+            </div>
+            <MetricExplainer
+              className="metric-explainer--meta-trailing"
+              items={[
+                {
+                  label: "Fórmula del rolo",
+                  formula: "vigente final = vigente inicial + ventas + recuperados - culminados - caídos",
+                  note: "Se compara el cierre analizado contra el cierre inmediatamente anterior.",
+                },
+                {
+                  label: "Ventas nuevas",
+                  formula: "contract_month = cierre analizado",
+                  note: "Ejemplo: para 02/2026, ventas nuevas son todos los contratos con fecha de contrato 02/2026.",
+                },
+                {
+                  label: "Culminados vigentes",
+                  formula: "vigentes del cierre anterior que culminaron en el cierre analizado",
+                  note: "Salen de la cartera vigente base del rolo.",
+                },
+              ]}
+            />
+          </div>
+        }
       />
       <div className="rendimiento-filters-panel">
         <div className="analysis-filters-grid">

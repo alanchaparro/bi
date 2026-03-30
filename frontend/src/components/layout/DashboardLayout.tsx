@@ -3,8 +3,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Button } from "@heroui/react";
+import { Button, Popover } from "@heroui/react";
 import { useAuth } from "@/app/providers";
+import type { LoginResponse } from "@/shared/contracts";
 import { NAV_ITEMS, type NavItem } from "@/config/routes";
 import { LoadingState } from "@/components/feedback/LoadingState";
 import { applyThemePreset, getStoredThemePresetId, getThemePresetById } from "@/shared/themePresets";
@@ -56,6 +57,35 @@ function groupNavItems(items: readonly NavItem[]) {
   return map;
 }
 
+function formatRoleLabel(role: string | null | undefined): string {
+  const r = (role ?? "").trim();
+  if (!r) return "Usuario";
+  const key = r.toLowerCase().replace(/\s+/g, "_");
+  const map: Record<string, string> = {
+    admin: "Administrador",
+    administrator: "Administrador",
+    supervisor: "Supervisor",
+    analyst: "Analista",
+    viewer: "Consulta",
+    read_only: "Solo lectura",
+  };
+  if (map[key]) return map[key];
+  return r
+    .replace(/_/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function roleInitials(role: string | null | undefined): string {
+  const label = formatRoleLabel(role);
+  const parts = label.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+  if (parts.length === 1 && parts[0].length >= 2) return parts[0].slice(0, 2).toUpperCase();
+  return "U";
+}
+
 /** Permisos `nav:<id>` vienen del backend; si no hay ninguno (tokens viejos), se muestra todo el menú. */
 function filterNavByPermissions(permissions: string[] | undefined): NavItem[] {
   const list = permissions ?? [];
@@ -85,106 +115,54 @@ function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-const SIDEBAR_ICON_SIZE = 20;
-function SidebarIcon({ id }: { id: string }) {
-  const common = {
-    width: SIDEBAR_ICON_SIZE,
-    height: SIDEBAR_ICON_SIZE,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 2,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
-  if (id === "cartera") {
-    return (
-      <svg {...common} aria-hidden>
-        <rect x="3" y="4" width="18" height="6" rx="1.5" />
-        <rect x="3" y="14" width="8" height="7" rx="1.5" />
-        <rect x="13" y="14" width="8" height="7" rx="1.5" />
-      </svg>
-    );
-  }
-  if (id === "analisisCartera") {
-    return (
-      <svg {...common} aria-hidden>
-        <rect x="3" y="3" width="7" height="7" />
-        <rect x="14" y="3" width="7" height="7" />
-        <rect x="14" y="14" width="7" height="7" />
-        <rect x="3" y="14" width="7" height="7" />
-      </svg>
-    );
-  }
-  if (id === "analisisCarteraAnuales") {
-    return (
-      <svg {...common} aria-hidden>
-        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-        <line x1="16" y1="2" x2="16" y2="6" />
-        <line x1="8" y1="2" x2="8" y2="6" />
-        <line x1="3" y1="10" x2="21" y2="10" />
-      </svg>
-    );
-  }
-  if (id === "analisisCarteraRendimiento") {
-    return (
-      <svg {...common} aria-hidden>
-        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
-        <polyline points="17 6 23 6 23 12" />
-      </svg>
-    );
-  }
-  if (id === "analisisCobranzaCohorte") {
-    return (
-      <svg {...common} aria-hidden>
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-      </svg>
-    );
-  }
-  if (id === "config") {
-    return (
-      <svg {...common} aria-hidden>
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-      </svg>
-    );
-  }
+/** Glifos Material Symbols por id de nav (color hereda del tema vía currentColor). */
+const SIDEBAR_MATERIAL_ICON: Record<string, string> = {
+  cartera: "dashboard",
+  analisisCartera: "monitoring",
+  roloCartera: "swap_horiz",
+  analisisCarteraAnuales: "calendar_month",
+  analisisCarteraRendimiento: "trending_up",
+  analisisCobranzaCohorte: "account_balance_wallet",
+  config: "settings",
+};
+
+function SidebarMaterialIcon({ id, active, size = "md" }: { id: string; active?: boolean; size?: "md" | "sm" }) {
+  const glyph = SIDEBAR_MATERIAL_ICON[id] ?? "dashboard";
   return (
-    <svg {...common} aria-hidden>
-      <circle cx="12" cy="12" r="10" />
-      <line x1="12" y1="16" x2="12" y2="12" />
-      <line x1="12" y1="8" x2="12.01" y2="8" />
-    </svg>
+    <span
+      className={`material-symbols-outlined dashboard-sidebar-ms-icon ${size === "sm" ? "dashboard-sidebar-ms-icon--sm" : ""} ${active ? "dashboard-sidebar-ms-icon--active" : ""}`}
+      aria-hidden
+    >
+      {glyph}
+    </span>
   );
 }
 
-function ThemeIcon({ isDark }: { isDark: boolean }) {
-  const size = 20;
-  const common = {
-    width: size,
-    height: size,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 2,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
-  if (isDark) {
-    return (
-      <svg {...common} aria-hidden>
-        <circle cx="12" cy="12" r="4" />
-        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-      </svg>
-    );
-  }
+/** Modo oscuro → icono sol (pasar a claro); modo claro → icono luna (pasar a oscuro). */
+function SidebarThemeToggleIcon({ isDark }: { isDark: boolean }) {
   return (
-    <svg {...common} aria-hidden>
-      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-    </svg>
+    <span className="material-symbols-outlined dashboard-sidebar-action-ms" aria-hidden>
+      {isDark ? "light_mode" : "dark_mode"}
+    </span>
+  );
+}
+
+function SidebarLogoutMaterialIcon() {
+  return (
+    <span className="material-symbols-outlined dashboard-sidebar-action-ms" aria-hidden>
+      logout
+    </span>
+  );
+}
+
+function SidebarAccountMaterialIcon() {
+  return (
+    <span
+      className="material-symbols-outlined dashboard-sidebar-action-ms dashboard-sidebar-action-ms--filled"
+      aria-hidden
+    >
+      account_circle
+    </span>
   );
 }
 
@@ -213,6 +191,216 @@ function CloseIcon() {
       <line x1="18" y1="6" x2="6" y2="18" />
       <line x1="6" y1="6" x2="18" y2="18" />
     </svg>
+  );
+}
+
+function SidebarBrandMark() {
+  return (
+    <div className="dashboard-sidebar-brand-mark" aria-hidden>
+      <span className="material-symbols-outlined dashboard-sidebar-brand-ms-icon">insights</span>
+    </div>
+  );
+}
+
+type SidebarToolbarProps = {
+  auth: { role?: string | null };
+  themePresetId: string;
+  onToggleTheme: () => void;
+  onLogout: () => void;
+  className?: string;
+};
+
+function SidebarUserToolbar({ auth, themePresetId, onToggleTheme, onLogout, className = "" }: SidebarToolbarProps) {
+  const isDark = getThemePresetById(themePresetId).mode === "dark";
+  return (
+    <div className={`dashboard-sidebar-toolbar flex flex-wrap items-center justify-end gap-1.5 ${className}`.trim()}>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        isIconOnly
+        aria-label={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+        onPress={onToggleTheme}
+        className="min-h-9 min-w-9 shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+      >
+        <SidebarThemeToggleIcon isDark={isDark} />
+      </Button>
+      <Popover.Root>
+        <Popover.Trigger>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            isIconOnly
+            aria-label="Menú de usuario: rol y cerrar sesión"
+            aria-haspopup="dialog"
+            className="min-h-9 min-w-9 shrink-0 border-[var(--sidebar-border)] text-[var(--color-primary)]"
+          >
+            <SidebarAccountMaterialIcon />
+          </Button>
+        </Popover.Trigger>
+        <Popover.Content placement="bottom end" offset={6} className="dashboard-user-popover-content">
+          <Popover.Dialog className="dashboard-user-popover-dialog">
+            <p className="dashboard-user-popover-role text-xs text-[var(--color-text-muted)]">
+              Rol: <strong className="text-[var(--color-text)]">{auth.role ?? "—"}</strong>
+            </p>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              className="mt-2 w-full min-h-9 gap-1.5"
+              onPress={onLogout}
+            >
+              <span className="material-symbols-outlined dashboard-sidebar-action-ms text-[1.125rem] text-inherit" aria-hidden>
+                logout
+              </span>
+              Cerrar sesión
+            </Button>
+          </Popover.Dialog>
+        </Popover.Content>
+      </Popover.Root>
+    </div>
+  );
+}
+
+type SidebarUserCardProps = {
+  auth: LoginResponse;
+  themePresetId: string;
+  onToggleTheme: () => void;
+  onLogout: () => void;
+};
+
+function SidebarUserCard({ auth, themePresetId, onToggleTheme, onLogout }: SidebarUserCardProps) {
+  const isDark = getThemePresetById(themePresetId).mode === "dark";
+  const rawRole = auth.role?.trim() ?? "";
+  const displayName = formatRoleLabel(auth.role);
+  const initials = roleInitials(auth.role);
+  return (
+    <div className="dashboard-sidebar-user-card" data-testid="sidebar-user-card">
+      <div className="dashboard-sidebar-user-avatar-wrap">
+        <div className="dashboard-sidebar-user-avatar" aria-hidden>
+          {initials}
+        </div>
+        <span className="dashboard-sidebar-user-status" title="Sesión activa" aria-hidden />
+      </div>
+      <div className="dashboard-sidebar-user-meta">
+        <div className="dashboard-sidebar-user-name" title={displayName}>
+          {displayName}
+        </div>
+        <div className="dashboard-sidebar-user-role" title={rawRole || undefined}>
+          {rawRole || "Sin rol asignado"}
+        </div>
+      </div>
+      <div className="dashboard-sidebar-user-actions">
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          isIconOnly
+          aria-label={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+          onPress={onToggleTheme}
+          className="min-h-9 min-w-9 shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+        >
+          <SidebarThemeToggleIcon isDark={isDark} />
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          isIconOnly
+          aria-label="Cerrar sesión"
+          data-testid="sidebar-logout"
+          onPress={onLogout}
+          className="min-h-9 min-w-9 shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-error)]"
+        >
+          <SidebarLogoutMaterialIcon />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+type LivePillsProps = {
+  showSchedule: boolean;
+  showSync: boolean;
+  schedulePct: number;
+  syncPct: number;
+  syncTone: string;
+  syncLive: SyncLive | null;
+  headerLiveLabel: string;
+  canOpenConfigNav: boolean;
+};
+
+function SidebarLivePills({
+  showSchedule,
+  showSync,
+  schedulePct,
+  syncPct,
+  syncTone,
+  syncLive,
+  headerLiveLabel,
+  canOpenConfigNav,
+}: LivePillsProps) {
+  if (!showSchedule && !showSync) return null;
+  return (
+    <div className="dashboard-sidebar-live-pills" role="group" aria-label="Estado de sincronización">
+      {showSchedule &&
+        (canOpenConfigNav ? (
+          <Link
+            href="/config"
+            className="header-pill header-pill--warn max-w-full justify-center text-[0.65rem] leading-tight"
+            title={`Actualizacion en progreso ${schedulePct > 0 ? `(${schedulePct}%)` : ""}`}
+          >
+            <span>Prog.</span>
+            <span>{schedulePct}%</span>
+          </Link>
+        ) : (
+          <span
+            className="header-pill header-pill--warn max-w-full cursor-default justify-center text-[0.65rem] leading-tight"
+            title={`Programación en curso (${schedulePct}%). Sin acceso a Configuración en el menú.`}
+          >
+            <span>Prog.</span>
+            <span>{schedulePct}%</span>
+          </span>
+        ))}
+      {showSync &&
+        (canOpenConfigNav ? (
+          <Link
+            href="/config"
+            className={`header-pill max-w-full justify-center text-[0.65rem] leading-tight ${
+              syncTone === "error"
+                ? "header-pill--error"
+                : syncTone === "ok"
+                  ? "header-pill--ok"
+                  : syncTone === "warn"
+                    ? "header-pill--warn"
+                    : "header-pill--info"
+            }`}
+            title={`${syncLive?.message ?? "Sincronizando..."} | ${syncPct}% | ${headerLiveLabel}`}
+          >
+            <span>{syncPct}%</span>
+            <span className="max-w-[4.5rem] truncate">{String(syncLive?.currentDomain ?? "-")}</span>
+            <span className="opacity-90">{headerLiveLabel}</span>
+          </Link>
+        ) : (
+          <span
+            className={`header-pill max-w-full cursor-default justify-center text-[0.65rem] leading-tight ${
+              syncTone === "error"
+                ? "header-pill--error"
+                : syncTone === "ok"
+                  ? "header-pill--ok"
+                  : syncTone === "warn"
+                    ? "header-pill--warn"
+                    : "header-pill--info"
+            }`}
+            title={`${syncLive?.message ?? "Sincronizando..."} | ${syncPct}% | Sin acceso a Configuración en el menú.`}
+          >
+            <span>{syncPct}%</span>
+            <span className="max-w-[4.5rem] truncate">{String(syncLive?.currentDomain ?? "-")}</span>
+            <span className="opacity-90">{headerLiveLabel}</span>
+          </span>
+        ))}
+    </div>
   );
 }
 
@@ -331,23 +519,58 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           sidebarOpen ? "translate-x-0 lg:translate-x-0" : "-translate-x-full lg:-translate-x-full"
         }`}
       >
-        <div className="dashboard-sidebar-mobile-header flex items-center justify-between px-4 py-2 lg:hidden">
-          <strong className="text-sm font-semibold text-[var(--color-text)]">Menú</strong>
-          <Button
-            isIconOnly
-            variant="ghost"
-            size="sm"
-            aria-label="Cerrar menú"
-            onPress={() => setSidebarOpen(false)}
-            className="text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-          >
-            <CloseIcon />
-          </Button>
+        <div className="dashboard-sidebar-mobile-header flex flex-col gap-2 px-3 py-2 lg:hidden">
+          <div className="flex items-center justify-between gap-2">
+            <strong className="text-sm font-semibold text-[var(--color-text)]">Menú</strong>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <SidebarUserToolbar
+                auth={auth}
+                themePresetId={themePresetId}
+                onToggleTheme={toggleTheme}
+                onLogout={logout}
+              />
+              <Button
+                isIconOnly
+                variant="ghost"
+                size="sm"
+                aria-label="Cerrar menú"
+                onPress={() => setSidebarOpen(false)}
+                className="text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+              >
+                <CloseIcon />
+              </Button>
+            </div>
+          </div>
+          <SidebarLivePills
+            showSchedule={showSchedule}
+            showSync={showSync}
+            schedulePct={schedulePct}
+            syncPct={syncPct}
+            syncTone={syncTone}
+            syncLive={syncLive}
+            headerLiveLabel={headerLiveLabel}
+            canOpenConfigNav={canOpenConfigNav}
+          />
         </div>
-        <div className="dashboard-sidebar-brand hidden lg:block">
-          <div className="dashboard-sidebar-brand-kicker">Navegación</div>
-          <div className="dashboard-sidebar-brand-title">EPEM</div>
-          <div className="dashboard-sidebar-brand-note">Accesos principales del frente analítico.</div>
+        <div className="dashboard-sidebar-brand">
+          <div className="dashboard-sidebar-brand-head">
+            <SidebarBrandMark />
+            <div className="dashboard-sidebar-brand-text">
+              <h1 className="dashboard-sidebar-brand-h1">EPEM · Cartera de Cobranzas</h1>
+              <div className="dashboard-sidebar-brand-premium">Motor analítico</div>
+            </div>
+          </div>
+          <div className="dashboard-sidebar-brand-note">Indicadores y cortes alineados a gestión.</div>
+          <SidebarLivePills
+            showSchedule={showSchedule}
+            showSync={showSync}
+            schedulePct={schedulePct}
+            syncPct={syncPct}
+            syncTone={syncTone}
+            syncLive={syncLive}
+            headerLiveLabel={headerLiveLabel}
+            canOpenConfigNav={canOpenConfigNav}
+          />
         </div>
         <nav className="dashboard-sidebar-nav flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-2" aria-label="Menú principal">
           {Array.from(groups.entries()).map(([groupName, items]) => (
@@ -370,7 +593,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                         data-testid={item.id === "config" ? "nav-config" : isRendimiento ? "nav-rendimiento-cartera" : undefined}
                       >
                         <span className="dashboard-sidebar-link-icon" aria-hidden>
-                          <SidebarIcon id={item.id} />
+                          <SidebarMaterialIcon id={item.id} active={isActive} />
                         </span>
                         <span className="dashboard-sidebar-link-text">{item.label}</span>
                       </Link>
@@ -388,7 +611,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                                 aria-label={child.label}
                                 title={child.label}
                               >
-                                <span className="dashboard-sidebar-sublink-dot" aria-hidden />
+                                <span className="dashboard-sidebar-sublink-icon-wrap" aria-hidden>
+                                  <SidebarMaterialIcon id={child.id} active={isChildActive} size="sm" />
+                                </span>
                                 <span className="dashboard-sidebar-sublink-text">{child.label}</span>
                               </Link>
                             );
@@ -402,116 +627,45 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </div>
           ))}
         </nav>
-        <div className="dashboard-sidebar-footer hidden shrink-0 lg:block">
-          <Button
-            variant="outline"
-            size="sm"
-            className="dashboard-sidebar-collapse-btn border-[var(--sidebar-border)] text-[var(--color-text)] hover:bg-[var(--sidebar-hover-bg)]"
-            aria-label="Colapsar menú lateral"
-            data-testid="sidebar-collapse-in-panel"
-            onPress={() => setSidebarOpen(false)}
-          >
-            <span className="inline-flex w-full items-center justify-start gap-2">
-              <ChevronLeftIcon />
-              <span>Colapsar menú</span>
-            </span>
-          </Button>
+        <div className="dashboard-sidebar-bottom mt-auto hidden shrink-0 flex-col lg:flex">
+          <div className="dashboard-sidebar-user-wrap">
+            <SidebarUserCard auth={auth} themePresetId={themePresetId} onToggleTheme={toggleTheme} onLogout={logout} />
+          </div>
+          <div className="dashboard-sidebar-footer">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="dashboard-sidebar-collapse-btn"
+              aria-label="Colapsar menú lateral"
+              data-testid="sidebar-collapse-in-panel"
+              onPress={() => setSidebarOpen(false)}
+            >
+              <span className="inline-flex w-full items-center justify-start gap-2">
+                <ChevronLeftIcon />
+                <span>Colapsar menú</span>
+              </span>
+            </Button>
+          </div>
         </div>
       </aside>
       <div
         className={`dashboard-shell min-h-screen overflow-x-visible transition-[padding-left] duration-300 ease-out ${sidebarOpen ? "dashboard-shell--with-sidebar" : "dashboard-shell--without-sidebar"}`}
       >
-        <div className="dashboard-header dashboard-header--full sticky top-0 z-[140] border-b border-[var(--glass-border)] bg-[var(--card-bg)]/95 px-2.5 py-1.5 backdrop-blur-xl lg:px-4">
-          <div className="dashboard-header-shell">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <Button
-                isIconOnly
-                variant="outline"
-                size="md"
-                className="dashboard-toggle-button min-h-[var(--touch-min)] min-w-[var(--touch-min)] shrink-0"
-                aria-label={sidebarOpen ? "Cerrar menú lateral" : "Abrir menú lateral"}
-                aria-expanded={sidebarOpen}
-                data-testid="sidebar-toggle"
-                onPress={() => setSidebarOpen((open) => !open)}
-              >
-                {sidebarOpen ? <ChevronLeftIcon /> : <HamburgerIcon />}
-              </Button>
-              <div className="dashboard-brand-block">
-                <span className="dashboard-brand-kicker">Panel operativo</span>
-                <h1 className="dashboard-brand-title">EPEM - Cartera de Cobranzas</h1>
-              </div>
-            </div>
-            <div className="dashboard-header-actions text-xs text-[var(--text-secondary)]">
-              <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Estado de sincronización">
-                {showSchedule &&
-                  (canOpenConfigNav ? (
-                    <Link
-                      href="/config"
-                      className="header-pill header-pill--warn"
-                      title={`Actualizacion en progreso ${schedulePct > 0 ? `(${schedulePct}%)` : ""}`}
-                    >
-                      <span>Prog.</span>
-                      <span>{schedulePct}%</span>
-                    </Link>
-                  ) : (
-                    <span
-                      className="header-pill header-pill--warn cursor-default"
-                      title={`Programación en curso (${schedulePct}%). Sin acceso a Configuración en el menú.`}
-                    >
-                      <span>Prog.</span>
-                      <span>{schedulePct}%</span>
-                    </span>
-                  ))}
-                {showSync &&
-                  (canOpenConfigNav ? (
-                    <Link
-                      href="/config"
-                      className={`header-pill ${
-                        syncTone === "error" ? "header-pill--error" : syncTone === "ok" ? "header-pill--ok" : syncTone === "warn" ? "header-pill--warn" : "header-pill--info"
-                      }`}
-                      title={`${syncLive?.message ?? "Sincronizando..."} | ${syncPct}% | ${headerLiveLabel}`}
-                    >
-                      <span>{syncPct}%</span>
-                      <span className="max-w-20 truncate">{String(syncLive?.currentDomain ?? "-")}</span>
-                      <span className="text-xs opacity-90">{headerLiveLabel}</span>
-                    </Link>
-                  ) : (
-                    <span
-                      className={`header-pill cursor-default ${
-                        syncTone === "error" ? "header-pill--error" : syncTone === "ok" ? "header-pill--ok" : syncTone === "warn" ? "header-pill--warn" : "header-pill--info"
-                      }`}
-                      title={`${syncLive?.message ?? "Sincronizando..."} | ${syncPct}% | Sin acceso a Configuración en el menú.`}
-                    >
-                      <span>{syncPct}%</span>
-                      <span className="max-w-20 truncate">{String(syncLive?.currentDomain ?? "-")}</span>
-                      <span className="text-xs opacity-90">{headerLiveLabel}</span>
-                    </span>
-                  ))}
-              </div>
-              {(showSchedule || showSync) ? <span className="hidden h-4 w-px bg-[var(--glass-border)] md:block" aria-hidden /> : null}
-              <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Usuario y acciones">
-                <span>
-                  Rol: <strong className="text-[var(--text-primary)]">{auth.role ?? "-"}</strong>
-                </span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  isIconOnly
-                  aria-label={getThemePresetById(themePresetId).mode === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-                  onPress={toggleTheme}
-                  className="min-h-[var(--touch-min)] min-w-[var(--touch-min)]"
-                >
-                  <ThemeIcon isDark={getThemePresetById(themePresetId).mode === "dark"} />
-                </Button>
-                <Button type="button" variant="outline" size="sm" onPress={logout} className="min-h-[var(--touch-min)]">
-                  Cerrar sesión
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <main className="dashboard-main-content overflow-x-auto px-2.5 pb-6 pt-3 lg:px-3 lg:pt-4 xl:px-4 xl:pt-5">
+        <Button
+          isIconOnly
+          variant="outline"
+          size="md"
+          className={`dashboard-fab-sidebar-toggle fixed top-3 z-[160] min-h-[var(--touch-min)] min-w-[var(--touch-min)] shrink-0 border border-[var(--glass-border)] bg-[var(--card-bg)]/95 shadow-md backdrop-blur-md ${
+            sidebarOpen ? "max-lg:hidden max-lg:pointer-events-none lg:left-[calc(var(--sidebar-width)+0.75rem)]" : "left-3"
+          }`}
+          aria-label={sidebarOpen ? "Cerrar menú lateral" : "Abrir menú lateral"}
+          aria-expanded={sidebarOpen}
+          data-testid="sidebar-toggle"
+          onPress={() => setSidebarOpen((open) => !open)}
+        >
+          {sidebarOpen ? <ChevronLeftIcon /> : <HamburgerIcon />}
+        </Button>
+        <main className="dashboard-main-content overflow-x-auto px-2.5 pb-6 pt-14 lg:px-3 lg:pt-5 xl:px-4 xl:pt-6">
           <div className="container-main dashboard-page-enter">{children}</div>
         </main>
       </div>

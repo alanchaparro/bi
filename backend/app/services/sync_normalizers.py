@@ -4,7 +4,17 @@ import hashlib
 import json
 from datetime import date, datetime, timezone
 
-from app.domain import add_months, canonical_via, categoria_from_tramo, month_from_any, monto_a_cobrar, normalize_month, tramo_from_cuotas_vencidas
+from app.domain import (
+    add_months,
+    canonical_via,
+    categoria_from_tramo,
+    month_from_any,
+    monto_a_cobrar,
+    monto_vencido_para_monto_a_cobrar,
+    normalize_month,
+    payload_coalesce_numeric,
+    tramo_from_cuotas_vencidas,
+)
 
 BUSINESS_KEY_FIELDS = ["domain", "contract_id", "gestion_month", "supervisor", "un", "via", "tramo"]
 
@@ -212,8 +222,13 @@ def fact_row_from_normalized(domain: str, normalized: dict) -> dict:
     }
 
     if domain == "cartera":
-        cuota_amount = _to_float(payload.get("monto_cuota") or payload.get("cuota"))
-        monto_vencido = _to_float(payload.get("monto_vencido") or payload.get("expired_amount") or payload.get("capital_vencido"))
+        mc_raw = payload_coalesce_numeric(payload, "monto_cuota", "cuota")
+        cuota_amount = _to_float(mc_raw)
+        mv_raw = payload_coalesce_numeric(payload, "monto_vencido", "expired_amount", "capital_vencido")
+        monto_vencido_raw = _to_float(mv_raw)
+        cv_raw = payload_coalesce_numeric(payload, "cuotas_vencidas", "quotas_expirations")
+        plazo_cuotas = payload_coalesce_numeric(payload, "periodo_cuotas", "quotas_amount")
+        monto_vencido = monto_vencido_para_monto_a_cobrar(cv_raw, monto_vencido_raw, cuota_amount, plazo_cuotas)
         _ = monto_a_cobrar(monto_vencido, cuota_amount)
         return {
             **base,

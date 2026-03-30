@@ -487,31 +487,21 @@ export function AnalisisCobranzasCohorteView() {
   const cierreBase = monthMinusOne(gestionBase)
 
   const metaCohorte = (
-    <>
-      <AnalyticsMetaBadges meta={summary?.meta} />
-      {summary?.cutoff_month ? (
-        <span className="analysis-meta-chip">Corte de cobranza: <strong>{summary.cutoff_month}</strong></span>
-      ) : null}
-      {gestionBase ? (
-        <span className="analysis-meta-chip">
-          Gestion usada: <strong>{gestionBase}</strong>
-          {cierreBase ? <> (Cierre base: <strong>{cierreBase}</strong>)</> : null}
-        </span>
-      ) : null}
-    </>
-  )
-
-  return (
-    <section className="analysis-card-wrap">
-      <Card className="cohorte-panel-root analysis-panel-card border border-[var(--color-border)] shadow-lg overflow-visible p-6">
-        <AnalyticsPageHeader
-        kicker="COHORTE"
-        pill="Analytics v2"
-        title="Analisis de cobranzas por corte"
-        subtitle="Cobro del corte seleccionado, segmentado por mes o año de venta y alineado a la gestion operativa."
-        meta={metaCohorte}
-      />
+    <div className="analysis-meta-row--with-info">
+      <div className="analysis-meta-chips-cluster">
+        <AnalyticsMetaBadges meta={summary?.meta} embed />
+        {summary?.cutoff_month ? (
+          <span className="analysis-meta-chip">Corte de cobranza: <strong>{summary.cutoff_month}</strong></span>
+        ) : null}
+        {gestionBase ? (
+          <span className="analysis-meta-chip">
+            Gestion usada: <strong>{gestionBase}</strong>
+            {cierreBase ? <> (Cierre base: <strong>{cierreBase}</strong>)</> : null}
+          </span>
+        ) : null}
+      </div>
       <MetricExplainer
+        className="metric-explainer--meta-trailing"
         items={[
           {
             label: "Corte y gestion",
@@ -529,6 +519,19 @@ export function AnalisisCobranzasCohorteView() {
             note: "Sigue la efectividad por cantidad de contratos dentro del corte seleccionado.",
           },
         ]}
+      />
+    </div>
+  )
+
+  return (
+    <section className="analysis-card-wrap">
+      <Card className="cohorte-panel-root analysis-panel-card border border-[var(--color-border)] shadow-lg overflow-visible p-6">
+        <AnalyticsPageHeader
+        kicker="COHORTE"
+        pill="Analytics v2"
+        title="Analisis de cobranzas por corte"
+        subtitle="Cobro del corte seleccionado, segmentado por mes o año de venta y alineado a la gestion operativa."
+        meta={metaCohorte}
       />
 
       {loadingOptions ? (

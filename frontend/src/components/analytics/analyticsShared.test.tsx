@@ -4,9 +4,35 @@ import { AnalyticsMetaBadges } from './AnalyticsMetaBadges'
 import { MetricExplainer } from './MetricExplainer'
 import { ChartSection } from './ChartSection'
 
-vi.mock('@heroui/react', () => ({
-  Text: ({ children, ...props }: any) => <span {...props}>{children}</span>,
-}))
+vi.mock('@heroui/react', () => {
+  const React = require('react')
+  const Btn = ({ children, isIconOnly: _io, ...props }: any) => (
+    <button type="button" {...props}>
+      {children}
+    </button>
+  )
+  const PopoverRoot = ({ children }: any) => <div data-testid="popover-root">{children}</div>
+  const PopoverTrigger = ({ children, ...rest }: any) => (
+    <div data-testid="popover-trigger" {...rest}>
+      {children}
+    </div>
+  )
+  const PopoverContent = ({ children }: any) => <div data-testid="popover-content">{children}</div>
+  const PopoverDialog = ({ children }: any) => <div>{children}</div>
+  const PopoverHeading = ({ children, ...rest }: any) => <h3 {...rest}>{children}</h3>
+  const Popover = Object.assign(PopoverRoot, {
+    Root: PopoverRoot,
+    Trigger: PopoverTrigger,
+    Content: PopoverContent,
+    Dialog: PopoverDialog,
+    Heading: PopoverHeading,
+  })
+  return {
+    Text: ({ children, ...props }: any) => <span {...props}>{children}</span>,
+    Button: Btn,
+    Popover,
+  }
+})
 
 describe('analytics shared components', () => {
   it('renders analytics metadata badges when meta is available', () => {
@@ -41,7 +67,9 @@ describe('analytics shared components', () => {
       />,
     )
 
-    expect(screen.getByText('Definiciones operativas')).toBeTruthy()
+    expect(
+      screen.getByRole('button', { name: /definiciones operativas.*ver definiciones/i }),
+    ).toBeTruthy()
     expect(screen.getByText('LTV')).toBeTruthy()
     expect(screen.getByText('cobrado / deberia_cobrar')).toBeTruthy()
     expect(screen.getByText('Mide lo cobrado frente a lo esperado.')).toBeTruthy()

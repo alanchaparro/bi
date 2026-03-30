@@ -212,26 +212,33 @@ export function AnalisisAnualesView() {
         pill="Analytics v2"
         title="Analisis anuales"
         subtitle="Resumen anual por cierre de gestion con TKP, culminados y LTV."
-        meta={<AnalyticsMetaBadges meta={summary?.meta} />}
-      />
-      <MetricExplainer
-        items={[
-          {
-            label: "LTV",
-            formula: "cobrado / deberia_cobrar",
-            note: "Se usa siempre la sigla LTV para el seguimiento de lo cobrado vs lo que se deberia cobrar.",
-          },
-          {
-            label: "Corte anual",
-            formula: "gestion_month = cierre + 1 mes",
-            note: "El resumen anual se interpreta con el mismo calendario operativo de gestion.",
-          },
-          {
-            label: "Culminados vigentes",
-            formula: "tramo 0..3",
-            note: "La categoria vigente sigue la regla de tramo definida por negocio.",
-          },
-        ]}
+        meta={
+          <div className="analysis-meta-row--with-info">
+            <div className="analysis-meta-chips-cluster">
+              <AnalyticsMetaBadges meta={summary?.meta} embed />
+            </div>
+            <MetricExplainer
+              className="metric-explainer--meta-trailing"
+              items={[
+                {
+                  label: "LTV",
+                  formula: "cobrado / deberia_cobrar",
+                  note: "Se usa siempre la sigla LTV para el seguimiento de lo cobrado vs lo que se deberia cobrar.",
+                },
+                {
+                  label: "Corte anual",
+                  formula: "gestion_month = cierre + 1 mes",
+                  note: "El resumen anual se interpreta con el mismo calendario operativo de gestion.",
+                },
+                {
+                  label: "Culminados vigentes",
+                  formula: "tramo 0..3",
+                  note: "La categoria vigente sigue la regla de tramo definida por negocio.",
+                },
+              ]}
+            />
+          </div>
+        }
       />
 
       {loadingOptions ? (

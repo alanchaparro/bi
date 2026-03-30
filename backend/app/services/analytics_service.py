@@ -14,7 +14,14 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.domain import category_expr_for_tramo, latest_month, month_from_any, month_serial, normalize_tramo
+from app.domain import (
+    category_expr_for_tramo,
+    deberia_cartera_from_payload,
+    latest_month,
+    month_from_any,
+    month_serial,
+    normalize_tramo,
+)
 from app.models.brokers import (
     AnalyticsContractSnapshot,
     AnalyticsSourceFreshness,
@@ -46,7 +53,7 @@ from app.schemas.analytics import (
 _COHORTE_BASE_CACHE_TTL_SEC = 900
 _COHORTE_BASE_CACHE: dict[str, tuple[float, list[dict]]] = {}
 _COHORTE_BASE_CACHE_LOCK = Lock()
-ANALYTICS_PIPELINE_VERSION = '2026.03.v2'
+ANALYTICS_PIPELINE_VERSION = '2026.03.v4'
 STANDARD_GESTION_CALENDAR_START = '01/2021'
 STANDARD_CONTRACT_CALENDAR_START = '01/2014'
 
@@ -1211,6 +1218,21 @@ class AnalyticsService:
         return orphan_cobrado, orphan_tx, orphan_pagaron
 
     @staticmethod
+    def _cohorte_align_totals_deberia_with_by_tramo(totals: dict, by_tramo: dict[str, dict]) -> dict:
+        """
+        Las tarjetas/KPIs tomaban `deberia` del preagg (cobranzas_cohorte_agg), que suma
+        columna `monto_vencido` aunque el extracto aún no se haya refrescado.
+        La tabla por tramo recalcula con AGENTS 5.1 (`deberia_cartera_from_payload`).
+        Alinear totales de cabecera con la suma de by_tramo para mismos filtros.
+        """
+        if not by_tramo:
+            return totals
+        live = sum(float(v.get('deberia') or 0.0) for v in by_tramo.values())
+        out = dict(totals)
+        out['deberia'] = live
+        return out
+
+    @staticmethod
     def _cohorte_by_tramo_live(
         db: Session,
         resolved_cutoff: str,
@@ -1300,7 +1322,7 @@ class AnalyticsService:
             if category_filter and category not in category_filter:
                 continue
             tramo_key = str(int(row.tramo or 0))
-            deberia = float(_to_float(row.monto_cuota) + _to_float(row.monto_vencido))
+            deberia = float(deberia_cartera_from_payload(payload, row.monto_vencido, row.monto_cuota))
             cobrado = float(paid_by_contract.get(_normalize_contract_id_for_lookup(contract_id), 0.0))
             pagaron = 1 if cobrado > 0 else 0
             bucket = by_tramo.setdefault(tramo_key, {'activos': 0, 'pagaron': 0, 'deberia': 0.0, 'cobrado': 0.0})
@@ -1627,18 +1649,19 @@ class AnalyticsService:
                     via_filter,
                     category_filter,
                 )
+                totals_cards = AnalyticsService._cohorte_align_totals_deberia_with_by_tramo(totals, by_tramo_out)
 
                 return {
                     'cutoff_month': resolved_cutoff,
                     'effective_cartera_month': effective_cartera_month,
                     'totals': {
-                        'activos': int(totals['activos']),
-                        'pagaron': int(totals['pagaron']),
-                        'deberia': round(float(totals['deberia']), 2),
-                        'cobrado': round(float(totals['cobrado']), 2),
-                        'transacciones': int(totals['transacciones']),
-                        'pct_pago_contratos': round((totals['pagaron'] / totals['activos']) if totals['activos'] > 0 else 0.0, 6),
-                        'pct_cobertura_monto': round((totals['cobrado'] / totals['deberia']) if totals['deberia'] > 0 else 0.0, 6),
+                        'activos': int(totals_cards['activos']),
+                        'pagaron': int(totals_cards['pagaron']),
+                        'deberia': round(float(totals_cards['deberia']), 2),
+                        'cobrado': round(float(totals_cards['cobrado']), 2),
+                        'transacciones': int(totals_cards['transacciones']),
+                        'pct_pago_contratos': round((totals_cards['pagaron'] / totals_cards['activos']) if totals_cards['activos'] > 0 else 0.0, 6),
+                        'pct_cobertura_monto': round((totals_cards['cobrado'] / totals_cards['deberia']) if totals_cards['deberia'] > 0 else 0.0, 6),
                     },
                     'by_sale_month': rows,
                     'by_year': by_year_out,
@@ -1709,7 +1732,7 @@ class AnalyticsService:
                 paid_by_contract[key] = paid_by_contract.get(key, 0.0) + float(amount or 0.0)
                 tx_by_contract[key] = tx_by_contract.get(key, 0) + int(tx_count or 0)
 
-        base_cache_key = f'{resolved_cutoff}|{effective_cartera_month}'
+        base_cache_key = f'{ANALYTICS_PIPELINE_VERSION}|{resolved_cutoff}|{effective_cartera_month}'
         base_rows = _cohorte_base_cache_get(base_cache_key)
         if base_rows is None:
             base_rows = []
@@ -1730,7 +1753,7 @@ class AnalyticsService:
                 culm_serial = _month_serial(culm_month)
                 if culm_serial > 0 and culm_serial <= cutoff_serial:
                     continue
-                deberia = float(_to_float(row.monto_cuota) + _to_float(row.monto_vencido))
+                deberia = float(deberia_cartera_from_payload(payload, row.monto_vencido, row.monto_cuota))
                 base_rows.append(
                     {
                         'contract_id': contract_id,
@@ -2020,19 +2043,20 @@ class AnalyticsService:
             via_filter,
             category_filter,
         )
+        totals_cards = AnalyticsService._cohorte_align_totals_deberia_with_by_tramo(totals, by_tramo_out)
         top_n = min(max(int(filters.top_n_sale_months or 12), 1), 36)
         top_rows = sorted(by_sale_month_rows, key=lambda r: float(r.get('cobrado') or 0.0), reverse=True)[:top_n]
         return {
             'cutoff_month': resolved_cutoff,
             'effective_cartera_month': effective_cartera_month or resolved_cutoff,
             'totals': {
-                'activos': int(totals['activos']),
-                'pagaron': int(totals['pagaron']),
-                'deberia': round(float(totals['deberia']), 2),
-                'cobrado': round(float(totals['cobrado']), 2),
-                'transacciones': int(totals['transacciones']),
-                'pct_pago_contratos': round((totals['pagaron'] / totals['activos']) if totals['activos'] > 0 else 0.0, 6),
-                'pct_cobertura_monto': round((totals['cobrado'] / totals['deberia']) if totals['deberia'] > 0 else 0.0, 6),
+                'activos': int(totals_cards['activos']),
+                'pagaron': int(totals_cards['pagaron']),
+                'deberia': round(float(totals_cards['deberia']), 2),
+                'cobrado': round(float(totals_cards['cobrado']), 2),
+                'transacciones': int(totals_cards['transacciones']),
+                'pct_pago_contratos': round((totals_cards['pagaron'] / totals_cards['activos']) if totals_cards['activos'] > 0 else 0.0, 6),
+                'pct_cobertura_monto': round((totals_cards['cobrado'] / totals_cards['deberia']) if totals_cards['deberia'] > 0 else 0.0, 6),
             },
             'by_year': by_year_out,
             'by_tramo': by_tramo_out,

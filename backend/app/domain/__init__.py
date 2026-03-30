@@ -5,7 +5,8 @@ from .exclusion_rules import (
     contract_is_excluded_from_cobranzas,
     enterprise_in_scope,
 )
-from .portfolio_rules import monto_a_cobrar
+from .payload_access import payload_coalesce_numeric, payload_get_ci
+from .portfolio_rules import deberia_cartera_from_payload, monto_a_cobrar, monto_vencido_para_monto_a_cobrar
 from .rendimiento_rules import rendimiento_cantidad_pct, rendimiento_monto_pct
 from .tramo_rules import (
     MOROSO_CATEGORY,
@@ -28,12 +29,16 @@ __all__ = [
     "categoria_from_tramo",
     "category_expr_for_tramo",
     "contract_is_excluded_from_cobranzas",
+    "deberia_cartera_from_payload",
     "default_un_mappings",
     "enterprise_in_scope",
     "latest_month",
     "month_from_any",
     "month_serial",
     "monto_a_cobrar",
+    "monto_vencido_para_monto_a_cobrar",
+    "payload_coalesce_numeric",
+    "payload_get_ci",
     "normalize_month",
     "normalize_tramo",
     "normalize_un",

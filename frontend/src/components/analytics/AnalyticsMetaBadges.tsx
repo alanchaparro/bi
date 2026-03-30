@@ -5,6 +5,8 @@ import { formatAnalyticsTimestampForDisplay } from "../../shared/formatters";
 type Props = {
   meta?: AnalyticsMeta | null;
   className?: string;
+  /** Si true, no envuelve en `analysis-meta-row` (para filas compuestas con acciones a la derecha). */
+  embed?: boolean;
 };
 
 function formatCacheHit(value?: boolean) {
@@ -13,7 +15,7 @@ function formatCacheHit(value?: boolean) {
   return "";
 }
 
-export function AnalyticsMetaBadges({ meta, className = "" }: Props) {
+export function AnalyticsMetaBadges({ meta, className = "", embed = false }: Props) {
   const chips = useMemo(() => {
     const out: { key: string; text: string; title?: string; cacheTone?: "ok" | "warn" | "" }[] = [];
     if (meta?.source_table) {
@@ -43,17 +45,27 @@ export function AnalyticsMetaBadges({ meta, className = "" }: Props) {
 
   if (chips.length === 0) return null;
 
+  const chipNodes = chips.map((c) => (
+    <span
+      key={c.key}
+      title={c.title}
+      className={`analysis-meta-chip ${c.cacheTone === "ok" ? "analysis-meta-chip-ok" : ""} ${c.cacheTone === "warn" ? "analysis-meta-chip-warn" : ""}`.trim()}
+    >
+      {c.text}
+    </span>
+  ));
+
+  if (embed) {
+    return (
+      <div className={`analytics-meta-badges-embed ${className}`.trim()} aria-label="Metadata de analytics">
+        {chipNodes}
+      </div>
+    );
+  }
+
   return (
     <div className={`analysis-meta-row analytics-meta-badges ${className}`.trim()} aria-label="Metadata de analytics">
-      {chips.map((c) => (
-        <span
-          key={c.key}
-          title={c.title}
-          className={`analysis-meta-chip ${c.cacheTone === "ok" ? "analysis-meta-chip-ok" : ""} ${c.cacheTone === "warn" ? "analysis-meta-chip-warn" : ""}`.trim()}
-        >
-          {c.text}
-        </span>
-      ))}
+      {chipNodes}
     </div>
   );
 }

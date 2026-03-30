@@ -5,6 +5,14 @@ import { buildCountYAxis } from "./RendimientoStyleCountBarChart";
 
 export type RendimientoStackedPoint = { label: string; a: number; b: number };
 
+/** Inicial para etiquetas compactas sobre la barra (ej. Moroso → M, Débito → D). */
+function stackSeriesBarPrefix(label: string): string {
+  const s = String(label || "").trim();
+  if (!s) return "";
+  const m = s.match(/\p{L}/u);
+  return m ? m[0].toUpperCase() : s.charAt(0).toUpperCase();
+}
+
 type Props = {
   data: RendimientoStackedPoint[];
   aLabel: string;
@@ -95,6 +103,8 @@ export function RendimientoStyleStackedColumnChart({
   const showAnyBarDetail = showBarPercent || showBarNumbers;
   const stackWrapStyle = { "--analysis-stack-label-zoom": String(labelZoomScale) } as React.CSSProperties;
   const chartMinWidth = Math.max(320, Math.round(svgWidth));
+  const aBarPrefix = stackSeriesBarPrefix(aLabel);
+  const bBarPrefix = stackSeriesBarPrefix(bLabel);
 
   const cornerR = (bw: number, h: number) =>
     Math.min(10, bw * 0.38, h > 1 ? Math.max(h * 0.12, 2) : 0);
@@ -255,16 +265,16 @@ export function RendimientoStyleStackedColumnChart({
               const rB = cornerR(barWidth, hb);
               const aDetail =
                 showBarPercent && showBarNumbers
-                  ? `${aLabel} ${aShare}% ${formatCount(a)}`
+                  ? `${aBarPrefix} ${aShare}% ${formatCount(a)}`
                   : showBarPercent
-                    ? `${aLabel} ${aShare}%`
-                    : `${aLabel} ${formatCount(a)}`;
+                    ? `${aBarPrefix} ${aShare}%`
+                    : `${aBarPrefix} ${formatCount(a)}`;
               const bDetail =
                 showBarPercent && showBarNumbers
-                  ? `${bLabel} ${bShare}% ${formatCount(b)}`
+                  ? `${bBarPrefix} ${bShare}% ${formatCount(b)}`
                   : showBarPercent
-                    ? `${bLabel} ${bShare}%`
-                    : `${bLabel} ${formatCount(b)}`;
+                    ? `${bBarPrefix} ${bShare}%`
+                    : `${bBarPrefix} ${formatCount(b)}`;
               const lx = cx;
               const ly = baselineY + (verticalXLabels ? 8 : 16);
               const isHovered = hoveredLabel === d.label;

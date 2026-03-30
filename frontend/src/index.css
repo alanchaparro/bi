@@ -1267,6 +1267,38 @@ body.sidebar-open .tabs-nav {
   margin-top: 0.65rem;
 }
 
+/* Chips de meta dentro de una fila que también tiene el botón de información (cohorte, etc.). */
+.analytics-meta-badges-embed {
+  display: contents;
+}
+
+.analysis-meta-row--with-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  width: 100%;
+  gap: 0.45rem 0.65rem;
+  margin-top: 0;
+}
+
+.analysis-meta-row--with-info .analysis-meta-chips-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 1;
+  min-width: min(100%, 12rem);
+}
+
+.metric-explainer--meta-trailing.metric-explainer--compact {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  margin-left: auto;
+  flex-shrink: 0;
+  align-self: center;
+}
+
 .analysis-meta-chip {
   display: inline-flex;
   align-items: center;
@@ -5114,6 +5146,67 @@ body.is-dragging-floating-filter {
   overflow-wrap: anywhere;
 }
 
+/* Compact trigger: icon opens definitions in a popover (saves vertical space). */
+.metric-explainer--compact {
+  display: flex;
+  width: 100%;
+  justify-content: flex-end;
+  padding: 0;
+  margin: 0 0 0.35rem;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.metric-explainer--compact.metric-explainer {
+  gap: 0;
+}
+
+.metric-explainer-trigger-wrap {
+  display: inline-flex;
+}
+
+.metric-explainer-info-btn {
+  flex-shrink: 0;
+}
+
+.metric-explainer-popover-content {
+  max-width: min(640px, calc(100vw - 24px));
+}
+
+.metric-explainer-popover-dialog {
+  padding: 0.75rem 1rem 1rem;
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-elevated);
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+}
+
+.metric-explainer-popover-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.metric-explainer-header--in-popover {
+  margin-bottom: 0.75rem;
+}
+
+.metric-explainer-header--in-popover .metric-explainer-popover-intro {
+  margin: 0.35rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.metric-explainer-grid--in-popover {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
 .rendimiento-label-toggle {
   display: inline-flex;
   align-items: center;
@@ -5364,7 +5457,8 @@ body.is-dragging-floating-filter {
     grid-template-columns: 1fr;
   }
 
-  .metric-explainer-grid {
+  .metric-explainer-grid,
+  .metric-explainer-grid--in-popover {
     grid-template-columns: 1fr;
   }
 }

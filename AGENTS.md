@@ -9,6 +9,7 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
 - Si el cambio toca navegacion, routing, layout o UI de modulos analiticos, validar obligatoriamente contra `desacople.md`.
 - El canon visual operativo por patrones de UI analytics se rige por `docs/spec-canon-patrones-ui-analytics.md`.
 - Si el cambio toca filtros, botones, tablas, densidad desktop, jerarquia o componentes visuales repetidos, validar obligatoriamente contra `docs/spec-canon-patrones-ui-analytics.md`.
+- El inventario de tablas MySQL de extracción, JOINs alineados a los SQL del repo y capas Postgres de sync/analytics se rige por `docs/base.md`.
 
 ## Canonicos operativos de seguimiento (obligatorios)
 - `bugs.md`: backlog tecnico/operativo y estado AUD-*.
@@ -38,6 +39,12 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
 5. **Monto vencido != monto a cobrar**:
    - `monto_vencido` representa solo deuda vencida.
    - `monto_a_cobrar = monto_vencido + monto_cuota`.
+5.1. **Monto vencido con mora máxima operativa (`cuotas_vencidas` ≥ 7) y contratos renovados**:
+   - El **tramo** visible sigue el tope operativo (regla 4: `cuotas_vencidas >= 7` → `tramo = 7`).
+   - Para **`monto_a_cobrar`** (y métricas derivadas: rendimiento por monto, “debería cobrar”, LTV por monto) el **`monto_vencido`** no debe **inflarse** con mora atribuible a **vueltas posteriores** a la **primera vuelta** del plazo firmado.
+   - **Primera vuelta** = **`quotas_amount`** cuotas (plazo original del contrato, ej. 18). Tras **renovaciones**, `actual_fee_quantity` puede ser un múltiplo (ej. 72 = cuatro vueltas de 18); el extracto puede traer `monto_vencido` acumulado sobre todo el historial.
+   - **Operativo:** si **`cuotas_vencidas >= 7`**, el vencido que entra en **`monto_a_cobrar`** se **acota** al máximo coherente con la primera vuelta. Mientras el extracto no desglose mora por ciclo, la **cota monetaria** aplicada en sync es: **`min(monto_vencido, quotas_amount * monto_cuota)`** (requiere `periodo_cuotas` / `quotas_amount` y `monto_cuota` en la fila de cartera).
+   - Ejemplo: plazo **18** cuotas, **`actual_fee_quantity`** 72, contrato en **tramo 7+**: el vencido usable para el denominador no debe asumir cuatro vueltas completas de mora si solo corresponde acotar a la **primera vuelta de 18**.
 6. **LTV (Lifetime Value) abreviado**:
    - Se usará siempre la sigla **LTV** para esta métrica.
    - Definición operativa: en una ventana `X`, compara lo que **se debería cobrar** vs lo que **se cobró**.
@@ -55,7 +62,7 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
    - En sync y queries de cobranzas (MySQL) se excluyen por regla de negocio los contratos `contract_id NOT IN (55411, 55414, 59127, 59532, 60402)`. Este listado está en `query_cobranzas.sql` y en `MYSQL_PRECHECK_QUERIES` de sync; cualquier cambio debe reflejarse en ambos y documentarse aquí.
 9. **Rendimiento de cartera (dos metricas obligatorias)**:
    - `rendimiento_monto_% = cobrado / monto_a_cobrar`.
-   - `monto_a_cobrar = monto_vencido + monto_cuota`.
+   - `monto_a_cobrar = monto_vencido + monto_cuota`, donde `monto_vencido` respeta la regla **5.1** cuando `cuotas_vencidas >= 7`.
    - Ejemplo monto: si `monto_a_cobrar = 1000` y `cobrado = 500`, entonces `rendimiento_monto_% = 50%`.
    - `rendimiento_cantidad_% = contratos_con_cobro / contratos_por_cobrar`.
    - Ejemplo cantidad: si `contratos_por_cobrar = 2000` y `contratos_con_cobro = 1000`, entonces `rendimiento_cantidad_% = 50%`.
@@ -165,6 +172,7 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
 9. Validar `optimo.md` como canónico de pendientes: registrar impacto en hardware/UX, evidencia antes/despues y estado consistente con `bugs.md`/`bugs_visual.md`.
 10. Si el cambio requiere validación funcional o de regresión, registrar la corrida en `qa.md` con evidencia y enlazar cualquier hallazgo a su canónico correspondiente.
 11. Si el cambio altera copy, métricas visibles o flujos de decision con datos para perfiles no técnicos: revisar coherencia con `pendientes.md` (ítems abiertos/cerrados) y con la voz de negocio de `AGENTS.md`.
+12. Si el cambio toca `sql/v2/*`, `sql/common/*`, `query_analytics.sql` o el inventario de tablas/capas documentado para importaciones: actualizar `docs/base.md` para evitar drift respecto al código.
 
 ## Cuando actualizar este archivo
 Actualizar inmediatamente si cambia:
@@ -173,9 +181,11 @@ Actualizar inmediatamente si cambia:
 3. Reglas de calendario (cierre/gestion/corte).
 4. Listado de contratos excluidos en cobranzas (sync/MySQL).
 5. Contratos de endpoints v2 o criterios de performance/SLA.
-6. Definicion de rendimiento de cartera (monto/cantidad) o sus dimensiones de corte.
+6. Definicion de rendimiento de cartera (monto/cantidad) o sus dimensiones de corte, o regla **5.1** (tope `monto_vencido` primera vuelta con mora >= 7).
 7. Politicas de seguridad de repositorio, CI/CD o manejo de secretos.
 8. Esquema de hashing de contraseñas o validacion de tipo de token JWT.
 9. Fronteras de desacople entre frontend nuevo y legacy (`desacople.md`).
 10. Criterios de optimizacion continua y politica de seguimiento de pendientes en `optimo.md`.
 11. Politica o formato del canónico de experiencia ejecutiva en `pendientes.md` (PEND-*).
+12. Inventario de extracción MySQL / referencias en `docs/base.md` si las reglas anteriores alteran los SQL de sync o el grafo documentado de tablas.
+13. Catálogo de códigos legacy: si el monolito PHP cambia mapeos id→etiqueta, actualizar el **Apéndice A** dentro de `docs/base.md` (y §10–§11 si cambia semántica de columnas en extractos v2).

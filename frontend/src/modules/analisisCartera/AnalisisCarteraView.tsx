@@ -750,26 +750,33 @@ export function AnalisisCarteraView() {
         pill="Analytics v2"
         title="Análisis de cartera"
         subtitle="Corte de cartera por unidad de negocio, tramo, vía de cobro, mes de gestión y mes de cierre."
-        meta={<AnalyticsMetaBadges meta={effectiveMeta} />}
-      />
-      <MetricExplainer
-        items={[
-          {
-            label: "Mes de gestión",
-            formula: "gestion_month = cierre + 1 mes",
-            note: "Los reportes operativos trabajan por gestión; no confundir con mes de cierre.",
-          },
-          {
-            label: "Categorías por tramo",
-            formula: "VIGENTE = 0..3 | MOROSO = >3",
-            note: "La clasificación visible en cartera debe respetar esta regla en todos los cortes.",
-          },
-          {
-            label: "Monto a cobrar",
-            formula: "monto_vencido + monto_cuota",
-            note: "Monto vencido no es igual a monto a cobrar.",
-          },
-        ]}
+        meta={
+          <div className="analysis-meta-row--with-info">
+            <div className="analysis-meta-chips-cluster">
+              <AnalyticsMetaBadges meta={effectiveMeta} embed />
+            </div>
+            <MetricExplainer
+              className="metric-explainer--meta-trailing"
+              items={[
+                {
+                  label: "Mes de gestión",
+                  formula: "gestion_month = cierre + 1 mes",
+                  note: "Los reportes operativos trabajan por gestión; no confundir con mes de cierre.",
+                },
+                {
+                  label: "Categorías por tramo",
+                  formula: "VIGENTE = 0..3 | MOROSO = >3",
+                  note: "La clasificación visible en cartera debe respetar esta regla en todos los cortes.",
+                },
+                {
+                  label: "Monto a cobrar",
+                  formula: "monto_vencido + monto_cuota",
+                  note: "Monto vencido no es igual a monto a cobrar.",
+                },
+              ]}
+            />
+          </div>
+        }
       />
       {loadingOptions ? (
         <AnalysisFiltersSkeleton filterCount={8} kpiCount={6} showTable />

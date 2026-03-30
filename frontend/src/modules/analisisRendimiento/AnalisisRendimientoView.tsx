@@ -934,27 +934,33 @@ export function AnalisisRendimientoView() {
           pill="Analytics v2"
           title="Rendimiento de cartera"
           subtitle="Cruce de cartera y cobranzas por contrato y mes de gestión para seguimiento por monto y cantidad."
-          meta={<AnalyticsMetaBadges meta={summary?.meta} />}
-        />
-
-        <MetricExplainer
-          items={[
-            {
-              label: 'Rendimiento por monto',
-              formula: 'cobrado / monto_a_cobrar',
-              note: 'Monto a cobrar = monto vencido + monto cuota.',
-            },
-            {
-              label: 'Rendimiento por cantidad',
-              formula: 'contratos_con_cobro / contratos_por_cobrar',
-              note: 'La pantalla compara contratos con pago vs contratos de la base filtrada.',
-            },
-            {
-              label: 'Categorías por tramo',
-              formula: 'VIGENTE = 0..3 | MOROSO = >3',
-              note: 'Los cortes operativos siguen mes de gestión, no fecha de cierre.',
-            },
-          ]}
+          meta={
+            <div className="analysis-meta-row--with-info">
+              <div className="analysis-meta-chips-cluster">
+                <AnalyticsMetaBadges meta={summary?.meta} embed />
+              </div>
+              <MetricExplainer
+                className="metric-explainer--meta-trailing"
+                items={[
+                  {
+                    label: 'Rendimiento por monto',
+                    formula: 'cobrado / monto_a_cobrar',
+                    note: 'Monto a cobrar = monto vencido + monto cuota.',
+                  },
+                  {
+                    label: 'Rendimiento por cantidad',
+                    formula: 'contratos_con_cobro / contratos_por_cobrar',
+                    note: 'La pantalla compara contratos con pago vs contratos de la base filtrada.',
+                  },
+                  {
+                    label: 'Categorías por tramo',
+                    formula: 'VIGENTE = 0..3 | MOROSO = >3',
+                    note: 'Los cortes operativos siguen mes de gestión, no fecha de cierre.',
+                  },
+                ]}
+              />
+            </div>
+          }
         />
       </div>
 
