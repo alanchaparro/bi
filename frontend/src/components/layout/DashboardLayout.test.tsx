@@ -17,6 +17,16 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+const { popoverMock } = vi.hoisted(() => ({
+  popoverMock: {
+    Root: ({ children }: React.PropsWithChildren) => <div data-testid="popover-root">{children}</div>,
+    Trigger: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => <div {...props}>{children}</div>,
+    Content: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => <div {...props}>{children}</div>,
+    Dialog: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => <div {...props}>{children}</div>,
+    Heading: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => <div {...props}>{children}</div>,
+  },
+}));
+
 vi.mock("@heroui/react", () => ({
   Button: ({
     children,
@@ -28,6 +38,7 @@ vi.mock("@heroui/react", () => ({
       {children}
     </button>
   ),
+  Popover: popoverMock,
 }));
 
 vi.mock("@/app/providers", () => ({

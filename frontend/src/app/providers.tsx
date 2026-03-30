@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import { RouterProvider } from "@heroui/react";
+import { RouterProvider, Toast } from "@heroui/react";
 import type { LoginResponse } from "@/shared/contracts";
 import {
   restoreSession,
@@ -42,6 +42,7 @@ function HeroUIRouterAdapter({ children }: { children: ReactNode }) {
 
   return (
     <RouterProvider navigate={navigate} useHref={useHref}>
+      <Toast.Provider placement="bottom end" />
       {children}
     </RouterProvider>
   );

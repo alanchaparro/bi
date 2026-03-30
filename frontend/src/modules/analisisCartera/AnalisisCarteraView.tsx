@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Skeleton } from "@heroui/react";
+import { Button, Checkbox, Label, Skeleton } from "@heroui/react";
+import { DomButton } from "@/components/ui/DomButton";
 import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter";
 import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
 import { ActiveFilterChips, type FilterChip } from "../../components/filters/ActiveFilterChips";
 import { SegmentedControl } from "../../components/filters/SegmentedControl";
 import { ViaSegmentedOrMulti } from "../../components/filters/ViaSegmentedOrMulti";
-import { ToastStack, type ToastMessage, type ToastType } from "../../components/feedback/ToastStack";
+import { pushAppToast, type AppToastType } from "../../shared/pushAppToast";
 import { LoadingState } from "../../components/feedback/LoadingState";
 import { AnalysisFiltersSkeleton } from "../../components/feedback/AnalysisFiltersSkeleton";
 import { ErrorState } from "../../components/feedback/ErrorState";
@@ -87,27 +88,6 @@ const CHART_COLORS = [
 ];
 const CHART_COLORS_LIGHT = CHART_COLORS;
 
-/** Paleta secuencial tipo “tramo”: azules → rosados → rojo de alerta (referencia ejecutiva). */
-const BAR_SEQUENTIAL_LIGHT = [
-  "#1e3a5f",
-  "#2f4f6f",
-  "#4a6582",
-  "#6b8299",
-  "#d4c4c0",
-  "#e0b0a0",
-  "#d88878",
-  "#dc2626",
-] as const;
-const BAR_SEQUENTIAL_DARK = [
-  "#4d7ab8",
-  "#5d8ab8",
-  "#6e9ab8",
-  "#7fa8b8",
-  "#b8a090",
-  "#c89880",
-  "#d88870",
-  "#f43f5e",
-] as const;
 const STORAGE_KPI_MODE = "analisis_cartera_kpi_mode_v1";
 
 /** Tramos canónicos 0..7 (AGENTS.md); donut y leyenda siempre completos y en orden fijo. */
@@ -263,10 +243,11 @@ function DonutChart({ data, isLight = false, colors = CHART_COLORS }: { data: Ar
         {data.map((d, idx) => {
           const isHidden = !!hidden[d.label];
           return (
-            <button
+            <DomButton
               key={d.label}
               type="button"
-              onClick={() => toggle(d.label)}
+              variant="ghost"
+              onPress={() => toggle(d.label)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -278,6 +259,7 @@ function DonutChart({ data, isLight = false, colors = CHART_COLORS }: { data: Ar
                 cursor: "pointer",
                 textDecoration: isHidden ? "line-through" : "none",
                 padding: 0,
+                minHeight: "auto",
               }}
               title={isHidden ? "Mostrar serie" : "Ocultar serie"}
               onMouseEnter={() => setHoveredLabel(isHidden ? null : d.label)}
@@ -285,7 +267,7 @@ function DonutChart({ data, isLight = false, colors = CHART_COLORS }: { data: Ar
             >
               <span className="analysis-legend-swatch" style={{ background: colors[idx % colors.length] }} />
               <span>{d.label}: {formatCount(d.value)} ({formatPct(d.value, total)})</span>
-            </button>
+            </DomButton>
           );
         })}
       </div>
@@ -316,23 +298,17 @@ export function AnalisisCarteraView() {
   const [yearSort, setYearSort] = useState<YearSort>("desc");
   const [kpiMode, setKpiMode] = useState<KpiMode>(() => (window.localStorage.getItem(STORAGE_KPI_MODE) as KpiMode) || "filters");
   const [showFullAmounts, setShowFullAmounts] = useState<boolean>(() => window.localStorage.getItem(STORAGE_AMOUNT_VIEW) === "full");
-  const [toastQueue, setToastQueue] = useState<ToastMessage[]>([]);
   const [floatOpen, setFloatOpen] = useState(false);
   const [floatClose, setFloatClose] = useState<string[]>([]);
   const [floatGestion, setFloatGestion] = useState<string[]>([]);
   const [floatUns, setFloatUns] = useState<string[]>([]);
   const isLightTheme = useIsLightTheme();
   const chartPalette = isLightTheme ? CHART_COLORS_LIGHT : CHART_COLORS;
-  const barSequentialPalette = isLightTheme ? [...BAR_SEQUENTIAL_LIGHT] : [...BAR_SEQUENTIAL_DARK];
   const isInitialOptionsLoading = loadingOptions && !optionsData && !optionsError;
 
-  const dismissToast = useCallback((id: string) => setToastQueue((prev) => prev.filter((t) => t.id !== id)), []);
-
-  const pushToast = useCallback((type: ToastType, message: string) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    setToastQueue((prev) => [...prev, { id, type, message }]);
-    window.setTimeout(() => dismissToast(id), 3500);
-  }, [dismissToast]);
+  const pushToast = useCallback((type: AppToastType, message: string) => {
+    pushAppToast(type, message);
+  }, []);
 
   useEffect(() => { window.localStorage.setItem(STORAGE_CHART_ORDER, JSON.stringify(chartOrder)); }, [chartOrder]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KPI_ORDER, JSON.stringify(kpiOrder)); }, [kpiOrder]);
@@ -674,7 +650,7 @@ export function AnalisisCarteraView() {
         <UnByPeriodStackedColumnChart
           periods={byUnPeriodChart.periods}
           nested={byUnPeriodChart.nested}
-          colors={barSequentialPalette}
+          colors={chartPalette}
           periodAxisHint={byUnPeriodChart.periodAxisHint}
           isLight={isLightTheme}
           ariaLabel={`Contratos por unidad de negocio por mes de ${byUnPeriodChart.periodAxisHint}`}
@@ -688,7 +664,7 @@ export function AnalisisCarteraView() {
         <UnByPeriodStackedColumnChart
           periods={byViaPeriodChart.periods}
           nested={byViaPeriodChart.nested}
-          colors={barSequentialPalette}
+          colors={chartPalette}
           periodAxisHint={byViaPeriodChart.periodAxisHint}
           breakdownEntityLabel="vía de cobro"
           isLight={isLightTheme}
@@ -701,7 +677,7 @@ export function AnalisisCarteraView() {
       content: (
         <RendimientoStyleCountBarChart
           data={byContractYear}
-          colors={barSequentialPalette}
+          colors={chartPalette}
           ariaLabel="Contratos por año de contrato"
           legendLayout="vertical"
           tightValueAxis
@@ -744,7 +720,6 @@ export function AnalisisCarteraView() {
 
   return (
     <section className="card analysis-card analysis-panel-card rendimiento-panel">
-      <ToastStack items={toastQueue} onDismiss={dismissToast} />
       <AnalyticsPageHeader
         kicker="CARTERA"
         pill="Analytics v2"
@@ -821,15 +796,19 @@ export function AnalisisCarteraView() {
         <span className="analysis-active-count">
           {activeFilterChips.length} filtro{activeFilterChips.length === 1 ? "" : "s"} activo{activeFilterChips.length === 1 ? "" : "s"}
         </span>
-        <label className="amount-toggle">
-          <input
-            type="checkbox"
-            checked={showFullAmounts}
-            onChange={(e) => setShowFullAmounts(e.target.checked)}
-            disabled={loadingOptions || isApplyingFilters}
-          />
-          <span>Monto detallado</span>
-        </label>
+        <Checkbox
+          className="amount-toggle"
+          isSelected={showFullAmounts}
+          onChange={setShowFullAmounts}
+          isDisabled={loadingOptions || isApplyingFilters}
+        >
+          <Checkbox.Control>
+            <Checkbox.Indicator />
+          </Checkbox.Control>
+          <Checkbox.Content>
+            <Label>Monto detallado</Label>
+          </Checkbox.Content>
+        </Checkbox>
       </div>
       <div className="analysis-active-filters">
         <ActiveFilterChips chips={activeFilterChips} onRemove={removeChip} />

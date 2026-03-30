@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { ensureSidebarOpen } from './sidebar-helpers'
 
 const E2E_USER = process.env.E2E_USERNAME ?? 'admin'
 const E2E_PASS = process.env.E2E_PASSWORD ?? 'admin123'
@@ -9,6 +10,7 @@ test.describe('Analisis de Cartera - filtros y datos', () => {
     await page.getByLabel(/usuario/i).fill(E2E_USER)
     await page.getByLabel(/contrase(ñ|n)a/i).fill(E2E_PASS)
     await page.getByRole('button', { name: /entrar/i }).click()
+    await ensureSidebarOpen(page)
     await expect(page.getByRole('navigation', { name: /men(u|ú) principal/i })).toBeVisible({ timeout: 15_000 })
     await page.goto('/analisis-cartera')
   })

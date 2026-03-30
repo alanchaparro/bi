@@ -36,13 +36,14 @@
   --table-row-hover: rgba(74, 179, 165, 0.12);
   --chart-grid: rgba(255, 255, 255, 0.13);
   --chart-grid-soft: rgba(255, 255, 255, 0.08);
-  --color-chart-1: #4f8a5b;
-  --color-chart-2: #b96b39;
-  --color-chart-3: #8a6f88;
-  --color-chart-4: #6f8d63;
-  --color-chart-5: #c69a49;
-  --color-chart-6: #b45d4a;
-  --color-chart-7: #7f8b63;
+  /* Paleta categórica: tonos separados en el espectro (stacked bars, donas, leyendas). */
+  --color-chart-1: #52c48a;
+  --color-chart-2: #f0b429;
+  --color-chart-3: #c084fc;
+  --color-chart-4: #38bdf8;
+  --color-chart-5: #f472b6;
+  --color-chart-6: #fb7185;
+  --color-chart-7: #60a5fa;
   --color-state-ok: #22c55e;
   --color-state-warn: #f59e0b;
   --color-state-error: #ef4444;
@@ -108,13 +109,13 @@
   --table-row-hover: rgba(33, 102, 94, 0.05);
   --chart-grid: rgba(15, 23, 42, 0.28);
   --chart-grid-soft: rgba(15, 23, 42, 0.18);
-  --color-chart-1: #3f7250;
-  --color-chart-2: #9a6134;
-  --color-chart-3: #7a6477;
-  --color-chart-4: #5f7f59;
-  --color-chart-5: #a9853f;
-  --color-chart-6: #9d5546;
-  --color-chart-7: #6f7e58;
+  --color-chart-1: #15803d;
+  --color-chart-2: #b45309;
+  --color-chart-3: #7c3aed;
+  --color-chart-4: #0369a1;
+  --color-chart-5: #a21caf;
+  --color-chart-6: #be123c;
+  --color-chart-7: #1d4ed8;
   --color-state-ok: #16a34a;
   --color-state-warn: #d97706;
   --color-state-error: #dc2626;
@@ -688,14 +689,18 @@ body.sidebar-open .tabs-nav {
     overflow: hidden;
   }
 
+  /*
+   * Drawer móvil (Fase 5): panel fijo + backdrop; el contenido principal no se empuja.
+   * Clic en el overlay cierra (SidebarNav). Escape ya cierra desde App.tsx.
+   */
   body.sidebar-open .app-shell {
-    transform: translateX(min(320px, 92vw));
-    width: calc(100% - min(320px, 92vw));
+    transform: none;
+    width: 100%;
   }
 
-  /* En modo "push" no oscurecemos el contenido */
   body.sidebar-open .sidebar-overlay {
-    display: none;
+    display: block;
+    pointer-events: auto;
   }
 
   .app-header {
@@ -1786,8 +1791,9 @@ body.sidebar-open .tabs-nav {
 
 @media (min-width: 1025px) {
   .analysis-selection-summary {
-    padding: 0.48rem 0.62rem;
-    font-size: 0.74rem;
+    padding: 0.52rem 0.68rem;
+    font-size: 0.8125rem;
+    line-height: 1.45;
   }
 }
 .analysis-selection-summary strong {
@@ -2231,48 +2237,6 @@ body.sidebar-open .tabs-nav {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
-.toast-stack {
-  position: sticky;
-  top: 78px;
-  z-index: 90;
-  display: grid;
-  gap: 0.4rem;
-  margin-bottom: 0.75rem;
-}
-
-.toast {
-  border-radius: var(--radius-md);
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--color-border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  box-shadow: var(--shadow-md);
-}
-
-.toast-success {
-  background: rgba(34, 197, 94, 0.12);
-}
-
-.toast-info {
-  background: color-mix(in srgb, var(--color-state-info) 14%, transparent);
-}
-
-.toast-error {
-  background: rgba(239, 68, 68, 0.12);
-}
-
-.toast-close {
-  border: 1px solid var(--color-border);
-  background: transparent;
-  color: var(--color-text-muted);
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
 .filter-chips {
   display: flex;
   flex-wrap: wrap;
@@ -2304,7 +2268,6 @@ body.sidebar-open .tabs-nav {
 }
 
 .filter-chip:focus-visible,
-.toast-close:focus-visible,
 .chart-drag-handle:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
@@ -3210,6 +3173,76 @@ label.input-label {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 14%, transparent);
 }
 
+/* StringSelect (HeroUI Select + ListBox): centrado en trigger, ítems legibles, scroll fino */
+.string-select-root [data-slot="select-trigger"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.5rem;
+}
+
+.string-select-root [data-slot="select-value"],
+.string-select-root .string-select-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  display: flex;
+  align-items: center;
+}
+
+.string-select-root [data-slot="select-default-indicator"],
+.string-select-root .string-select-chevron {
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.string-select-popover {
+  min-width: var(--trigger-width, 11rem);
+  max-width: min(100vw - 1.5rem, 28rem);
+  box-sizing: border-box;
+}
+
+.string-select-listbox[data-slot="list-box"] {
+  padding: 0.35rem 0.3rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-text-muted) 45%, transparent) transparent;
+}
+
+.string-select-listbox[data-slot="list-box"]::-webkit-scrollbar {
+  width: 6px;
+}
+
+.string-select-listbox[data-slot="list-box"]::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.string-select-listbox[data-slot="list-box"]::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-text-muted) 48%, transparent);
+  border-radius: 4px;
+}
+
+.string-select-popover [data-slot="list-box-item"] {
+  align-items: center !important;
+  padding: 0.5rem 1.9rem 0.5rem 0.75rem !important;
+  border-radius: var(--radius-sm, 8px) !important;
+  font-size: 0.875rem !important;
+  line-height: 1.25rem !important;
+  min-height: 2.5rem;
+}
+
+.string-select-popover [data-slot="list-box-item"] .list-box-item__indicator {
+  right: 0.5rem;
+}
+
+.string-select-item-label {
+  font-size: inherit;
+  line-height: inherit;
+}
+
 .multi-select-option {
   width: 100%;
   min-height: 44px;
@@ -3474,6 +3507,16 @@ label.input-label {
   font-size: 0.82rem;
   margin-top: 0;
   margin-bottom: 0.75rem;
+}
+
+.config-dropdown-chevron {
+  opacity: 0.75;
+  font-size: 0.85em;
+  margin-inline-start: 0.15rem;
+}
+
+.config-dropdown-popover {
+  z-index: 50;
 }
 
 .config-theme-grid {
@@ -4327,6 +4370,11 @@ body.is-dragging-floating-filter {
 }
 
 /* Tables */
+/* Resumen brokers: Table HeroUI (secondary) dentro del chrome .table-wrap */
+.table-wrap.table-wrap--brokers-summary [data-slot="table"] {
+  background: transparent;
+}
+
 .table-wrap {
   overflow-x: auto;
   overflow-y: hidden;

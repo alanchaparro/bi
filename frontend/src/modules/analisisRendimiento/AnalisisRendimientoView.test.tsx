@@ -2,6 +2,37 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { AnalisisRendimientoView } from './AnalisisRendimientoView'
 
+const { popoverMock, mockCheckbox } = vi.hoisted(() => {
+  const MockCheckbox = Object.assign(
+    ({ children, isSelected, onChange, isDisabled, className, ...props }: any) => (
+      <label className={className} {...props}>
+        <input
+          type="checkbox"
+          checked={Boolean(isSelected)}
+          disabled={Boolean(isDisabled)}
+          onChange={(e) => onChange?.(e.target.checked)}
+        />
+        {children}
+      </label>
+    ),
+    {
+      Control: ({ children }: any) => <span data-slot="checkbox-control">{children}</span>,
+      Indicator: () => <span data-slot="checkbox-indicator" />,
+      Content: ({ children }: any) => <span data-slot="checkbox-content">{children}</span>,
+    },
+  )
+  return {
+    popoverMock: {
+      Root: ({ children }: any) => <div data-testid="popover-root">{children}</div>,
+      Trigger: ({ children, ...props }: any) => <div {...props}>{children}</div>,
+      Content: ({ children, ...props }: any) => <div {...props}>{children}</div>,
+      Dialog: ({ children, ...props }: any) => <div {...props}>{children}</div>,
+      Heading: ({ children, ...props }: any) => <div {...props}>{children}</div>,
+    },
+    mockCheckbox: MockCheckbox,
+  }
+})
+
 vi.mock('@heroui/react', () => ({
   Button: ({ children, onPress, isDisabled, ...props }: any) => (
     <button type="button" onClick={onPress} disabled={isDisabled} {...props}>
@@ -9,8 +40,11 @@ vi.mock('@heroui/react', () => ({
     </button>
   ),
   ButtonGroup: ({ children, ...props }: any) => <div {...props}>{children}</div>,
+  Checkbox: mockCheckbox,
+  Label: ({ children, ...props }: any) => <span {...props}>{children}</span>,
   Text: ({ children, ...props }: any) => <span {...props}>{children}</span>,
   Skeleton: ({ animationType, ...props }: any) => <div {...props} />,
+  Popover: popoverMock,
 }))
 
 const apiMocks = vi.hoisted(() => ({

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { ensureSidebarOpen } from './sidebar-helpers'
 
 const E2E_USER = process.env.E2E_USERNAME ?? 'admin'
 const E2E_PASS = process.env.E2E_PASSWORD ?? 'admin123'
@@ -20,10 +21,12 @@ test.describe('Login como usuario', () => {
 
     // Tras login redirige a /analisis-cartera y muestra el layout con header y sidebar
     await expect(page).toHaveURL(/\/analisis-cartera/, { timeout: 15_000 })
+    await ensureSidebarOpen(page)
     await expect(page.getByRole('navigation', { name: /menú principal/i })).toBeVisible({ timeout: 10_000 })
     await expect(page.getByRole('link', { name: /análisis de cartera/i }).first()).toBeVisible()
-    // Layout: header con toggle y sidebar visibles
-    await expect(page.getByTestId('sidebar-toggle')).toBeVisible()
+    await expect(
+      page.getByTestId('sidebar-toggle').or(page.getByTestId('sidebar-hover-zone'))
+    ).toBeVisible()
     await expect(page.getByRole('heading', { name: /epem - cartera de cobranzas/i })).toBeVisible()
   })
 

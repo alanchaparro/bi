@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { DomButton } from "@/components/ui/DomButton";
 import { formatCount } from "../../shared/formatters";
 
 export type RendimientoStyleCountBarPoint = { label: string; value: number };
@@ -189,10 +190,11 @@ export function RendimientoStyleCountBarChart({
       {data.map((d, idx) => {
         const isHidden = !!hidden[d.label];
         return (
-          <button
+          <DomButton
             key={d.label}
             type="button"
-            onClick={() => toggle(d.label)}
+            variant="ghost"
+            onPress={() => toggle(d.label)}
             style={{
               display: "flex",
               alignItems: "center",
@@ -204,6 +206,7 @@ export function RendimientoStyleCountBarChart({
               cursor: "pointer",
               textDecoration: isHidden ? "line-through" : "none",
               padding: 0,
+              minHeight: "auto",
             }}
             title={isHidden ? "Mostrar serie" : "Ocultar serie"}
           >
@@ -211,7 +214,7 @@ export function RendimientoStyleCountBarChart({
             <span>
               {d.label}: {formatCount(d.value)} ({formatSharePct(d.value, totalAll)})
             </span>
-          </button>
+          </DomButton>
         );
       })}
     </div>

@@ -6,6 +6,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { expect, test } from '@playwright/test'
+import { ensureSidebarOpen } from './sidebar-helpers'
 
 const E2E_USER = process.env.E2E_USERNAME ?? 'admin'
 const E2E_PASS = process.env.E2E_PASSWORD ?? 'admin123'
@@ -41,6 +42,7 @@ test.describe('Evidencia experiencia-cliente (pendientes)', () => {
       fullPage: true,
     })
 
+    await ensureSidebarOpen(page)
     await expect(page.getByRole('navigation', { name: /menú principal/i })).toBeVisible()
     await page.screenshot({
       path: path.join(TMP_DIR, 'pendientes-sidebar-rolo-2026-03-26.png'),

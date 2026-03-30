@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Button, Input, Modal, useOverlayState } from '@heroui/react'
+import { AlertDialog, Button, Input, useOverlayState } from '@heroui/react'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { LoadingState } from '../../components/feedback/LoadingState'
@@ -150,27 +150,29 @@ export function BrokersCommissionsView({ rules, canEdit, loading, error, onSave 
         <Button variant="outline" onPress={addRule} isDisabled={!canEdit}>Agregar regla</Button>
         <Button variant="primary" onPress={save} isDisabled={!canEdit || saving}>{saving ? 'Guardando…' : 'Guardar comisiones'}</Button>
       </div>
-      <Modal state={deleteConfirm}>
-        <Modal.Backdrop />
-        <Modal.Container size="sm" placement="center">
-          <Modal.Dialog>
-            <Modal.Header>
-              <Modal.Heading>Confirmar eliminación</Modal.Heading>
-            </Modal.Header>
-            <Modal.Body>
-              Esta acción elimina la regla de comisiones seleccionada y no se puede deshacer. ¿Deseás continuar?
-            </Modal.Body>
-            <Modal.Footer className="brokers-rule-delete-modal__footer">
-              <Button variant="outline" onPress={() => deleteConfirm.close()}>
-                Cancelar
-              </Button>
-              <Button variant="danger" onPress={confirmRemoveRule}>
-                Eliminar
-              </Button>
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal>
+      <AlertDialog isOpen={deleteConfirm.isOpen} onOpenChange={deleteConfirm.setOpen}>
+        <AlertDialog.Backdrop>
+          <AlertDialog.Container size="sm" placement="center">
+            <AlertDialog.Dialog>
+              <AlertDialog.Header>
+                <AlertDialog.Icon status="danger" />
+                <AlertDialog.Heading>Confirmar eliminación</AlertDialog.Heading>
+              </AlertDialog.Header>
+              <AlertDialog.Body>
+                Esta acción elimina la regla de comisiones seleccionada y no se puede deshacer. ¿Deseás continuar?
+              </AlertDialog.Body>
+              <AlertDialog.Footer className="brokers-rule-delete-modal__footer">
+                <Button variant="outline" onPress={() => deleteConfirm.close()}>
+                  Cancelar
+                </Button>
+                <Button variant="danger" onPress={confirmRemoveRule}>
+                  Eliminar
+                </Button>
+              </AlertDialog.Footer>
+            </AlertDialog.Dialog>
+          </AlertDialog.Container>
+        </AlertDialog.Backdrop>
+      </AlertDialog>
     </section>
   )
 }

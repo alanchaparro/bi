@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { Button } from "@heroui/react"
+import { DomButton } from "@/components/ui/DomButton"
 
 export type FloatingQuickFiltersProps = {
   /** Panel de campos abierto (además del FAB). */
@@ -86,15 +87,17 @@ export function FloatingQuickFilters({
           : undefined
       }
     >
-      <button
+      <DomButton
         type="button"
+        variant="ghost"
+        isIconOnly
         className="analytics-floating-drag-btn"
         onPointerDown={startDrag}
         aria-label="Mover filtros rápidos"
         title="Mover filtros rápidos"
       >
         ::
-      </button>
+      </DomButton>
       {isOpen ? (
         <div className="card analytics-floating-filter-card">
           <div className="analytics-floating-filter-title">{title}</div>

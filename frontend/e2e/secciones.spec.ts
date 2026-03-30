@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { ensureSidebarOpen } from './sidebar-helpers'
 
 const E2E_USER = process.env.E2E_USERNAME ?? 'admin'
 const E2E_PASS = process.env.E2E_PASSWORD ?? 'admin123'
@@ -11,6 +12,7 @@ async function loginAndWaitDashboard(page: import('@playwright/test').Page) {
   await page.getByLabel(/contrase(ñ|n)a/i).fill(E2E_PASS)
   await page.getByRole('button', { name: /entrar/i }).click()
   await expect(page).toHaveURL(/\/(cartera|analisis-cartera|config|analisis-anuales|rendimiento|cobranzas-cohorte)/, { timeout: LOGIN_REDIRECT_MS })
+  await ensureSidebarOpen(page)
   await expect(page.getByRole('heading', { name: /epem - cartera de cobranzas/i })).toBeVisible({ timeout: LOGIN_HEADING_MS })
 }
 

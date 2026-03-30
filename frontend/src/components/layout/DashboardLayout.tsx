@@ -8,7 +8,12 @@ import { useAuth } from "@/app/providers";
 import type { LoginResponse } from "@/shared/contracts";
 import { NAV_ITEMS, type NavItem } from "@/config/routes";
 import { LoadingState } from "@/components/feedback/LoadingState";
-import { applyThemePreset, getStoredThemePresetId, getThemePresetById } from "@/shared/themePresets";
+import {
+  applyThemePreset,
+  cycleDarkThemePresetId,
+  getStoredThemePresetId,
+  getThemePresetById,
+} from "@/shared/themePresets";
 
 type SyncLive = {
   running?: boolean;
@@ -138,11 +143,11 @@ function SidebarMaterialIcon({ id, active, size = "md" }: { id: string; active?:
   );
 }
 
-/** Modo oscuro → icono sol (pasar a claro); modo claro → icono luna (pasar a oscuro). */
+/** Oscuro: paleta (ciclo de variantes); claro: luna (volver a oscuro). */
 function SidebarThemeToggleIcon({ isDark }: { isDark: boolean }) {
   return (
     <span className="material-symbols-outlined dashboard-sidebar-action-ms" aria-hidden>
-      {isDark ? "light_mode" : "dark_mode"}
+      {isDark ? "palette" : "dark_mode"}
     </span>
   );
 }
@@ -219,7 +224,11 @@ function SidebarUserToolbar({ auth, themePresetId, onToggleTheme, onLogout, clas
         size="sm"
         variant="ghost"
         isIconOnly
-        aria-label={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+        aria-label={
+          isDark
+            ? `Siguiente tema oscuro (${getThemePresetById(themePresetId).label})`
+            : "Activar tema oscuro Obsidiana"
+        }
         onPress={onToggleTheme}
         className="min-h-9 min-w-9 shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
       >
@@ -297,7 +306,11 @@ function SidebarUserCard({ auth, themePresetId, onToggleTheme, onLogout }: Sideb
           size="sm"
           variant="ghost"
           isIconOnly
-          aria-label={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+          aria-label={
+            isDark
+              ? `Siguiente tema oscuro (${getThemePresetById(themePresetId).label})`
+              : "Activar tema oscuro Obsidiana"
+          }
           onPress={onToggleTheme}
           className="min-h-9 min-w-9 shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
         >
@@ -409,10 +422,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [themePresetId, setThemePresetId] = useState<string>("epem_obsidiana");
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    return window.matchMedia("(min-width: 1024px)").matches;
-  });
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebarCloseTimerRef = React.useRef<number | null>(null);
   const [syncLive, setSyncLive] = useState<SyncLive | null>(null);
   const [scheduleLive, setScheduleLive] = useState<ScheduleLive | null>(null);
 
@@ -436,24 +447,58 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     applyThemePreset(themePresetId);
   }, [themePresetId]);
 
+  const clearScheduledSidebarClose = useCallback(() => {
+    if (sidebarCloseTimerRef.current != null) {
+      window.clearTimeout(sidebarCloseTimerRef.current);
+      sidebarCloseTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleSidebarCloseDesktop = useCallback(() => {
+    clearScheduledSidebarClose();
+    if (typeof window === "undefined") return;
+    if (!window.matchMedia("(min-width: 1024px)").matches) return;
+    sidebarCloseTimerRef.current = window.setTimeout(() => {
+      setSidebarOpen(false);
+      sidebarCloseTimerRef.current = null;
+    }, 280);
+  }, [clearScheduledSidebarClose]);
+
+  const openSidebarFromEdge = useCallback(() => {
+    clearScheduledSidebarClose();
+    if (typeof window !== "undefined" && !window.matchMedia("(min-width: 1024px)").matches) return;
+    setSidebarOpen(true);
+  }, [clearScheduledSidebarClose]);
+
+  useEffect(() => {
+    return () => {
+      if (sidebarCloseTimerRef.current != null) {
+        window.clearTimeout(sidebarCloseTimerRef.current);
+      }
+    };
+  }, []);
+
+  /** Al pasar a móvil, cerrar drawer; en escritorio no forzar apertura (hover en el borde). */
   useEffect(() => {
     if (typeof window === "undefined") return;
     const mq = window.matchMedia("(min-width: 1024px)");
-    const syncSidebarByViewport = () => setSidebarOpen(mq.matches);
-    syncSidebarByViewport();
+    const onChange = () => {
+      if (!mq.matches) {
+        clearScheduledSidebarClose();
+        setSidebarOpen(false);
+      }
+    };
+    onChange();
     if (typeof mq.addEventListener === "function") {
-      mq.addEventListener("change", syncSidebarByViewport);
-      return () => mq.removeEventListener("change", syncSidebarByViewport);
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
     }
-    mq.addListener(syncSidebarByViewport);
-    return () => mq.removeListener(syncSidebarByViewport);
-  }, []);
+    mq.addListener(onChange);
+    return () => mq.removeListener(onChange);
+  }, [clearScheduledSidebarClose]);
 
   const toggleTheme = useCallback(() => {
-    setThemePresetId((current) => {
-      const next = getThemePresetById(current).mode === "dark" ? "epem_marfil_brisa" : "epem_obsidiana";
-      return next;
-    });
+    setThemePresetId((current) => cycleDarkThemePresetId(current));
   }, []);
 
   const syncContextValue = useMemo<SyncLiveContextValue>(
@@ -514,10 +559,33 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         aria-hidden
         onClick={() => setSidebarOpen(false)}
       />
+      {/* Escritorio (lg+): franja invisible en el borde izquierdo abre el menú al pasar el mouse. */}
+      <div
+        data-testid="sidebar-hover-zone"
+        role="button"
+        tabIndex={sidebarOpen ? -1 : 0}
+        aria-label="Abrir menú lateral"
+        aria-expanded={sidebarOpen}
+        onKeyDown={(e) => {
+          if (sidebarOpen) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openSidebarFromEdge();
+          }
+        }}
+        className={`fixed top-0 left-0 z-[155] hidden h-[100dvh] select-none lg:block ${
+          sidebarOpen
+            ? "pointer-events-none w-0 min-w-0 overflow-hidden opacity-0"
+            : "w-4 min-w-[16px] cursor-e-resize focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-color)]"
+        }`}
+        onMouseEnter={openSidebarFromEdge}
+      />
       <aside
         className={`dashboard-sidebar fixed inset-y-0 left-0 z-[150] flex h-[100dvh] min-h-[100dvh] w-[85vw] max-w-72 flex-col transition-transform duration-300 ease-out lg:w-[var(--sidebar-width)] ${
-          sidebarOpen ? "translate-x-0 lg:translate-x-0" : "-translate-x-full lg:-translate-x-full"
+          sidebarOpen ? "translate-x-0 pointer-events-auto lg:translate-x-0" : "-translate-x-full pointer-events-none lg:-translate-x-full"
         }`}
+        onMouseEnter={clearScheduledSidebarClose}
+        onMouseLeave={scheduleSidebarCloseDesktop}
       >
         <div className="dashboard-sidebar-mobile-header flex flex-col gap-2 px-3 py-2 lg:hidden">
           <div className="flex items-center justify-between gap-2">
@@ -556,7 +624,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           <div className="dashboard-sidebar-brand-head">
             <SidebarBrandMark />
             <div className="dashboard-sidebar-brand-text">
-              <h1 className="dashboard-sidebar-brand-h1">EPEM · Cartera de Cobranzas</h1>
+              <h1 className="dashboard-sidebar-brand-h1">Sistema BI - EPEM</h1>
               <div className="dashboard-sidebar-brand-premium">Motor analítico</div>
             </div>
           </div>
@@ -653,10 +721,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       >
         <Button
           isIconOnly
-          variant="outline"
+          variant="secondary"
           size="md"
-          className={`dashboard-fab-sidebar-toggle fixed top-3 z-[160] min-h-[var(--touch-min)] min-w-[var(--touch-min)] shrink-0 border border-[var(--glass-border)] bg-[var(--card-bg)]/95 shadow-md backdrop-blur-md ${
-            sidebarOpen ? "max-lg:hidden max-lg:pointer-events-none lg:left-[calc(var(--sidebar-width)+0.75rem)]" : "left-3"
+          className={`dashboard-fab-sidebar-toggle fixed top-3 left-3 z-[160] min-h-[var(--touch-min)] min-w-[var(--touch-min)] shrink-0 rounded-full border border-[var(--glass-border)] !bg-[var(--color-surface-elevated)] !text-[var(--color-text-muted)] !shadow-none backdrop-blur-none transition-[color,background-color,transform] duration-150 hover:!bg-[color-mix(in_srgb,var(--color-text)_7%,var(--color-surface-elevated))] hover:!text-[var(--color-text)] active:scale-[0.96] data-[pressed=true]:scale-[0.96] lg:hidden ${
+            sidebarOpen ? "max-lg:hidden max-lg:pointer-events-none" : ""
           }`}
           aria-label={sidebarOpen ? "Cerrar menú lateral" : "Abrir menú lateral"}
           aria-expanded={sidebarOpen}

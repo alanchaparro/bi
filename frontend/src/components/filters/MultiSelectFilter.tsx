@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Button } from "@heroui/react";
+import { Button, SearchField } from "@heroui/react";
 import { filterOptions } from "./filterOptions";
 
 type Props = {
@@ -48,7 +48,7 @@ export function MultiSelectFilter({
   const [portalStyle, setPortalStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
   const listboxRef = useRef<HTMLDivElement>(null);
   /** Evita repetir foco en búsqueda / reset de índice en cada click (saltaba el scroll al inicio). */
   const listOpenSessionRef = useRef(false);
@@ -238,49 +238,62 @@ export function MultiSelectFilter({
             tabIndex={-1}
             style={portalStyle}
           >
-            <input
-              ref={searchRef}
-              type="search"
-              placeholder="Buscar..."
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={onListboxKeyDown}
-              aria-label={`Buscar en ${label}`}
-              className="multi-select-search input-heroui-tokens"
-            />
+            <div className="multi-select-search multi-select-search-heroui px-1 pt-1" onMouseDown={(e) => e.stopPropagation()}>
+              <SearchField
+                value={q}
+                onChange={setQ}
+                aria-label={`Buscar en ${label}`}
+                className="w-full"
+              >
+                <SearchField.Group className="w-full">
+                  <SearchField.SearchIcon />
+                  <SearchField.Input
+                    ref={searchRef}
+                    placeholder="Buscar..."
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={onListboxKeyDown}
+                    className="multi-select-search-input input-heroui-tokens min-h-9"
+                  />
+                  <SearchField.ClearButton aria-label="Limpiar búsqueda" />
+                </SearchField.Group>
+              </SearchField>
+            </div>
             <div
               className="multi-select-bulk"
               role="toolbar"
               aria-label={`Selección masiva en ${label}`}
             >
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 className="multi-select-bulk-btn"
-                disabled={filtered.length === 0 || allFilteredSelected}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => {
+                isDisabled={filtered.length === 0 || allFilteredSelected}
+                onMouseDown={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
-                  selectAllVisible();
                 }}
+                onPress={() => selectAllVisible()}
               >
                 Seleccionar todo
-              </button>
+              </Button>
               <span className="multi-select-bulk-sep" aria-hidden>
                 ·
               </span>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 className="multi-select-bulk-btn"
-                disabled={selected.length === 0}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => {
+                isDisabled={selected.length === 0}
+                onMouseDown={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
-                  deselectAll();
                 }}
+                onPress={() => deselectAll()}
               >
                 Deseleccionar todo
-              </button>
+              </Button>
             </div>
             <div className="multi-select-options">
               {filtered.map((v, idx) => (

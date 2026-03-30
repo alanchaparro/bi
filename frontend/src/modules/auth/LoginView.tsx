@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Button, Input, Label } from "@heroui/react";
+import { Button, Input, Label, TextField } from "@heroui/react";
 import { ErrorState } from "../../components/feedback/ErrorState";
 import type { LoginRequest } from "../../shared/contracts";
 
@@ -33,7 +33,7 @@ export function LoginView({ onSubmit, error, loading = false }: Props) {
         <h1>Cartera Cobranzas</h1>
         <p className="section-subtitle">Inicia sesión con tu usuario y contraseña.</p>
         <form onSubmit={handleSubmit} className="form-stack">
-          <div className="form-group">
+          <TextField className="form-group w-full" isDisabled={loading || submitting}>
             <Label htmlFor="login-username" className="input-label">Usuario</Label>
             <Input
               id="login-username"
@@ -41,13 +41,12 @@ export function LoginView({ onSubmit, error, loading = false }: Props) {
               autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              disabled={loading || submitting}
               placeholder="Tu usuario"
               aria-label="Usuario"
-              className="input border border-[var(--color-border)] bg-[var(--input-bg)]"
+              className="input w-full border border-[var(--color-border)] bg-[var(--input-bg)]"
             />
-          </div>
-          <div className="form-group">
+          </TextField>
+          <TextField className="form-group w-full" isDisabled={loading || submitting}>
             <Label htmlFor="login-password" className="input-label">Contraseña</Label>
             <Input
               id="login-password"
@@ -55,12 +54,11 @@ export function LoginView({ onSubmit, error, loading = false }: Props) {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              disabled={loading || submitting}
               placeholder="********"
               aria-label="Contraseña"
-              className="input border border-[var(--color-border)] bg-[var(--input-bg)]"
+              className="input w-full border border-[var(--color-border)] bg-[var(--input-bg)]"
             />
-          </div>
+          </TextField>
           {error ? <ErrorState message={error} className="mb-1" /> : null}
           <Button type="submit" variant="primary" className="w-full" isDisabled={loading || submitting || !username.trim() || !password} aria-label="Entrar">
             {submitting ? "Entrando..." : "Entrar"}

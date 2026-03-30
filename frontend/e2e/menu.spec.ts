@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { ensureSidebarOpen } from './sidebar-helpers'
 
 const E2E_USER = process.env.E2E_USERNAME ?? 'admin'
 const E2E_PASS = process.env.E2E_PASSWORD ?? 'admin123'
@@ -10,7 +11,10 @@ test.describe('Menu de navegacion', () => {
     await page.getByLabel(/contrase(ñ|n)a/i).fill(E2E_PASS)
     await page.getByRole('button', { name: /entrar/i }).click()
     await expect(page).toHaveURL(/\/(cartera|analisis-cartera|config|analisis-anuales|rendimiento|cobranzas-cohorte)/, { timeout: 15_000 })
-    await expect(page.getByTestId('sidebar-toggle')).toBeVisible({ timeout: 15_000 })
+    await ensureSidebarOpen(page)
+    await expect(
+      page.getByTestId('sidebar-toggle').or(page.getByTestId('sidebar-hover-zone'))
+    ).toBeVisible({ timeout: 15_000 })
   })
 
   test('tras login, el menu muestra enlaces a analiticas y configuracion', async ({ page }) => {
@@ -34,15 +38,23 @@ test.describe('Menu de navegacion', () => {
 
   test('toggle del sidebar abre y cierra el menu', async ({ page }) => {
     const toggle = page.getByTestId('sidebar-toggle')
+    const zone = page.getByTestId('sidebar-hover-zone')
     const nav = page.getByRole('navigation', { name: /men(u|ú) principal/i })
-    await expect(toggle).toBeVisible()
-    const expanded = await toggle.getAttribute('aria-expanded')
-    if (expanded === 'false') {
+    if (await toggle.isVisible()) {
+      await expect(toggle).toBeVisible()
+      const expanded = await toggle.getAttribute('aria-expanded')
+      if (expanded === 'false') {
+        await toggle.click()
+        await expect(nav).toBeVisible({ timeout: 5_000 })
+      }
       await toggle.click()
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false', { timeout: 5_000 })
+    } else {
+      await zone.hover()
       await expect(nav).toBeVisible({ timeout: 5_000 })
+      await page.getByTestId('sidebar-collapse-in-panel').click()
+      await expect(nav).not.toBeInViewport({ timeout: 5_000 })
     }
-    await toggle.click()
-    await expect(toggle).toHaveAttribute('aria-expanded', 'false', { timeout: 5_000 })
   })
 
   test('clic en rendimiento de cartera navega a /rendimiento', async ({ page }) => {

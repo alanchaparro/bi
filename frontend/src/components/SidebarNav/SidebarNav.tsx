@@ -1,5 +1,5 @@
 import React from "react"
-import { Button } from "@heroui/react"
+import { Button, Tooltip } from "@heroui/react"
 import type { NavSection } from "../AppNav/AppNav"
 
 type Props = {
@@ -108,23 +108,34 @@ export function SidebarNav({
 
   return (
     <>
-      <Button
-        isIconOnly
-        variant="ghost"
-        className="menu-toggle"
-        aria-label={sidebarOpen ? "Cerrar menú" : "Abrir menú"}
-        aria-expanded={sidebarOpen}
-        onPress={onToggleSidebar}
-      >
-        <MenuIcon />
-      </Button>
+      <Tooltip delay={400} closeDelay={0}>
+        <Tooltip.Trigger>
+          <Button
+            isIconOnly
+            variant="ghost"
+            className="menu-toggle"
+            aria-label={sidebarOpen ? "Cerrar menú" : "Abrir menú"}
+            aria-expanded={sidebarOpen}
+            onPress={onToggleSidebar}
+          >
+            <MenuIcon />
+          </Button>
+        </Tooltip.Trigger>
+        <Tooltip.Content placement="bottom start" className="max-w-[14rem] text-xs">
+          {sidebarOpen ? "Cerrar menú de navegación" : "Abrir menú de navegación"}
+        </Tooltip.Content>
+      </Tooltip>
       <div
         className="sidebar-overlay"
         onClick={onCloseSidebar}
         role="presentation"
         aria-hidden="true"
       />
-      <nav className="tabs-nav" aria-label="Menú principal">
+      <nav
+        className="tabs-nav"
+        aria-label="Menú principal"
+        aria-hidden={!sidebarOpen}
+      >
         {Array.from(groups.entries()).map(([groupName, items]) => (
           <div key={groupName || "default"}>
             {groupName ? (

@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react"
 import { Button } from "@heroui/react"
+import { BrokersSummaryTable } from "../../components/tables/BrokersSummaryTable"
 import { AnalyticsPageHeader } from "../../components/analytics/AnalyticsPageHeader"
 import { EmptyState } from "../../components/feedback/EmptyState"
 import { ErrorState } from "../../components/feedback/ErrorState"
@@ -130,37 +131,8 @@ export function BrokersView(props: Props) {
       ) : (
         <>
           <p className="table-scroll-hint">Desliza la tabla horizontalmente para ver supervisor, vía y métricas completas.</p>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Año</th>
-                  <th>Mes</th>
-                  <th>Supervisor</th>
-                  <th>UN</th>
-                  <th>Vía</th>
-                  <th>Contratos</th>
-                  <th>Mora 3M</th>
-                  <th>Monto</th>
-                  <th>Comisiones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {props.rows.map((r, i) => (
-                  <tr key={`${r.month}-${r.supervisor}-${r.un}-${r.via}-${i}`}>
-                    <td>{r.year}</td>
-                    <td>{r.month}</td>
-                    <td>{r.supervisor}</td>
-                    <td>{r.un}</td>
-                    <td>{r.via}</td>
-                    <td>{r.count}</td>
-                    <td>{r.mora3m}</td>
-                    <td>{Number(r.montoCuota || 0).toFixed(2)}</td>
-                    <td>{Number(r.commission || 0).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="table-wrap table-wrap--brokers-summary">
+            <BrokersSummaryTable rows={props.rows} />
           </div>
         </>
       )}

@@ -25,7 +25,15 @@ import { AnalisisCarteraView } from './modules/analisisCartera/AnalisisCarteraVi
 import { AnalisisCobranzasCohorteView } from './modules/analisisCobranzasCohorte/AnalisisCobranzasCohorteView'
 import { AnalisisRendimientoView } from './modules/analisisRendimiento/AnalisisRendimientoView'
 import { AnalisisAnualesView } from './modules/analisisAnuales/AnalisisAnualesView'
-import { applyThemePreset, getStoredThemePresetId, getThemePresetById } from './shared/themePresets'
+import {
+  applyThemePreset,
+  cycleDarkThemePresetId,
+  DARK_THEME_QUICK_BADGE,
+  getStoredThemePresetId,
+  getThemePresetById,
+} from './shared/themePresets'
+import { DomButton } from '@/components/ui/DomButton'
+import { Tooltip } from '@heroui/react'
 
 type GlobalSyncLive = {
   running?: boolean
@@ -87,6 +95,17 @@ export default function App() {
   const scheduleTooltip = scheduleDomainLabel
     ? `Actualización de ${scheduleDomainLabel} en progreso${schedulePct > 0 ? ` (${schedulePct}%)` : ''}`
     : `Actualización en progreso${schedulePct > 0 ? ` (${schedulePct}%)` : ''}`
+
+  const syncPillTooltip =
+    `${globalSyncLive?.message || 'Sincronizando...'}`
+    + ` | ${globalSyncPct}%`
+    + ` | ${globalSyncLive?.jobStep || '-'}`
+    + ` | ETA ${globalSyncLive?.etaSeconds ?? '-'}s`
+    + ` | Cola ${typeof globalSyncLive?.queuePosition === 'number' ? globalSyncLive.queuePosition : '-'}`
+    + ` | Chunk ${globalSyncLive?.chunkStatus || '-'}`
+    + ` | Skipped ${globalSyncLive?.skippedUnchangedChunks ?? 0}`
+    + ` | ${globalSyncQuery}`
+    + ` | Estado ${headerLiveLabel}`
 
   const handleLogin = useCallback(async (payload: LoginRequest) => {
     setLoginError(null)
@@ -214,54 +233,71 @@ export default function App() {
           </div>
           <div className="user-info">
             {showScheduleLive ? (
-              <button
-                type="button"
-                className="header-schedule-pill"
-                onClick={() => setActiveSectionId('config')}
-                title={scheduleTooltip}
-                aria-label={scheduleTooltip}
-              >
-                <span className="header-schedule-glyph" aria-hidden>Prog.</span>
-                <span className="header-schedule-pct">{`${schedulePct}%`}</span>
-              </button>
+              <Tooltip delay={400} closeDelay={0}>
+                <Tooltip.Trigger>
+                  <DomButton
+                    type="button"
+                    variant="ghost"
+                    className="header-schedule-pill"
+                    onPress={() => setActiveSectionId('config')}
+                    aria-label={scheduleTooltip}
+                  >
+                    <span className="header-schedule-glyph" aria-hidden>Prog.</span>
+                    <span className="header-schedule-pct">{`${schedulePct}%`}</span>
+                  </DomButton>
+                </Tooltip.Trigger>
+                <Tooltip.Content placement="bottom" className="max-w-[min(22rem,92vw)] text-xs leading-snug">
+                  {scheduleTooltip}
+                </Tooltip.Content>
+              </Tooltip>
             ) : null}
             {showGlobalSync ? (
-              <button
-                type="button"
-                className={`header-sync-pill header-sync-pill--${globalSyncTone}`}
-                onClick={() => setActiveSectionId('config')}
-                title={
-                  `${globalSyncLive?.message || 'Sincronizando...'}`
-                  + ` | ${globalSyncPct}%`
-                  + ` | ${globalSyncLive?.jobStep || '-'}`
-                  + ` | ETA ${globalSyncLive?.etaSeconds ?? '-'}s`
-                  + ` | Cola ${typeof globalSyncLive?.queuePosition === 'number' ? globalSyncLive.queuePosition : '-'}`
-                  + ` | Chunk ${globalSyncLive?.chunkStatus || '-'}`
-                  + ` | Skipped ${globalSyncLive?.skippedUnchangedChunks ?? 0}`
-                  + ` | ${globalSyncQuery}`
-                  + ` | Estado ${headerLiveLabel}`
-                }
-                aria-label={`Sincronizacion en curso ${globalSyncPct} por ciento`}
-              >
-                <span className={`header-sync-icon header-sync-icon--${globalSyncTone}`} aria-hidden />
-                <span className="header-sync-text">{globalSyncPct}%</span>
-                <span className="header-sync-domain">{String(globalSyncLive?.currentDomain || '-')}</span>
-                <span className={`header-sync-live ${headerLiveFresh ? 'is-live' : 'is-stale'}`}>{headerLiveLabel}</span>
-              </button>
+              <Tooltip delay={400} closeDelay={0}>
+                <Tooltip.Trigger>
+                  <DomButton
+                    type="button"
+                    variant="ghost"
+                    className={`header-sync-pill header-sync-pill--${globalSyncTone}`}
+                    onPress={() => setActiveSectionId('config')}
+                    aria-label={`Sincronizacion en curso ${globalSyncPct} por ciento`}
+                  >
+                    <span className={`header-sync-icon header-sync-icon--${globalSyncTone}`} aria-hidden />
+                    <span className="header-sync-text">{globalSyncPct}%</span>
+                    <span className="header-sync-domain">{String(globalSyncLive?.currentDomain || '-')}</span>
+                    <span className={`header-sync-live ${headerLiveFresh ? 'is-live' : 'is-stale'}`}>{headerLiveLabel}</span>
+                  </DomButton>
+                </Tooltip.Trigger>
+                <Tooltip.Content placement="bottom" className="max-w-[min(24rem,92vw)] text-xs leading-snug">
+                  {syncPillTooltip}
+                </Tooltip.Content>
+              </Tooltip>
             ) : null}
             <span>Rol: <strong>{role || '-'}</strong></span>
-            <button
-              type="button"
-              className="theme-toggle"
-              onClick={() => setThemePresetId((current) => (getThemePresetById(current).mode === 'dark' ? 'epem_marfil_brisa' : 'epem_obsidiana'))}
-              title={getThemePresetById(themePresetId).mode === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-              aria-label={getThemePresetById(themePresetId).mode === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-            >
-              {getThemePresetById(themePresetId).mode === 'dark' ? 'L' : 'O'}
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={handleLogout}>
+            <Tooltip delay={400} closeDelay={0}>
+              <Tooltip.Trigger>
+                <DomButton
+                  type="button"
+                  variant="ghost"
+                  className="theme-toggle"
+                  onPress={() => setThemePresetId((current) => cycleDarkThemePresetId(current))}
+                  aria-label={
+                    getThemePresetById(themePresetId).mode === 'dark'
+                      ? `Siguiente tema oscuro (ahora: ${getThemePresetById(themePresetId).label})`
+                      : 'Activar tema oscuro Obsidiana'
+                  }
+                >
+                  {DARK_THEME_QUICK_BADGE[themePresetId] ?? (getThemePresetById(themePresetId).mode === 'dark' ? 'O' : '·')}
+                </DomButton>
+              </Tooltip.Trigger>
+              <Tooltip.Content placement="bottom" className="max-w-[16rem] text-xs">
+                {getThemePresetById(themePresetId).mode === 'dark'
+                  ? `Tema oscuro: ${getThemePresetById(themePresetId).label}. Clic: Obsidiana → Pizarra → Lavanda. Temas claros en Configuración.`
+                  : 'Activar Obsidiana (oscuro legible con mucha luz). Variantes: botón o Configuración.'}
+              </Tooltip.Content>
+            </Tooltip>
+            <DomButton type="button" variant="outline" className="btn btn-secondary" onPress={handleLogout}>
               Cerrar sesión
-            </button>
+            </DomButton>
           </div>
         </header>
 

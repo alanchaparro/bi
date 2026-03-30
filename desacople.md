@@ -142,7 +142,7 @@ Desacoplar y eliminar de forma ordenada el flujo legacy para que solo quede oper
    - Remover `CMD` apuntando a `start_dashboard.py`.
 3. Launchers
    - Confirmar que `INICIAR.bat` / `iniciar.sh` no contemplen legado.
-   - Verificar que `DETENER.bat` / `detener.sh` y `REINICIAR.bat` / `reiniciar.sh` sigan funcionando sin `dashboard`.
+   - Verificar que `DETENER.bat` / `detener.sh`, `REINICIAR.bat` / `reiniciar.sh` y `REINICIAR_LAN.bat` / `reiniciar_lan.sh` sigan funcionando sin `dashboard`.
 
 ## Fase 2 - Limpieza de codigo legacy
 1. Eliminar archivos legacy:
@@ -208,7 +208,7 @@ Desacoplar y eliminar de forma ordenada el flujo legacy para que solo quede oper
 - Riesgo: borrar utilidades que aun usa el flujo nuevo.
   - Mitigacion: eliminar por fases + correr smoke API/UI en cada fase.
 - Riesgo: ruptura de scripts one-click.
-  - Mitigacion: prueba obligatoria de `INICIAR`, `DETENER`, `REINICIAR`.
+  - Mitigacion: prueba obligatoria de `INICIAR`, `DETENER`, `REINICIAR`, y donde aplique LAN `INICIAR_LAN` / `REINICIAR_LAN`.
 - Riesgo: desalineacion de reglas de negocio en migracion.
   - Mitigacion: validar KPIs de control y semantica canónica contra AGENTS.md.
 

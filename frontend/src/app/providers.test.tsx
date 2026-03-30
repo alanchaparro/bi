@@ -11,6 +11,9 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@heroui/react", () => ({
   RouterProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  Toast: {
+    Provider: () => null,
+  },
 }));
 
 const restoreSessionMock = vi.fn();

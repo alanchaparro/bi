@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Card } from '@heroui/react'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
+import { STRING_SELECT_TRIGGER_ANALYTICS, StringSelect } from '../../components/filters/StringSelect'
 import { FloatingQuickFilters } from '../../components/filters/FloatingQuickFilters'
 import { SegmentedControl } from '../../components/filters/SegmentedControl'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
@@ -264,6 +265,11 @@ export function AnalisisCobranzasCohorteView() {
   }, [filters.categorias, filters.cutoffMonth, filters.uns, filters.vias])
 
   const hasUnOptions = options.uns.length > 0
+
+  const cutoffMonthItems = useMemo(
+    () => options.cutoffMonths.map((m) => ({ id: m, label: m })),
+    [options.cutoffMonths],
+  )
 
   const applyFloatFilters = useCallback(async () => {
     const next: Filters = {
@@ -544,16 +550,17 @@ export function AnalisisCobranzasCohorteView() {
             <div className="cohorte-filters-grid-3" data-testid="analysis-filters-grid">
               <div className="analysis-filter-control">
                 <label className="input-label" id="cutoff-month-label">Mes de cobro</label>
-                <select
-                  className="input input-heroui-tokens w-full min-h-10 rounded-lg border border-[var(--color-border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--color-text)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                  value={filters.cutoffMonth}
-                  onChange={(e) => setFilters((prev) => ({ ...prev, cutoffMonth: e.target.value }))}
-                  aria-labelledby="cutoff-month-label"
-                >
-                  {options.cutoffMonths.map((month) => (
-                    <option key={month} value={month}>{month}</option>
-                  ))}
-                </select>
+                {cutoffMonthItems.length > 0 ? (
+                  <StringSelect
+                    labelId="cutoff-month-label"
+                    items={cutoffMonthItems}
+                    selectedKey={filters.cutoffMonth}
+                    onSelectionChange={(id) => setFilters((prev) => ({ ...prev, cutoffMonth: id }))}
+                    triggerClassName={STRING_SELECT_TRIGGER_ANALYTICS}
+                  />
+                ) : (
+                  <p className="text-sm text-[var(--color-text-muted)]" role="status">Sin meses de cobro disponibles.</p>
+                )}
               </div>
 
               <MultiSelectFilter
@@ -771,16 +778,17 @@ export function AnalisisCobranzasCohorteView() {
         >
           <div className="analysis-filter-control">
             <label className="input-label" id="float-cutoff-month-label">Mes de cobro</label>
-            <select
-              className="input input-heroui-tokens w-full min-h-10 rounded-lg border border-[var(--color-border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--color-text)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-              value={floatCutoff}
-              onChange={(e) => setFloatCutoff(e.target.value)}
-              aria-labelledby="float-cutoff-month-label"
-            >
-              {options.cutoffMonths.map((month) => (
-                <option key={month} value={month}>{month}</option>
-              ))}
-            </select>
+            {cutoffMonthItems.length > 0 ? (
+              <StringSelect
+                labelId="float-cutoff-month-label"
+                items={cutoffMonthItems}
+                selectedKey={floatCutoff}
+                onSelectionChange={setFloatCutoff}
+                triggerClassName={STRING_SELECT_TRIGGER_ANALYTICS}
+              />
+            ) : (
+              <p className="text-sm text-[var(--color-text-muted)]" role="status">Sin meses de cobro.</p>
+            )}
           </div>
           {hasUnOptions ? (
             <MultiSelectFilter

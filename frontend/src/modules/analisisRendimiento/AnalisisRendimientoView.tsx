@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button } from '@heroui/react'
+import { Button, Checkbox, Label } from '@heroui/react'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
 import { FloatingQuickFilters } from '../../components/filters/FloatingQuickFilters'
 import { SegmentedControl } from '../../components/filters/SegmentedControl'
@@ -1048,10 +1048,18 @@ export function AnalisisRendimientoView() {
             <span className="analysis-active-count">
               {activeFilterChips.length} filtro{activeFilterChips.length === 1 ? '' : 's'} activo{activeFilterChips.length === 1 ? '' : 's'}
             </span>
-            <label className="rendimiento-label-toggle">
-              <input type="checkbox" checked={showChartLabels} onChange={(e) => setShowChartLabels(e.target.checked)} />
-              Mostrar numeros en graficos
-            </label>
+            <Checkbox
+              className="rendimiento-label-toggle"
+              isSelected={showChartLabels}
+              onChange={setShowChartLabels}
+            >
+              <Checkbox.Control>
+                <Checkbox.Indicator />
+              </Checkbox.Control>
+              <Checkbox.Content>
+                <Label>Mostrar numeros en graficos</Label>
+              </Checkbox.Content>
+            </Checkbox>
           </div>
 
           <div className="analysis-active-filters">

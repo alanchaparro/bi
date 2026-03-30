@@ -9,6 +9,8 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
 - Si el cambio toca navegacion, routing, layout o UI de modulos analiticos, validar obligatoriamente contra `desacople.md`.
 - El canon visual operativo por patrones de UI analytics se rige por `docs/spec-canon-patrones-ui-analytics.md`.
 - Si el cambio toca filtros, botones, tablas, densidad desktop, jerarquia o componentes visuales repetidos, validar obligatoriamente contra `docs/spec-canon-patrones-ui-analytics.md`.
+- La biblioteca de componentes UI del frontend nuevo (**HeroUI**, `@heroui/react`) y la migración incremental se rigen por `docs/heroui/README.md` y `docs/heroui/PLAN-MIGRACION.md`.
+- Si el cambio introduce o altera botones, **menús desplegable (dropdown)**, **select/combobox** de datos, campos de formulario, modales, feedback tipo toast o primitivos equivalentes en el frontend nuevo, validar obligatoriamente contra esos documentos además del spec analytics.
 - El inventario de tablas MySQL de extracción, JOINs alineados a los SQL del repo y capas Postgres de sync/analytics se rige por `docs/base.md`.
 
 ## Canonicos operativos de seguimiento (obligatorios)
@@ -104,6 +106,10 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
    - Windows: `REINICIAR.bat` -> `scripts/restart_stack_fresh.ps1`.
    - Linux/macOS: `reiniciar.sh`.
    - Flujo: down con `--rmi local`, `docker builder prune -f`, `build --pull --no-cache`, `up -d` perfil prod.
+3.1. **Reinicio limpio LAN (rebuild prod-lan)**:
+   - Windows: `REINICIAR_LAN.bat` -> `scripts/restart_stack_fresh_lan.ps1`.
+   - Linux/macOS: `reiniciar_lan.sh`.
+   - Flujo: mismo que el reinicio prod, pero `build`/`up` contra el perfil `prod-lan` (nginx + API + front para LAN).
 4. **Acceso por red local (LAN), una sola URL**:
    - Windows: `INICIAR_LAN.bat` (raiz) -> `scripts/start_lan.ps1` -> perfil Docker Compose `prod-lan` (nginx en `LAN_HTTP_PORT`, por defecto 80; front con API bajo `/api/v1` en el mismo origen).
    - Linux/macOS: `iniciar_lan.sh` (raiz).
@@ -119,6 +125,8 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
    - `cache_hit`
    - `pipeline_version`
 3. Filtros deben mostrar todas las UN disponibles segun politica canonica vigente.
+4. Los controles interactivos nuevos en el frontend analytics deben **priorizar `@heroui/react`** según `docs/heroui/README.md` (incluye **Dropdown** para acciones, **Select** / **ComboBox** para elección de valores), salvo excepciones explícitas en `docs/spec-canon-patrones-ui-analytics.md` o en `docs/heroui/PLAN-MIGRACION.md` (p. ej. segmented nativo canónico).
+5. El avance por fases de migración UI (botones, formularios, feedback, tablas, overlays) se coordina con `docs/heroui/PLAN-MIGRACION.md`; al cerrar un bloque de fase, actualizar ese plan en el mismo cambio que el código.
 
 ## Politicas de seguridad Git (obligatorias)
 1. **Secretos prohibidos en repositorio**:
@@ -167,12 +175,13 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
    - escaneo de secretos sin hallazgos
    - confirmacion de que no hay credenciales reales en diffs
    - confirmacion de que `.env`/llaves no forman parte del commit
-7. Si el cambio toca Docker/compose/bootstrap/scripts: validar `INICIAR.bat`/`iniciar.sh`, `INICIAR_LAN.bat`/`iniciar_lan.sh`, `DETENER.bat`/`detener.sh` y `REINICIAR.bat`/`reiniciar.sh`.
+7. Si el cambio toca Docker/compose/bootstrap/scripts: validar `INICIAR.bat`/`iniciar.sh`, `INICIAR_LAN.bat`/`iniciar_lan.sh`, `DETENER.bat`/`detener.sh`, `REINICIAR.bat`/`reiniciar.sh` y `REINICIAR_LAN.bat`/`reiniciar_lan.sh`.
 8. Si el cambio toca frontend de analytics, validar fronteras de `desacople.md` (sin marcadores legacy en flujo nuevo).
 9. Validar `optimo.md` como canónico de pendientes: registrar impacto en hardware/UX, evidencia antes/despues y estado consistente con `bugs.md`/`bugs_visual.md`.
 10. Si el cambio requiere validación funcional o de regresión, registrar la corrida en `qa.md` con evidencia y enlazar cualquier hallazgo a su canónico correspondiente.
 11. Si el cambio altera copy, métricas visibles o flujos de decision con datos para perfiles no técnicos: revisar coherencia con `pendientes.md` (ítems abiertos/cerrados) y con la voz de negocio de `AGENTS.md`.
 12. Si el cambio toca `sql/v2/*`, `sql/common/*`, `query_analytics.sql` o el inventario de tablas/capas documentado para importaciones: actualizar `docs/base.md` para evitar drift respecto al código.
+13. Si el cambio toca UI del frontend nuevo con primitivos interactivos: validar adopción respecto a `docs/heroui/README.md` y el estado de `docs/heroui/PLAN-MIGRACION.md`; marcar ítems del plan cuando el PR cierre una tarea de fase explícita.
 
 ## Cuando actualizar este archivo
 Actualizar inmediatamente si cambia:
@@ -189,3 +198,4 @@ Actualizar inmediatamente si cambia:
 11. Politica o formato del canónico de experiencia ejecutiva en `pendientes.md` (PEND-*).
 12. Inventario de extracción MySQL / referencias en `docs/base.md` si las reglas anteriores alteran los SQL de sync o el grafo documentado de tablas.
 13. Catálogo de códigos legacy: si el monolito PHP cambia mapeos id→etiqueta, actualizar el **Apéndice A** dentro de `docs/base.md` (y §10–§11 si cambia semántica de columnas en extractos v2).
+14. Política de adopción HeroUI o reglas operativas en `docs/heroui/README.md` / `docs/heroui/PLAN-MIGRACION.md` (incluidas excepciones temporales o decisiones de fase, p. ej. tablas).

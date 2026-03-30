@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
-import { Button, Input, Modal, Tabs, useOverlayState } from '@heroui/react'
+import { AlertDialog, Button, Dropdown, Input, Label, Tabs, TextField, useOverlayState } from '@heroui/react'
+import { DomButton } from '@/components/ui/DomButton'
 import { useAuth } from '../../app/providers'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
+import { StringSelect } from '../../components/filters/StringSelect'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { LoadingState } from '../../components/feedback/LoadingState'
 import {
@@ -108,6 +110,17 @@ type TramoRule = {
 type RoleType = 'admin' | 'analyst' | 'viewer'
 type ConfigSection = 'usuarios' | 'rolesMenus' | 'negocio' | 'importaciones' | 'programacion'
 const ROLE_OPTIONS: RoleType[] = ['admin', 'analyst', 'viewer']
+const ROLE_SELECT_ITEMS = ROLE_OPTIONS.map((r) => ({ id: r, label: r }))
+const RULE_CATEGORY_SELECT_ITEMS = [
+  { id: 'VIGENTE', label: 'VIGENTE' },
+  { id: 'MOROSO', label: 'MOROSO' },
+] as const
+const SCHEDULE_INTERVAL_UNIT_ITEMS = [
+  { id: 'minute', label: 'Minutos (mín. 10)' },
+  { id: 'hour', label: 'Horas' },
+  { id: 'day', label: 'Días' },
+  { id: 'month', label: 'Meses' },
+] as const
 
 const SYNC_DOMAINS: Array<{ value: SyncDomain; label: string }> = [
   { value: 'analytics', label: 'Analytics' },
@@ -1456,7 +1469,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   const displayDomain = syncLive?.currentDomain ?? (syncResult && selectedDomains.length > 0 ? selectedDomains.join(', ') : null)
   const displayJobId = syncLive?.jobId ?? null
 
-  const handleExportLogTxt = useCallback(() => {
+  const buildImportLogText = useCallback((): string => {
     const lines: string[] = [
       '=== Log de importación ===',
       `Generado: ${new Date().toLocaleString()}`,
@@ -1475,14 +1488,28 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
     } else {
       lines.push('No hay entradas de log.')
     }
-    const blob = new Blob([lines.join('\r\n')], { type: 'text/plain;charset=utf-8' })
+    return lines.join('\r\n')
+  }, [displayLog, displayError, displayDomain, displayJobId])
+
+  const handleExportLogTxt = useCallback(() => {
+    const body = buildImportLogText()
+    const blob = new Blob([body], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
     a.download = `log-importacion-${(displayDomain || 'sync').replace(/\s*,\s*/g, '-')}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.txt`
     a.click()
     URL.revokeObjectURL(url)
-  }, [displayLog, displayError, displayDomain, displayJobId])
+  }, [buildImportLogText, displayDomain])
+
+  const copyImportLogToClipboard = useCallback(async () => {
+    const text = buildImportLogText()
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      window.alert('No se pudo copiar al portapapeles. Probá exportar a TXT.')
+    }
+  }, [buildImportLogText])
 
   return (
     <section className="card config-card">
@@ -1491,16 +1518,17 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
         {configTabEntries.map(([value, label]) => {
           const selected = configSection === value
           return (
-            <button
+            <DomButton
               key={value}
               type="button"
+              variant="ghost"
               role="tab"
               aria-selected={selected}
               className={`config-segmented-nav__button ${selected ? 'is-active' : ''}`}
-              onClick={() => setConfigSection(value)}
+              onPress={() => setConfigSection(value)}
             >
               {label}
-            </button>
+            </DomButton>
           )
         })}
       </div>
@@ -1563,58 +1591,53 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               Esta configuración se usa para extraer datos en sincronización.
             </p>
             <div className="config-grid-3 config-mt-xs">
-              <label className="config-label-col">
-                <span className="config-label-caption">Host</span>
-                <input
+              <TextField className="config-label-col w-full min-w-0" isDisabled={mysqlLoading || mysqlSaving || mysqlTesting}>
+                <Label className="config-label-caption">Host</Label>
+                <Input
                   className="input-heroui-tokens"
                   value={mysqlConfig.host}
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, host: e.target.value }))}
                   placeholder="192.168.0.10"
-                  disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
-              </label>
-              <label className="config-label-col">
-                <span className="config-label-caption">Puerto</span>
-                <input
+              </TextField>
+              <TextField className="config-label-col w-full min-w-0" isDisabled={mysqlLoading || mysqlSaving || mysqlTesting}>
+                <Label className="config-label-caption">Puerto</Label>
+                <Input
                   className="input-heroui-tokens"
                   type="number"
-                  value={mysqlConfig.port}
+                  value={String(mysqlConfig.port)}
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, port: Number(e.target.value || 3306) }))}
                   placeholder="3306"
-                  disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
-              </label>
-              <label className="config-label-col">
-                <span className="config-label-caption">Base</span>
-                <input
+              </TextField>
+              <TextField className="config-label-col w-full min-w-0" isDisabled={mysqlLoading || mysqlSaving || mysqlTesting}>
+                <Label className="config-label-caption">Base</Label>
+                <Input
                   className="input-heroui-tokens"
                   value={mysqlConfig.database}
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, database: e.target.value }))}
                   placeholder="epem"
-                  disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
-              </label>
-              <label className="config-label-col">
-                <span className="config-label-caption">Usuario</span>
-                <input
+              </TextField>
+              <TextField className="config-label-col w-full min-w-0" isDisabled={mysqlLoading || mysqlSaving || mysqlTesting}>
+                <Label className="config-label-caption">Usuario</Label>
+                <Input
                   className="input-heroui-tokens"
                   value={mysqlConfig.user}
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, user: e.target.value }))}
                   placeholder="bi"
-                  disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
-              </label>
-              <label className="config-label-col">
-                <span className="config-label-caption">Contraseña</span>
-                <input
+              </TextField>
+              <TextField className="config-label-col w-full min-w-0" isDisabled={mysqlLoading || mysqlSaving || mysqlTesting}>
+                <Label className="config-label-caption">Contraseña</Label>
+                <Input
                   className="input-heroui-tokens"
                   type="password"
                   value={mysqlConfig.password}
                   onChange={(e) => setMysqlConfig((prev) => ({ ...prev, password: e.target.value }))}
                   placeholder="********"
-                  disabled={mysqlLoading || mysqlSaving || mysqlTesting}
                 />
-              </label>
+              </TextField>
               <label className="config-check-row config-mt-lg">
                 <input
                   type="checkbox"
@@ -1716,37 +1739,38 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
           </p>
 
           <div className="config-grid-3 config-mt-md">
-            <label className="config-label-col">
-              <span className="config-label-caption">Username</span>
-              <input
+            <TextField className="config-label-col w-full min-w-0" isDisabled={usersBusy}>
+              <Label className="config-label-caption">Username</Label>
+              <Input
                 className="input-heroui-tokens"
                 value={newUsername}
                 placeholder="ej: operador1"
                 onChange={(e) => setNewUsername(e.target.value.toLowerCase())}
-                disabled={usersBusy}
               />
-            </label>
+            </TextField>
 
-            <label className="config-label-col">
-              <span className="config-label-caption">Contraseña</span>
-              <input
+            <TextField className="config-label-col w-full min-w-0" isDisabled={usersBusy}>
+              <Label className="config-label-caption">Contraseña</Label>
+              <Input
                 className="input-heroui-tokens"
                 type="password"
                 value={newPassword}
                 placeholder="min. 6 caracteres"
                 onChange={(e) => setNewPassword(e.target.value)}
-                disabled={usersBusy}
               />
-            </label>
+            </TextField>
 
-            <label className="config-label-col">
-              <span className="config-label-caption">Rol</span>
-              <select className="input-heroui-tokens" value={newRole} onChange={(e) => setNewRole((e.target.value as RoleType) || 'viewer')} disabled={usersBusy}>
-                {ROLE_OPTIONS.map((r) => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-              </select>
-            </label>
+            <div className="config-label-col">
+              <span className="config-label-caption" id="config-new-user-role-label">Rol</span>
+              <StringSelect
+                labelId="config-new-user-role-label"
+                items={[...ROLE_SELECT_ITEMS]}
+                selectedKey={newRole}
+                onSelectionChange={(id) => setNewRole((id as RoleType) || 'viewer')}
+                isDisabled={usersBusy}
+                triggerClassName="input-heroui-tokens w-full"
+              />
+            </div>
           </div>
 
           <div className="config-row-wrap config-mt-sm">
@@ -1775,21 +1799,21 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
             ) : (
               users.map((u) => (
                 <div key={u.username} className="config-grid-3 config-items-center">
-                  <input className="input-heroui-tokens" value={u.username} readOnly />
+                  <TextField className="w-full min-w-0" aria-label={`Usuario ${u.username}`}>
+                    <Input className="input-heroui-tokens" value={u.username} readOnly />
+                  </TextField>
 
-                  <select
-                    className="input-heroui-tokens"
-                    value={u.role}
-                    onChange={(e) => {
-                      const role = (e.target.value as RoleType) || 'viewer'
+                  <StringSelect
+                    aria-label={`Rol de ${u.username}`}
+                    items={[...ROLE_SELECT_ITEMS]}
+                    selectedKey={u.role}
+                    onSelectionChange={(id) => {
+                      const role = (id as RoleType) || 'viewer'
                       setUsers((prev) => prev.map((x) => (x.username === u.username ? { ...x, role } : x)))
                     }}
-                    disabled={usersBusy}
-                  >
-                    {ROLE_OPTIONS.map((r) => (
-                      <option key={r} value={r}>{r}</option>
-                    ))}
-                  </select>
+                    isDisabled={usersBusy}
+                    triggerClassName="input-heroui-tokens w-full"
+                  />
 
                   <div className="config-row-wrap-tight">
                     <label className="config-check-row config-check-row-tight">
@@ -1804,14 +1828,15 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                       />
                       <span>Activo</span>
                     </label>
-                    <input
-                      className="input-heroui-tokens"
-                      type="password"
-                      placeholder="Nueva contraseña (opcional)"
-                      value={rowPasswordDraft[u.username] || ''}
-                      onChange={(e) => setRowPasswordDraft((prev) => ({ ...prev, [u.username]: e.target.value }))}
-                      disabled={usersBusy}
-                    />
+                    <TextField className="min-w-0 flex-1" isDisabled={usersBusy} aria-label={`Nueva contraseña para ${u.username}`}>
+                      <Input
+                        className="input-heroui-tokens"
+                        type="password"
+                        placeholder="Nueva contraseña (opcional)"
+                        value={rowPasswordDraft[u.username] || ''}
+                        onChange={(e) => setRowPasswordDraft((prev) => ({ ...prev, [u.username]: e.target.value }))}
+                      />
+                    </TextField>
                     <Button type="button" variant="outline" onPress={() => void handleUpdateUser(u)} isDisabled={usersBusy}>
                       Guardar
                     </Button>
@@ -1841,11 +1866,12 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   {group.presets.map((preset) => {
                     const selected = themePresetId === preset.id
                     return (
-                      <button
+                      <DomButton
                         key={preset.id}
                         type="button"
+                        variant="ghost"
                         className={`config-theme-card ${selected ? 'is-active' : ''}`}
-                        onClick={() => applyThemeChoice(preset.id)}
+                        onPress={() => applyThemeChoice(preset.id)}
                         aria-pressed={selected}
                       >
                         <div className="config-theme-card-top">
@@ -1860,7 +1886,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                             <span key={`${preset.id}-${color}`} className="config-theme-swatch" style={{ backgroundColor: color }} />
                           ))}
                         </div>
-                      </button>
+                      </DomButton>
                     )
                   })}
                 </div>
@@ -1874,30 +1900,33 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
           </p>
 
           <div className="config-grid-3 config-mt-md">
-            <label className="config-label-col">
-              <span className="config-label-caption">Unidad de Negocio</span>
-              <input
+            <TextField className="config-label-col w-full min-w-0" isDisabled={configBusy}>
+              <Label className="config-label-caption">Unidad de Negocio</Label>
+              <Input
                 className="input-heroui-tokens"
                 list="un-options"
                 placeholder="Ej: MEDICINA ESTETICA"
                 value={ruleUn}
                 onChange={(e) => setRuleUn(e.target.value.toUpperCase())}
-                disabled={configBusy}
               />
               <datalist id="un-options">
                 {availableUns.map((un) => (
                   <option key={un} value={un} />
                 ))}
               </datalist>
-            </label>
+            </TextField>
 
-            <label className="config-label-col">
-              <span className="config-label-caption">Categoria</span>
-              <select className="input-heroui-tokens" value={ruleCategory} onChange={(e) => setRuleCategory(e.target.value === 'MOROSO' ? 'MOROSO' : 'VIGENTE')}>
-                <option value="VIGENTE">VIGENTE</option>
-                <option value="MOROSO">MOROSO</option>
-              </select>
-            </label>
+            <div className="config-label-col">
+              <span className="config-label-caption" id="config-tramo-rule-category-label">Categoria</span>
+              <StringSelect
+                labelId="config-tramo-rule-category-label"
+                items={[...RULE_CATEGORY_SELECT_ITEMS]}
+                selectedKey={ruleCategory}
+                onSelectionChange={(id) => setRuleCategory(id === 'MOROSO' ? 'MOROSO' : 'VIGENTE')}
+                isDisabled={configBusy}
+                triggerClassName="input-heroui-tokens w-full"
+              />
+            </div>
 
             <Button type="button" variant="outline" className="config-full-mobile" onPress={upsertRule} isDisabled={configBusy}>
               Agregar/Actualizar
@@ -1947,8 +1976,12 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   .sort((a, b) => (a.un + a.category).localeCompare(b.un + b.category))
                   .map((r) => (
                     <div key={`${r.un}-${r.category}`} className="config-grid-3">
-                      <input className="input-heroui-tokens" value={r.un} readOnly />
-                      <input className="input-heroui-tokens" value={`${r.category}: ${r.tramos.join(', ') || '-'}`} readOnly />
+                      <TextField className="w-full min-w-0" aria-label={`UN ${r.un}`}>
+                        <Input className="input-heroui-tokens" value={r.un} readOnly />
+                      </TextField>
+                      <TextField className="w-full min-w-0" aria-label={`Tramos ${r.un}`}>
+                        <Input className="input-heroui-tokens" value={`${r.category}: ${r.tramos.join(', ') || '-'}`} readOnly />
+                      </TextField>
                       <Button type="button" variant="outline" className="config-full-mobile" onPress={() => removeRule(r.un, r.category)} isDisabled={configBusy}>
                         Quitar
                       </Button>
@@ -1980,12 +2013,30 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               ))}
             </div>
             <div className="config-row-wrap-tight config-mt-2xs">
-              <Button type="button" variant="outline" size="sm" onPress={selectAllSyncDomains} isDisabled={busy}>
-                Seleccionar todos los dominios
-              </Button>
-              <Button type="button" variant="outline" size="sm" onPress={resetSyncDomainsDefault} isDisabled={busy}>
-                Solo Analytics (por defecto)
-              </Button>
+              <Dropdown>
+                <Button type="button" variant="outline" size="sm" isDisabled={busy} aria-label="Atajos de selección de dominios SQL">
+                  Dominios rápidos
+                  <span className="config-dropdown-chevron" aria-hidden>
+                    {' '}
+                    ▾
+                  </span>
+                </Button>
+                <Dropdown.Popover placement="bottom start" className="config-dropdown-popover">
+                  <Dropdown.Menu
+                    onAction={(key) => {
+                      if (key === 'all') selectAllSyncDomains()
+                      if (key === 'default') resetSyncDomainsDefault()
+                    }}
+                  >
+                    <Dropdown.Item id="all" textValue="Seleccionar todos los dominios">
+                      <Label>Seleccionar todos los dominios</Label>
+                    </Dropdown.Item>
+                    <Dropdown.Item id="default" textValue="Solo Analytics (por defecto)">
+                      <Label>Solo Analytics (por defecto)</Label>
+                    </Dropdown.Item>
+                  </Dropdown.Menu>
+                </Dropdown.Popover>
+              </Dropdown>
             </div>
             <p className="config-section-subtitle config-mt-2xs config-no-margin">
               Para traer todo en una pasada, usá «Seleccionar todos los dominios»; si el volumen es alto, el sistema pedirá confirmación antes de continuar. Cartera exige rango de cierre (mes/año desde–hasta).
@@ -1994,9 +2045,9 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
 
           <div className="config-stack-sm config-stack-sm-max">
             <div className="config-row-wrap">
-              <label className="config-label-col config-minw-140">
-                <span className="config-label-caption">Mes cierre desde (cartera)</span>
-                <input
+              <TextField className="config-label-col config-minw-140 w-full min-w-0">
+                <Label className="config-label-caption">Mes cierre desde (cartera)</Label>
+                <Input
                   className="input-heroui-tokens"
                   type="text"
                   inputMode="numeric"
@@ -2005,10 +2056,10 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   value={closeMonthFromPart}
                   onChange={(e) => setCloseMonthFromPart(e.target.value.replace(/[^0-9]/g, ''))}
                 />
-              </label>
-              <label className="config-label-col config-minw-140">
-                <span className="config-label-caption">Mes cierre hasta (cartera)</span>
-                <input
+              </TextField>
+              <TextField className="config-label-col config-minw-140 w-full min-w-0">
+                <Label className="config-label-caption">Mes cierre hasta (cartera)</Label>
+                <Input
                   className="input-heroui-tokens"
                   type="text"
                   inputMode="numeric"
@@ -2017,12 +2068,12 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   value={closeMonthToPart}
                   onChange={(e) => setCloseMonthToPart(e.target.value.replace(/[^0-9]/g, ''))}
                 />
-              </label>
+              </TextField>
             </div>
             <div className="config-row-wrap">
-              <label className="config-label-col config-minw-140">
-                <span className="config-label-caption">Año cierre desde (cartera)</span>
-                <input
+              <TextField className="config-label-col config-minw-140 w-full min-w-0">
+                <Label className="config-label-caption">Año cierre desde (cartera)</Label>
+                <Input
                   className="input-heroui-tokens"
                   type="text"
                   inputMode="numeric"
@@ -2031,10 +2082,10 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   value={closeYearFromPart}
                   onChange={(e) => setCloseYearFromPart(e.target.value.replace(/[^0-9]/g, ''))}
                 />
-              </label>
-              <label className="config-label-col config-minw-140">
-                <span className="config-label-caption">Año cierre hasta (cartera)</span>
-                <input
+              </TextField>
+              <TextField className="config-label-col config-minw-140 w-full min-w-0">
+                <Label className="config-label-caption">Año cierre hasta (cartera)</Label>
+                <Input
                   className="input-heroui-tokens"
                   type="text"
                   inputMode="numeric"
@@ -2043,7 +2094,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   value={closeYearToPart}
                   onChange={(e) => setCloseYearToPart(e.target.value.replace(/[^0-9]/g, ''))}
                 />
-              </label>
+              </TextField>
             </div>
           </div>
 
@@ -2209,14 +2260,35 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
             <pre className="sync-logs-pre">
               {displayLog.length > 0 ? displayLog.join('\n') : 'No hay entradas de log aún. Ejecuta una carga para ver el registro aquí.'}
             </pre>
-            <Button
-              type="button"
-              variant="outline"
-              onPress={handleExportLogTxt}
-              isDisabled={displayLog.length === 0 && !displayError}
-            >
-              Exportar a TXT
-            </Button>
+            <Dropdown>
+              <Button
+                type="button"
+                variant="outline"
+                isDisabled={displayLog.length === 0 && !displayError}
+                aria-label="Acciones del registro de importación"
+              >
+                Acciones del log
+                <span className="config-dropdown-chevron" aria-hidden>
+                  {' '}
+                  ▾
+                </span>
+              </Button>
+              <Dropdown.Popover placement="bottom start" className="config-dropdown-popover">
+                <Dropdown.Menu
+                  onAction={(key) => {
+                    if (key === 'export-txt') handleExportLogTxt()
+                    if (key === 'copy') void copyImportLogToClipboard()
+                  }}
+                >
+                  <Dropdown.Item id="export-txt" textValue="Exportar a archivo TXT">
+                    <Label>Exportar a TXT</Label>
+                  </Dropdown.Item>
+                  <Dropdown.Item id="copy" textValue="Copiar todo al portapapeles">
+                    <Label>Copiar al portapapeles</Label>
+                  </Dropdown.Item>
+                </Dropdown.Menu>
+              </Dropdown.Popover>
+            </Dropdown>
           </div>
         </div>
         )}
@@ -2387,21 +2459,19 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   aria-label="Intervalo numérico"
                 />
               </div>
-              <label className="config-label-col">
-                <span className="config-label-caption">Unidad</span>
-                <select
-                  className="input-heroui-tokens"
-                  value={scheduleFormIntervalUnit}
-                  onChange={(e) => setScheduleFormIntervalUnit(e.target.value as 'minute' | 'hour' | 'day' | 'month')}
-                  disabled={scheduleSaving}
-                  aria-label="Unidad de intervalo"
-                >
-                  <option value="minute">Minutos (mín. 10)</option>
-                  <option value="hour">Horas</option>
-                  <option value="day">Días</option>
-                  <option value="month">Meses</option>
-                </select>
-              </label>
+              <div className="config-label-col">
+                <span className="config-label-caption" id="config-schedule-interval-unit-label">Unidad</span>
+                <StringSelect
+                  labelId="config-schedule-interval-unit-label"
+                  items={[...SCHEDULE_INTERVAL_UNIT_ITEMS]}
+                  selectedKey={scheduleFormIntervalUnit}
+                  onSelectionChange={(id) =>
+                    setScheduleFormIntervalUnit(id as 'minute' | 'hour' | 'day' | 'month')
+                  }
+                  isDisabled={scheduleSaving}
+                  triggerClassName="input-heroui-tokens w-full"
+                />
+              </div>
             </div>
             <div className="config-stack-sm">
               <span className="config-label-caption">Dominios</span>
@@ -2452,67 +2522,71 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
         </div>
         )}
       </div>
-      <Modal state={emergencyStopConfirm}>
-        <Modal.Backdrop />
-        <Modal.Container size="sm" placement="center">
-          <Modal.Dialog>
-            <Modal.Header>
-              <Modal.Heading>Confirmar parada de emergencia</Modal.Heading>
-            </Modal.Header>
-            <Modal.Body>
-              Esta acción detiene todas las programaciones y cancela jobs pendientes. ¿Seguro que querés continuar?
-            </Modal.Body>
-            <Modal.Footer className="config-actions-row">
-              <Button
-                variant="outline"
-                onPress={() => emergencyStopConfirm.close()}
-                isDisabled={scheduleActionLoading === 'emergency'}
-              >
-                Cancelar
-              </Button>
-              <Button
-                variant="danger"
-                onPress={confirmEmergencyStop}
-                isDisabled={scheduleActionLoading === 'emergency'}
-              >
-                {scheduleActionLoading === 'emergency' ? 'Parando...' : 'Parar todo'}
-              </Button>
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal>
-      <Modal state={deleteScheduleConfirm}>
-        <Modal.Backdrop />
-        <Modal.Container size="sm" placement="center">
-          <Modal.Dialog>
-            <Modal.Header>
-              <Modal.Heading>Confirmar eliminación</Modal.Heading>
-            </Modal.Header>
-            <Modal.Body>
-              Esta acción elimina la programación seleccionada y no se puede deshacer. ¿Deseás continuar?
-            </Modal.Body>
-            <Modal.Footer className="config-actions-row">
-              <Button
-                variant="outline"
-                onPress={() => {
-                  setSchedulePendingDeleteId(null)
-                  deleteScheduleConfirm.close()
-                }}
-                isDisabled={typeof scheduleActionLoading === 'number'}
-              >
-                Cancelar
-              </Button>
-              <Button
-                variant="danger"
-                onPress={confirmDeleteSchedule}
-                isDisabled={schedulePendingDeleteId === null || typeof scheduleActionLoading === 'number'}
-              >
-                {typeof scheduleActionLoading === 'number' ? 'Eliminando...' : 'Eliminar programación'}
-              </Button>
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal>
+      <AlertDialog isOpen={emergencyStopConfirm.isOpen} onOpenChange={emergencyStopConfirm.setOpen}>
+        <AlertDialog.Backdrop>
+          <AlertDialog.Container size="sm" placement="center">
+            <AlertDialog.Dialog>
+              <AlertDialog.Header>
+                <AlertDialog.Icon status="warning" />
+                <AlertDialog.Heading>Confirmar parada de emergencia</AlertDialog.Heading>
+              </AlertDialog.Header>
+              <AlertDialog.Body>
+                Esta acción detiene todas las programaciones y cancela jobs pendientes. ¿Seguro que querés continuar?
+              </AlertDialog.Body>
+              <AlertDialog.Footer className="config-actions-row">
+                <Button
+                  variant="outline"
+                  onPress={() => emergencyStopConfirm.close()}
+                  isDisabled={scheduleActionLoading === 'emergency'}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="danger"
+                  onPress={confirmEmergencyStop}
+                  isDisabled={scheduleActionLoading === 'emergency'}
+                >
+                  {scheduleActionLoading === 'emergency' ? 'Parando...' : 'Parar todo'}
+                </Button>
+              </AlertDialog.Footer>
+            </AlertDialog.Dialog>
+          </AlertDialog.Container>
+        </AlertDialog.Backdrop>
+      </AlertDialog>
+      <AlertDialog isOpen={deleteScheduleConfirm.isOpen} onOpenChange={deleteScheduleConfirm.setOpen}>
+        <AlertDialog.Backdrop>
+          <AlertDialog.Container size="sm" placement="center">
+            <AlertDialog.Dialog>
+              <AlertDialog.Header>
+                <AlertDialog.Icon status="danger" />
+                <AlertDialog.Heading>Confirmar eliminación</AlertDialog.Heading>
+              </AlertDialog.Header>
+              <AlertDialog.Body>
+                Esta acción elimina la programación seleccionada y no se puede deshacer. ¿Deseás continuar?
+              </AlertDialog.Body>
+              <AlertDialog.Footer className="config-actions-row">
+                <Button
+                  variant="outline"
+                  onPress={() => {
+                    setSchedulePendingDeleteId(null)
+                    deleteScheduleConfirm.close()
+                  }}
+                  isDisabled={typeof scheduleActionLoading === 'number'}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="danger"
+                  onPress={confirmDeleteSchedule}
+                  isDisabled={schedulePendingDeleteId === null || typeof scheduleActionLoading === 'number'}
+                >
+                  {typeof scheduleActionLoading === 'number' ? 'Eliminando...' : 'Eliminar programación'}
+                </Button>
+              </AlertDialog.Footer>
+            </AlertDialog.Dialog>
+          </AlertDialog.Container>
+        </AlertDialog.Backdrop>
+      </AlertDialog>
     </section>
   )
 }

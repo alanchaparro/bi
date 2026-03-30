@@ -10,9 +10,10 @@ Cuando haya dudas, usar este orden:
 1. `AGENTS.md`
 2. `desacople.md`
 3. este archivo
-4. `docs/frontend-visual-standard.md`
-5. `docs/spec-visual-appbar-sidebar-buttons.md`
-6. tokens compartidos en `frontend/src/app/globals.css` y `frontend/src/index.css`
+4. `docs/heroui/README.md` y `docs/heroui/PLAN-MIGRACION.md` (elección de primitivos `@heroui/react`, fases de migración y excepciones documentadas frente a HTML/CSS ad hoc)
+5. `docs/frontend-visual-standard.md`
+6. `docs/spec-visual-appbar-sidebar-buttons.md`
+7. tokens compartidos en `frontend/src/app/globals.css` y `frontend/src/index.css`
 
 ## Principios rectores
 - El dato manda; el chrome no compite con el contenido.
