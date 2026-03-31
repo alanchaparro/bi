@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-SYNC_DOMAINS = {'analytics', 'cartera', 'cobranzas', 'contratos', 'gestores'}
+SYNC_DOMAINS = {'analytics', 'cartera', 'cobranzas', 'contratos', 'gestores', 'eerr'}
 
 
 class SyncRunIn(BaseModel):

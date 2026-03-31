@@ -388,6 +388,43 @@ class GestoresFact(Base):
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class EerrFact(Base):
+    __tablename__ = 'eerr_fact'
+
+    id = Column(Integer, primary_key=True, index=True)
+    gestion_month = Column(String(7), nullable=False, index=True)
+    calendar_year = Column(Integer, nullable=False, default=0, index=True)
+    social_reason_id = Column(Integer, nullable=False, index=True)
+    accounting_plan_id = Column(Integer, nullable=False, index=True)
+    eerr_block = Column(String(16), nullable=False)
+    empresa = Column(String(256), nullable=False, default='')
+    group_type = Column(Integer, nullable=False, default=0)
+    mayor = Column(String(256), nullable=False, default='')
+    cuenta = Column(String(512), nullable=False, default='')
+    debit_total = Column(Float, nullable=False, default=0.0)
+    credit_total = Column(Float, nullable=False, default=0.0)
+    source_hash = Column(String(64), nullable=False)
+    payload_json = Column(Text, nullable=False, default='{}')
+    loaded_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class EerrMonthlyAgg(Base):
+    """Agregado mensual EERR (mes × razón social × bloque); se refresca desde eerr_fact post-sync."""
+
+    __tablename__ = "eerr_monthly_agg"
+
+    id = Column(Integer, primary_key=True, index=True)
+    gestion_month = Column(String(7), nullable=False, index=True)
+    social_reason_id = Column(Integer, nullable=False, index=True)
+    eerr_block = Column(String(16), nullable=False)
+    empresa = Column(String(256), nullable=False, default="")
+    debit_total = Column(Float, nullable=False, default=0.0)
+    credit_total = Column(Float, nullable=False, default=0.0)
+    plan_lines = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class CarteraCorteAgg(Base):
     __tablename__ = 'cartera_corte_agg'
 
@@ -744,6 +781,23 @@ Index(
     unique=True,
 )
 Index('ix_gestores_fact_un_gestion_month', GestoresFact.un, GestoresFact.gestion_month)
+Index(
+    'ux_eerr_fact_business_key',
+    EerrFact.gestion_month,
+    EerrFact.social_reason_id,
+    EerrFact.accounting_plan_id,
+    EerrFact.eerr_block,
+    unique=True,
+)
+Index('ix_eerr_fact_block_gestion', EerrFact.eerr_block, EerrFact.gestion_month)
+Index(
+    'ux_eerr_monthly_agg_key',
+    EerrMonthlyAgg.gestion_month,
+    EerrMonthlyAgg.social_reason_id,
+    EerrMonthlyAgg.eerr_block,
+    unique=True,
+)
+Index('ix_eerr_monthly_agg_gestion_social', EerrMonthlyAgg.gestion_month, EerrMonthlyAgg.social_reason_id)
 Index(
     'ux_cartera_corte_agg_key',
     CarteraCorteAgg.gestion_month,

@@ -69,9 +69,13 @@ Plantilla: `.env.example` (`MYSQL_*`). Copiar a `.env` en cada entorno y rellena
 | **cobranzas** | `sql/v2/query_cobranzas.sql` | `enterprise_scope` | Pagos + vías; exclusión de contratos en `WHERE`. |
 | **contratos** | `sql/v2/query_contratos.sql` | `un_rules`, `supervisor_rules`, `enterprise_scope` | Contratos confirmados/culminados. |
 | **gestores** | `sql/v2/query_gestores.sql` | `enterprise_scope` | Cartera asignada a gestor (`detail_client_portfolios`). |
+| **EERR — ingresos (ventas)** | `sql/v2/query_eerr_ventas.sql` | — | Mismo criterio que el primer bloque de `query_eerr.sql` (`type = 1`, `YEAR >= 2020`). Archivo **de referencia / consultas aisladas**; el batch sync no lo invoca por separado. |
+| **EERR — costos** | `sql/v2/query_eerr_costos.sql` | — | Igual que costos en `query_eerr.sql` (`type = 2`, `YEAR >= 2020`). Referencia; sync usa el unificado. |
+| **EERR — gastos** | `sql/v2/query_eerr_gastos.sql` | — | Igual que gastos en `query_eerr.sql` (`type = 3`, `YEAR >= 2020`). Referencia; sync usa el unificado. |
+| **EERR — sync (union)** | `sql/v2/query_eerr.sql` | — | **UNION ALL** ventas + costos + gastos con `eerr_block`; dominio sync **`eerr`** → Postgres **`eerr_fact`**; API **`eerr-v2`**, UI `/eerr`. |
 | **analytics snapshot (brokers legacy)** | `query_analytics.sql` (raíz) | inline `enterprise_id IN (1,2,5)` | Puebla `analytics_contract_snapshot` desde Configuración / servicio; **no** está bajo `sql/v2/`. |
 
-El sync batch usa **v2** para cartera/cobranzas/contratos/gestores (`sync_extractors.py`). La ruta v1 en raíz (`query_cobranzas.sql`, etc.) es legado de referencia; operación actual = **v2**.
+El sync batch usa **v2** para cartera/cobranzas/contratos/gestores/**eerr** (`sync_extractors.py`). **EERR** fuerza variante v2 (`query_eerr.sql`). La ruta v1 en raíz (`query_cobranzas.sql`, etc.) es legado de referencia; operación actual = **v2**.
 
 **Includes reutilizables** (`sql/common/`):
 
@@ -103,6 +107,8 @@ Esquema en archivos: muchas tablas van prefijadas `epem.` (ej. `epem.contract_cl
 | `branches` | Sucursal del pago | `payments.branch_id` |
 | `payment_methods` | Clasificación débito vs cobrador | `apw.payment_method_id` |
 
+**Fecha mínima de pago** en el extracto: `payments.date >= '2020-01-01'` (histórico desde 2020; alinear precheck MySQL en `sync_extractors.MYSQL_PRECHECK_QUERIES['cobranzas']`).
+
 **Exclusión fija de contratos** (negocio): `contract_id NOT IN (55411, 55414, 59127, 59532, 60402)` — debe mantenerse alineado con `AGENTS.md` y `query_cobranzas.sql`.
 
 ### 3.3 Contratos (`query_contratos.sql`)
@@ -127,6 +133,111 @@ Filtros: `users.id <> 696`, `cp.status = 1`, `cp.from_date >= '2024-01-01'` (aju
 ### 3.5 Analytics (`query_analytics.sql`)
 
 Subconsultas sobre `contract_closed_dates`, `contracts`, `enterprises`, `users` (supervisor), más agregados de `payments` / `account_payment_ways` / `payment_methods` por `gestion_month`. Es la base del snapshot brokers; revisar archivo completo para nuevas columnas.
+
+### 3.6 EERR — ingresos / ventas (`query_eerr_ventas.sql`)
+
+Contabilidad (MySQL): movimientos de detalle de asientos agrupados por mes/año, razón social del **plan** (`social_reasons` vía `accounting_plans`), y cuenta (`accounting_plans` + `accounting_types`). El `GROUP BY` incluye además `accounting_entries.social_reason_id` (cabecera del asiento); si diverge del `social_reason_id` del plan, revisar criterio de negocio.
+
+| Tabla | Rol | Une con |
+|-------|-----|---------|
+| `accounting_entry_details` | Líneas del asiento (débito/crédito) | `accounting_entries` (`accounting_entry_id`), `accounting_plans` (`accounting_plan_id`) |
+| `accounting_entries` | Cabecera del asiento (fecha, `social_reason_id`) | `id` |
+| `accounting_plans` | Plan de cuenta | `accounting_types` (`accounting_type_id`), `social_reasons` (`social_reason_id`) |
+| `accounting_types` | Tipo / “mayor” | `id`; filtro `status = 1` y `type = 1` para este extracto de **ingresos** |
+| `social_reasons` | Razón social (nombre) | `id` |
+
+Filtros de alcance en el SQL: `YEAR(date) >= 2020`, `social_reasons.id <= 3`. No reutilizan `sql/common/enterprise_scope.sql` (criterio distinto al de contratos/cobranzas).
+
+### 3.7 EERR — costos (`query_eerr_costos.sql`)
+
+Mismo grafo de tablas que §3.6. Extracto de **costos** para el margen (`ingresos − costos` en `AGENTS.md` regla 10): `accounting_types.status = 1` y `type = 2`, con `YEAR(accounting_entries.date) >= 2020` y `social_reasons.id <= 3`. Salida: mismos alias que `query_eerr_ventas.sql` (`Mes`, `Año`, `Empresa`, `Mayor`, `Cuenta`, `debit`, `credit`, etc.).
+
+### 3.8 EERR — gastos (`query_eerr_gastos.sql`)
+
+Mismo grafo que §3.6. Extracto de **gastos** para el EBITDA (`margen − gastos` en `AGENTS.md` regla 10): `accounting_types.status = 1` y `type = 3`, con `YEAR(accounting_entries.date) >= 2020` y `social_reasons.id <= 3`. Salida: mismos alias que los demás extractos EERR contables.
+
+**Resumen tipos `accounting_types.type` en EERR (legado):** `1` ingresos/ventas, `2` costos, `3` gastos.
+
+### 3.9 EERR — sync unificado (`query_eerr.sql`)
+
+Mismo grafo de tablas que §3.6. Tres bloques `UNION ALL` con discriminador `eerr_block` (`ventas`, `costos`, `gastos`). Salida adicional respecto a los extractos por separado: **`eerr_block`** (primera columna). Destino de carga: tabla Postgres **`eerr_fact`** vía sync batch dominio `eerr`.
+
+Los `WHERE` por bloque son equivalentes al legado `IF(accounting_types.status = 1 AND accounting_types.type = N, 1, 0) = 1` con umbral de año alineado en los tres bloques: **`YEAR(accounting_entries.date) >= 2020`**.
+
+**Modelo de dimensiones (estado actual vs cobranzas/cartera):** no hay tablas `dim_*` dedicadas para EERR. El hecho **`eerr_fact`** lleva **desnormalizado** `empresa`, `mayor`, `cuenta`, `social_reason_id`, `accounting_plan_id` en el grano del sync (una fila por clave de negocio mes + razón social + plan + bloque). Es el mismo patrón “fact como vista analítica” que otros dominios antes de introducir agregados.
+
+**Fases de seguimiento sugeridas (roadmap):**
+
+| Fase | Alcance | Notas |
+|------|---------|--------|
+| **F0** | Hecho + sync + API `eerr-v2` + UI | Hecho: `eerr_fact`, `query_eerr.sql`, endpoints, `EerrView`. |
+| **F1** | Validación contable KPI | Cerrar convención débito/crédito por bloque con finanzas; ajustar `fetch_eerr_summary_v2` si hiciera falta. |
+| **F2** | Agregados Postgres | **`eerr_monthly_agg`** implementada: refresco post-sync dominio `eerr`; KPIs en API leen el agg con fallback a `GROUP BY` sobre `eerr_fact`. |
+| **F3** | Dimensiones catálogo (opcional) | Sync liviano de `accounting_plans` / `accounting_types` / `social_reasons` solo si se necesitan etiquetas históricas o SCD sin replicar en fact. |
+| **F4** | Incremental / watermark (opcional) | Solo si el extracto completo supera presupuesto de tiempo en MySQL; hoy el dominio lee el SQL unificado completo como el resto de facts. |
+
+### 3.10 EERR — propuesta F2 (agregado mensual) y F3 (dimensiones)
+
+Esta sección **no** sustituye a `eerr_fact`: el hecho sigue siendo la fuente de verdad del sync. **F2 está implementada en código** (migración Alembic, `refresh_eerr_monthly_agg` en `sync_refresh.py`, enganche en `sync_service` tras sync `eerr`, KPIs en `fetch_eerr_summary_v2`). **F3** sigue siendo opcional según medición.
+
+#### F2 — Tabla `eerr_monthly_agg` (implementada)
+
+**Grano:** un mes de gestión (`gestion_month` formato `MM/YYYY`) × razón social (`social_reason_id`) × bloque EERR (`eerr_block` ∈ `ventas`, `costos`, `gastos`).
+
+**Columnas sugeridas:**
+
+| Columna | Tipo | Nota |
+|---------|------|------|
+| `gestion_month` | `VARCHAR(7)` | Parte de clave de negocio. |
+| `social_reason_id` | `INTEGER` | Parte de clave; alinea con fact y filtros actuales. |
+| `eerr_block` | `VARCHAR(16)` | Parte de clave. |
+| `empresa` | `VARCHAR(256)` | Etiqueta para UI; p. ej. `MAX(empresa)` al agrupar desde `eerr_fact` (misma convención que hoy en fact). |
+| `debit_total` | `DOUBLE` | `SUM(debit_total)` del fact en ese grano. |
+| `credit_total` | `DOUBLE` | `SUM(credit_total)` del fact en ese grano. |
+| `plan_lines` | `INTEGER` | Opcional: `COUNT(DISTINCT accounting_plan_id)` (diagnóstico / densidad). |
+| `updated_at` | `TIMESTAMP` | Último refresco del agregado. |
+
+**Restricción única:** `(gestion_month, social_reason_id, eerr_block)` — análoga al desglose “por bloque” de los KPI en `fetch_eerr_summary_v2`.
+
+**Índices:** `(gestion_month DESC)`, `(gestion_month, social_reason_id)` para options/summary filtrados.
+
+**Refresco (patrón alineado a cartera):** tras sync `eerr` exitoso y upsert en `eerr_fact`, para el conjunto `applied_months` / meses afectados:
+
+1. `DELETE FROM eerr_monthly_agg WHERE gestion_month IN (:meses)` (o borrado selectivo por `(gestion_month, social_reason_id)` si se optimiza).
+2. `INSERT ... SELECT gestion_month, social_reason_id, eerr_block, MAX(empresa), SUM(debit_total), SUM(credit_total), COUNT(DISTINCT accounting_plan_id), NOW() FROM eerr_fact WHERE gestion_month IN (:meses) GROUP BY 1,2,3`.
+
+**API/UI (implementado):** el detalle de filas sigue viniendo de `eerr_fact` (hasta 50k filas). **Totales por bloque y KPIs** se calculan primero con `GROUP BY eerr_block` sobre `eerr_monthly_agg`; si no hay filas en el agg para el filtro pero sí hay hechos, se hace **fallback** a agregación SQL sobre `eerr_fact` (p. ej. tras migración antes del primer sync).
+
+**Guardrail (implementado):** en `sync_service`, si `rows_upserted > 0` y el refresh del agg inserta 0 filas, se reintenta `refresh_eerr_monthly_agg` con `source_months` / `applied_months` como fallback.
+
+**Población inicial:** tras `alembic upgrade` en un entorno que ya tenga `eerr_fact`, ejecutar un sync `eerr` o llamar a `refresh_eerr_monthly_agg` con el conjunto de meses presentes en el fact.
+
+#### F3 — Dimensiones contables (solo si el dolor es etiqueta / catálogo / histórico)
+
+**Objetivo:** que renombres de cuenta o tipo en MySQL no obliguen a re-leer todo el fact para “último nombre”, o exponer jerarquía sin duplicar lógica en la API.
+
+**Opción A — Mínima (una tabla):** `dim_eerr_accounting_plan`
+
+| Columna | Nota |
+|---------|------|
+| `accounting_plan_id` | PK. |
+| `social_reason_id` | Del plan (o del scope EERR). |
+| `plan_name`, `mayor_name` | Snapshots desde `accounting_plans` / `accounting_types`. |
+| `group_type` | `accounting_types.type` (1/2/3). |
+| `legacy_updated_at` | `MAX` o columna de versión si existiera en origen; si no, `updated_at` del sync. |
+
+**Opción B — Completa:** añadir `dim_eerr_social_reason` (`social_reason_id`, `razon_social`) sincronizada desde `social_reasons` con filtro `id <= 3` (o la política vigente).
+
+**Sync:** nuevo dominio **`eerr_dims`** con un SQL único MySQL tipo `SELECT ap.id AS accounting_plan_id, ... FROM accounting_plans ap JOIN ...` **o** refresco piggyback al final del sync `eerr` (menos dominios, más acoplamiento). Recomendación: dominio separado **`eerr_catalog`** si el catálogo cambia con otra cadencia que los movimientos.
+
+**Join en API:** `eerr-v2/summary` haría `LEFT JOIN dim_eerr_accounting_plan` solo cuando se pida “etiqueta canónica”; el fact conserva copia desnormalizada para auditoría y offline.
+
+#### Orden de implementación sugerido
+
+1. Medir: filas en `eerr_fact`, p95 de `POST /eerr-v2/summary` con filtros vacíos y con 1 mes.  
+2. Si p95 > umbral acordado (p. ej. 2s) → **F2**.  
+3. Si el negocio pide renombrados retroactivos sin re-sync de hechos → **F3 Opción A**.  
+4. **F4** solo tras perfilar el extracto MySQL (no adelantar).
 
 ---
 

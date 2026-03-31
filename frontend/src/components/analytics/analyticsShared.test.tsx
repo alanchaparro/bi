@@ -1,37 +1,16 @@
-import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, expect, it, vi, afterEach } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { AnalyticsMetaBadges } from './AnalyticsMetaBadges'
 import { MetricExplainer } from './MetricExplainer'
 import { ChartSection } from './ChartSection'
 
-vi.mock('@heroui/react', () => {
-  const React = require('react')
-  const Btn = ({ children, isIconOnly: _io, ...props }: any) => (
-    <button type="button" {...props}>
-      {children}
-    </button>
-  )
-  const PopoverRoot = ({ children }: any) => <div data-testid="popover-root">{children}</div>
-  const PopoverTrigger = ({ children, ...rest }: any) => (
-    <div data-testid="popover-trigger" {...rest}>
-      {children}
-    </div>
-  )
-  const PopoverContent = ({ children }: any) => <div data-testid="popover-content">{children}</div>
-  const PopoverDialog = ({ children }: any) => <div>{children}</div>
-  const PopoverHeading = ({ children, ...rest }: any) => <h3 {...rest}>{children}</h3>
-  const Popover = Object.assign(PopoverRoot, {
-    Root: PopoverRoot,
-    Trigger: PopoverTrigger,
-    Content: PopoverContent,
-    Dialog: PopoverDialog,
-    Heading: PopoverHeading,
-  })
-  return {
-    Text: ({ children, ...props }: any) => <span {...props}>{children}</span>,
-    Button: Btn,
-    Popover,
-  }
+vi.mock('@heroui/react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@heroui/react')>()
+  return actual
+})
+
+afterEach(() => {
+  cleanup()
 })
 
 describe('analytics shared components', () => {
@@ -49,12 +28,14 @@ describe('analytics shared components', () => {
 
     expect(screen.getByText('Fuente: cartera_fact + cobranzas_fact')).toBeTruthy()
     expect(screen.getByText(/Actualizado:/)).toBeTruthy()
-    expect(screen.getByLabelText('Metadata de analytics').textContent).toMatch(/Actualizado:.*\/3\//)
+    const metaText = screen.getByLabelText('Metadata de analytics').textContent ?? ''
+    expect(metaText).toMatch(/Actualizado:/)
+    expect(metaText).toMatch(/2026/)
     expect(screen.getByText('Cache hit')).toBeTruthy()
     expect(screen.getByText('Pipeline: v2.1.0')).toBeTruthy()
   })
 
-  it('renders metric explainer formulas and notes', () => {
+  it('renders metric explainer formulas and notes', async () => {
     render(
       <MetricExplainer
         items={[
@@ -67,10 +48,12 @@ describe('analytics shared components', () => {
       />,
     )
 
-    expect(
-      screen.getByRole('button', { name: /definiciones operativas.*ver definiciones/i }),
-    ).toBeTruthy()
-    expect(screen.getByText('LTV')).toBeTruthy()
+    const trigger = screen.getByRole('button', { name: /definiciones operativas.*ver definiciones/i })
+    expect(trigger).toBeTruthy()
+    fireEvent.click(trigger)
+    await waitFor(() => {
+      expect(screen.getByText('LTV')).toBeTruthy()
+    })
     expect(screen.getByText('cobrado / deberia_cobrar')).toBeTruthy()
     expect(screen.getByText('Mide lo cobrado frente a lo esperado.')).toBeTruthy()
   })

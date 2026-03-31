@@ -7,7 +7,15 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.db.session import SessionLocal, engine
-from app.models.brokers import AnalyticsFact, CarteraFact, CobranzasFact, ContratosFact, GestoresFact, SyncRecord
+from app.models.brokers import (
+    AnalyticsFact,
+    CarteraFact,
+    CobranzasFact,
+    ContratosFact,
+    EerrFact,
+    GestoresFact,
+    SyncRecord,
+)
 
 
 FACT_BY_DOMAIN = {
@@ -15,6 +23,7 @@ FACT_BY_DOMAIN = {
     'cartera': CarteraFact,
     'cobranzas': CobranzasFact,
     'contratos': ContratosFact,
+    'eerr': EerrFact,
     'gestores': GestoresFact,
 }
 
@@ -134,6 +143,27 @@ def run() -> None:
                             'updated_at': now,
                         }
                     )
+                elif domain == 'eerr':
+                    block = str(payload.get('eerr_block') or '').strip() or 'ventas'
+                    batch.append(
+                        {
+                            'gestion_month': row.gestion_month,
+                            'calendar_year': _year_of(row.gestion_month),
+                            'social_reason_id': _to_int(payload.get('social_reason_id'), 0),
+                            'accounting_plan_id': _to_int(payload.get('accounting_plan_id'), 0),
+                            'eerr_block': block,
+                            'empresa': str(payload.get('Empresa') or payload.get('empresa') or '').strip(),
+                            'group_type': _to_int(payload.get('group_type'), 0),
+                            'mayor': str(payload.get('Mayor') or payload.get('mayor') or '').strip(),
+                            'cuenta': str(payload.get('Cuenta') or payload.get('cuenta') or '').strip(),
+                            'debit_total': _to_float(payload.get('debit')),
+                            'credit_total': _to_float(payload.get('credit')),
+                            'source_hash': row.source_hash,
+                            'payload_json': row.payload_json,
+                            'loaded_at': now,
+                            'updated_at': now,
+                        }
+                    )
                 else:
                     batch.append(
                         {
@@ -152,6 +182,13 @@ def run() -> None:
 
             if domain == 'cartera':
                 changed = _upsert(db, model, batch, ['contract_id', 'close_date'])
+            elif domain == 'eerr':
+                changed = _upsert(
+                    db,
+                    model,
+                    batch,
+                    ['gestion_month', 'social_reason_id', 'accounting_plan_id', 'eerr_block'],
+                )
             else:
                 changed = _upsert(db, model, batch, ['contract_id', 'gestion_month', 'supervisor', 'un', 'via', 'tramo'])
             total += changed

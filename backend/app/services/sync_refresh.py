@@ -19,6 +19,8 @@ from app.models.brokers import (
     CarteraCorteAgg,
     CobranzasCohorteAgg,
     CobranzasFact,
+    EerrFact,
+    EerrMonthlyAgg,
     DimCategoria,
     DimContractMonth,
     DimSupervisor,
@@ -1175,11 +1177,59 @@ def mv_options_consistency_report(db: Session, month_serial) -> dict:
     return {"ok": ok, "checks": out, "last_checked_at": datetime.utcnow().isoformat()}
 
 
+def refresh_eerr_monthly_agg(db: Session, affected_months: set[str], month_serial) -> tuple[int, int]:
+    """Borra agregados de los meses afectados y los recalcula desde eerr_fact."""
+    months = sorted({str(m).strip() for m in (affected_months or set()) if str(m).strip()}, key=month_serial)
+    if not months:
+        return 0, 0
+
+    deleted = (
+        db.query(EerrMonthlyAgg).filter(EerrMonthlyAgg.gestion_month.in_(months)).delete(synchronize_session=False)
+    )
+    db.commit()
+
+    now = datetime.utcnow()
+    grouped = (
+        db.query(
+            EerrFact.gestion_month.label("gestion_month"),
+            EerrFact.social_reason_id.label("social_reason_id"),
+            EerrFact.eerr_block.label("eerr_block"),
+            func.max(EerrFact.empresa).label("empresa"),
+            func.coalesce(func.sum(EerrFact.debit_total), 0.0).label("debit_total"),
+            func.coalesce(func.sum(EerrFact.credit_total), 0.0).label("credit_total"),
+            func.count(func.distinct(EerrFact.accounting_plan_id)).label("plan_lines"),
+        )
+        .filter(EerrFact.gestion_month.in_(months))
+        .group_by(EerrFact.gestion_month, EerrFact.social_reason_id, EerrFact.eerr_block)
+        .all()
+    )
+
+    mappings = [
+        {
+            "gestion_month": str(r.gestion_month or ""),
+            "social_reason_id": int(r.social_reason_id or 0),
+            "eerr_block": str(r.eerr_block or ""),
+            "empresa": str(r.empresa or "").strip(),
+            "debit_total": float(r.debit_total or 0.0),
+            "credit_total": float(r.credit_total or 0.0),
+            "plan_lines": int(r.plan_lines or 0),
+            "updated_at": now,
+        }
+        for r in grouped
+    ]
+    if mappings:
+        db.bulk_insert_mappings(EerrMonthlyAgg, mappings)
+        db.commit()
+    return int(deleted or 0), len(mappings)
+
+
 def refresh_source_freshness_snapshots(db: Session, last_job_id: str | None = None) -> None:
     table = AnalyticsSourceFreshness.__table__
     now = datetime.utcnow()
     sources = [
         ("cartera_fact", None),
+        ("eerr_fact", EerrFact.updated_at),
+        ("eerr_monthly_agg", EerrMonthlyAgg.updated_at),
         ("cobranzas_fact", CobranzasFact.updated_at),
         ("cartera_corte_agg", CarteraCorteAgg.updated_at),
         ("cobranzas_cohorte_agg", CobranzasCohorteAgg.updated_at),

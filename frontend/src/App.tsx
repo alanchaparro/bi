@@ -25,6 +25,7 @@ import { AnalisisCarteraView } from './modules/analisisCartera/AnalisisCarteraVi
 import { AnalisisCobranzasCohorteView } from './modules/analisisCobranzasCohorte/AnalisisCobranzasCohorteView'
 import { AnalisisRendimientoView } from './modules/analisisRendimiento/AnalisisRendimientoView'
 import { AnalisisAnualesView } from './modules/analisisAnuales/AnalisisAnualesView'
+import { EerrView } from './modules/eerr/EerrView'
 import {
   applyThemePreset,
   cycleDarkThemePresetId,
@@ -185,11 +186,12 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const routeMap: Record<string, 'cartera' | 'cohorte' | 'rendimiento' | 'anuales' | 'brokers'> = {
+    const routeMap: Record<string, 'cartera' | 'cohorte' | 'rendimiento' | 'anuales' | 'brokers' | 'eerr'> = {
       analisisCartera: 'cartera',
       analisisCobranzaCohorte: 'cohorte',
       analisisCarteraRendimiento: 'rendimiento',
       analisisCarteraAnuales: 'anuales',
+      eerr: 'eerr',
       config: 'brokers',
     }
     const route = routeMap[activeSectionId]
@@ -318,6 +320,10 @@ export default function App() {
 
           <section id="analisisCobranzaCohorte" className={`app-section ${activeSectionId === 'analisisCobranzaCohorte' ? '' : 'hidden'}`}>
             <AnalisisCobranzasCohorteView />
+          </section>
+
+          <section id="eerr" className={`app-section ${activeSectionId === 'eerr' ? '' : 'hidden'}`}>
+            <EerrView />
           </section>
 
           <section id="config" className={`app-section ${activeSectionId === 'config' ? '' : 'hidden'}`}>

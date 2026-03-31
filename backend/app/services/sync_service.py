@@ -29,6 +29,7 @@ from app.models.brokers import (
     CobranzasFact,
     ContratosFact,
     DimNegocioUnMap,
+    EerrFact,
     GestoresFact,
     SyncChunkManifest,
     SyncExtractLog,
@@ -70,6 +71,7 @@ from app.services.sync_refresh import (
     refresh_dim_negocio_contrato,
     refresh_dim_time,
     refresh_mv_options_tables,
+    refresh_eerr_monthly_agg,
     refresh_source_freshness_snapshots,
 )
 from app.services.sync_schedules import (
@@ -92,6 +94,7 @@ FACT_TABLE_BY_DOMAIN = {
     'cobranzas': CobranzasFact,
     'contratos': ContratosFact,
     'gestores': GestoresFact,
+    'eerr': EerrFact,
 }
 
 MYSQL_INCREMENTAL_HINTS = {
@@ -121,7 +124,7 @@ def _path_within(path: Path, parent: Path) -> bool:
 
 def _query_variant_for_domain(domain: str) -> str:
     domain_key = str(domain or '').strip().lower()
-    if domain_key not in {'cartera', 'cobranzas', 'contratos', 'gestores'}:
+    if domain_key not in {'cartera', 'cobranzas', 'contratos', 'gestores', 'eerr'}:
         return 'v1'
     env_by_domain = {
         'cartera': 'sync_query_variant_cartera',
@@ -903,6 +906,7 @@ def _adaptive_chunk_size(domain: str, configured: int) -> int:
         'analytics': 12000,
         'contratos': 12000,
         'gestores': 12000,
+        'eerr': 12000,
     }
     target = per_domain.get(domain_key, 0)
     if target <= 0:
@@ -935,6 +939,7 @@ def _fetch_batch_size_for_domain(domain: str) -> int:
         'cobranzas': 4000,
         'contratos': 20000,
         'gestores': 20000,
+        'eerr': 20000,
     }
     resolved = max(100, min(50000, int(tuned_defaults.get(domain_key, base))))
     if domain_key == 'cobranzas':
@@ -986,6 +991,7 @@ def _max_rows_for_domain(domain: str) -> int | None:
         'cobranzas': int(settings.sync_max_rows_cobranzas or 0),
         'contratos': int(settings.sync_max_rows_contratos or 0),
         'gestores': int(settings.sync_max_rows_gestores or 0),
+        'eerr': int(settings.sync_max_rows_eerr or 0),
     }.get(domain, 0)
     if per_domain > 0:
         return per_domain
@@ -1062,6 +1068,8 @@ def _analyze_after_sync(db: Session, domain: str) -> None:
     targets = [FACT_TABLE_BY_DOMAIN[domain].__tablename__]
     if domain == 'cartera':
         targets.append(CarteraCorteAgg.__tablename__)
+    if domain == 'eerr':
+        targets.append('eerr_monthly_agg')
     for table_name in targets:
         db.execute(sa_text(f'ANALYZE {table_name}'))
     db.commit()
@@ -1313,6 +1321,13 @@ def _fact_business_key_tuple(record: dict, domain: str) -> tuple:
             _to_float(record.get('payment_amount')),
             str(record.get('payment_via_class') or ''),
         )
+    if domain == 'eerr':
+        return (
+            str(record.get('gestion_month') or ''),
+            int(record.get('social_reason_id') or 0),
+            int(record.get('accounting_plan_id') or 0),
+            str(record.get('eerr_block') or ''),
+        )
     return (
         str(record.get('contract_id') or ''),
         str(record.get('gestion_month') or ''),
@@ -1334,6 +1349,8 @@ def _filter_rows_changed_vs_postgres(db: Session, domain: str, rows: list[dict])
             key_cols = ['contract_id', 'close_date', 'gestion_month']
         elif domain == 'cobranzas':
             key_cols = ['source_row_id']
+        elif domain == 'eerr':
+            key_cols = ['gestion_month', 'social_reason_id', 'accounting_plan_id', 'eerr_block']
         else:
             key_cols = ['contract_id', 'gestion_month', 'supervisor', 'un', 'via', 'tramo']
         incoming: dict[tuple, str] = {}
@@ -1387,6 +1404,14 @@ def _upsert_fact_rows(db: Session, domain: str, rows: list[dict], *, commit: boo
     elif domain == 'cobranzas':
         index_cols = [table.c.source_row_id]
         index_col_names = ['source_row_id']
+    elif domain == 'eerr':
+        index_cols = [
+            table.c.gestion_month,
+            table.c.social_reason_id,
+            table.c.accounting_plan_id,
+            table.c.eerr_block,
+        ]
+        index_col_names = ['gestion_month', 'social_reason_id', 'accounting_plan_id', 'eerr_block']
     else:
         index_cols = [table.c.contract_id, table.c.gestion_month, table.c.supervisor, table.c.un, table.c.via, table.c.tramo]
         index_col_names = ['contract_id', 'gestion_month', 'supervisor', 'un', 'via', 'tramo']
@@ -1440,6 +1465,18 @@ def _upsert_fact_rows(db: Session, domain: str, rows: list[dict], *, commit: boo
                     'payment_month': excluded.payment_month,
                     'payment_year': excluded.payment_year,
                     'payment_date': excluded.payment_date,
+                }
+            )
+        elif domain == 'eerr':
+            set_map.update(
+                {
+                    'calendar_year': excluded.calendar_year,
+                    'empresa': excluded.empresa,
+                    'group_type': excluded.group_type,
+                    'mayor': excluded.mayor,
+                    'cuenta': excluded.cuenta,
+                    'debit_total': excluded.debit_total,
+                    'credit_total': excluded.credit_total,
                 }
             )
     use_on_conflict = True
@@ -1528,6 +1565,25 @@ def _upsert_fact_rows(db: Session, domain: str, rows: list[dict], *, commit: boo
             if keys:
                 for chunk in _iter_chunks(keys, size=3000):
                     db.query(CobranzasFact).filter(CobranzasFact.source_row_id.in_(chunk)).delete(synchronize_session=False)
+        elif domain == 'eerr':
+            keys = [
+                (
+                    str(v.get('gestion_month') or ''),
+                    int(v.get('social_reason_id') or 0),
+                    int(v.get('accounting_plan_id') or 0),
+                    str(v.get('eerr_block') or ''),
+                )
+                for v in values
+            ]
+            for chunk in _iter_chunks(keys, size=1200):
+                db.query(EerrFact).filter(
+                    sa_tuple(
+                        EerrFact.gestion_month,
+                        EerrFact.social_reason_id,
+                        EerrFact.accounting_plan_id,
+                        EerrFact.eerr_block,
+                    ).in_(chunk)
+                ).delete(synchronize_session=False)
         else:
             keys = [
                 (
@@ -2740,7 +2796,7 @@ def _execute_job(
                 month_file.writelines(month_buffer)
                 month_buffer.clear()
         # Stream large domains to disk to keep memory stable and show incremental progress.
-        stream_to_disk_domains = {'cartera', 'cobranzas', 'contratos', 'gestores'}
+        stream_to_disk_domains = {'cartera', 'cobranzas', 'contratos', 'gestores', 'eerr'}
         if low_impact_mode:
             stream_to_disk_domains.add('analytics')
         if domain in stream_to_disk_domains:
@@ -2881,6 +2937,21 @@ def _execute_job(
         )
         detected_target_months = set(changed_months)
         target_months = set(detected_target_months)
+        # full_all + JSONL único (cobranzas/contratos/gestores/eerr/…): no limitar el upsert a
+        # changed_months del manifiesto. Si un mes queda "unchanged" pero el fact nunca se cargó
+        # completo (o hubo sync parcial), esas filas se saltaban y el fact quedaba con pocos meses.
+        if (
+            str(mode or '').strip().lower() == 'full_all'
+            and temp_rows_path is not None
+            and source_months
+        ):
+            if target_months != set(source_months):
+                _append_log(
+                    domain,
+                    f'full_all: upsert de todos los meses normalizados ({len(source_months)}), '
+                    f'no solo manifest cambiado ({len(target_months)}).',
+                )
+            target_months = set(source_months)
         _set_state(
             domain,
             {
@@ -3429,6 +3500,94 @@ def _execute_job(
                 {'agg_rows_written': int(agg_rows_written), 'agg_duration_sec': agg_duration_sec},
             )
 
+        elif domain == 'eerr' and ordered_refresh_target_months:
+            agg_started_at = datetime.now(timezone.utc)
+            _persist_job_step(db, job_id, domain, 'refresh_agg', 'running')
+            _set_state(
+                domain,
+                {
+                    'stage': 'refreshing_eerr_agg',
+                    'progress_pct': 96,
+                    'status_message': 'Recalculando eerr_monthly_agg',
+                    'agg_refresh_started': True,
+                    'agg_refresh_completed': False,
+                },
+            )
+            _append_log(domain, 'Iniciando recalculo de eerr_monthly_agg...')
+            deleted_eerr_agg, eerr_agg_rows = refresh_eerr_monthly_agg(db, set(ordered_refresh_target_months), _month_serial)
+            agg_rows_written = int(eerr_agg_rows)
+            agg_duration_sec = round((datetime.now(timezone.utc) - agg_started_at).total_seconds(), 2)
+            _append_log(
+                domain,
+                (
+                    f'eerr_monthly_agg listo: borradas={deleted_eerr_agg}, '
+                    f'insertadas={eerr_agg_rows}, duracion={agg_duration_sec}s'
+                ),
+            )
+            if rows_upserted > 0 and int(agg_rows_written) == 0:
+                fallback_months = set(source_months) or set(applied_months)
+                _persist_job_step(
+                    db,
+                    job_id,
+                    domain,
+                    'refresh_agg_fallback',
+                    'running',
+                    {'months': sorted(fallback_months, key=_month_serial)},
+                )
+                _append_log(
+                    domain,
+                    (
+                        'Guardrail EERR: rows_upserted>0 y agg=0. '
+                        f'Reintentando eerr_monthly_agg con meses={", ".join(sorted(fallback_months, key=_month_serial)) or "-"}'
+                    ),
+                )
+                if fallback_months:
+                    fb_del, fb_rows = refresh_eerr_monthly_agg(db, fallback_months, _month_serial)
+                    agg_rows_written = int(fb_rows)
+                    ordered_refresh_target_months = sorted(set(fallback_months), key=_month_serial)
+                    _set_state(
+                        domain,
+                        {
+                            'affected_months': ordered_refresh_target_months,
+                            'refresh_target_months': ordered_refresh_target_months,
+                            'agg_rows_written': int(agg_rows_written),
+                        },
+                    )
+                    _append_log(
+                        domain,
+                        f'Fallback eerr_monthly_agg: borradas={fb_del}, insertadas={fb_rows}',
+                    )
+                _persist_job_step(
+                    db,
+                    job_id,
+                    domain,
+                    'refresh_agg_fallback',
+                    'completed',
+                    {
+                        'months': sorted(fallback_months, key=_month_serial),
+                        'agg_rows_written': int(agg_rows_written),
+                    },
+                )
+            _set_state(
+                domain,
+                {
+                    'stage': 'refreshing_eerr_agg',
+                    'progress_pct': 98,
+                    'status_message': 'Agregado EERR listo',
+                    'agg_refresh_completed': True,
+                    'agg_rows_written': int(agg_rows_written),
+                    'agg_duration_sec': agg_duration_sec,
+                },
+            )
+            _persist_job_step(
+                db,
+                job_id,
+                domain,
+                'refresh_agg',
+                'completed',
+                {'agg_rows_written': int(agg_rows_written), 'agg_duration_sec': agg_duration_sec},
+            )
+
         _persist_job_step(db, job_id, domain, 'analyze', 'running')
         _set_state(domain, {'stage': 'analyzing', 'progress_pct': 98, 'status_message': 'Actualizando estadisticas (ANALYZE)'})
         _analyze_after_sync(db, domain)
@@ -3470,8 +3629,10 @@ def _execute_job(
             'skipped_unchanged_chunks': int(skipped_unchanged_chunks),
             'affected_months': ordered_refresh_target_months,
             'target_table': _target_table_name(domain),
-            'agg_refresh_started': domain in {'cartera', 'cobranzas'},
-            'agg_refresh_completed': domain in {'cartera', 'cobranzas'},
+            'agg_refresh_started': domain in {'cartera', 'cobranzas'}
+            or (domain == 'eerr' and bool(ordered_refresh_target_months)),
+            'agg_refresh_completed': domain in {'cartera', 'cobranzas'}
+            or (domain == 'eerr' and bool(ordered_refresh_target_months)),
             'agg_rows_written': int(agg_rows_written),
             'agg_duration_sec': agg_duration_sec,
             'duplicates_detected': duplicates_detected,
@@ -3701,6 +3862,9 @@ def _execute_job(
                     f'portfolio-corte-v2/summary={invalidated_corte_v2_summary}'
                 ),
             )
+        if domain == 'eerr':
+            invalidated_eerr = invalidate_prefix('eerr-v2')
+            _append_log(domain, f'Cache invalido: eerr-v2 entries={invalidated_eerr}')
         _prewarm_analytics_cache_after_sync(db, domain)
         logger.info(
             '[sync:%s:%s] completed rows_inserted=%s duplicates=%s duration_sec=%s',

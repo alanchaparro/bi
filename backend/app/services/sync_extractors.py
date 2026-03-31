@@ -15,12 +15,14 @@ SYNC_DOMAIN_QUERIES = {
     "cobranzas": "query_cobranzas.sql",
     "contratos": "query_contratos.sql",
     "gestores": "query_gestores.sql",
+    "eerr": "query_eerr.sql",
 }
 SYNC_DOMAIN_QUERIES_V2 = {
     "cartera": "sql/v2/query_cartera.sql",
     "cobranzas": "sql/v2/query_cobranzas.sql",
     "contratos": "sql/v2/query_contratos.sql",
     "gestores": "sql/v2/query_gestores.sql",
+    "eerr": "sql/v2/query_eerr.sql",
 }
 INCLUDE_DIRECTIVE_RE = re.compile(r"^\s*--\s*@include\s+(.+?)\s*$")
 
@@ -38,7 +40,7 @@ MYSQL_PRECHECK_QUERIES = {
         JOIN contracts c ON p.contract_id = c.id
         WHERE p.status = 1
           AND p.type < 2
-          AND p.date >= '2021-01-01'
+          AND p.date >= '2020-01-01'
           AND c.enterprise_id IN {ENTERPRISE_SCOPE_IDS}
           AND p.contract_id NOT IN {COBRANZAS_EXCLUDED_CONTRACT_IDS}
     """,
@@ -58,6 +60,11 @@ MYSQL_PRECHECK_QUERIES = {
           AND cp.from_date >= '2024-01-01'
           AND c.enterprise_id IN {ENTERPRISE_SCOPE_IDS}
           AND cp.status = 1
+    """,
+    "eerr": """
+        SELECT MAX(ae.date) AS max_updated, MAX(ae.id) AS max_id
+        FROM epem.accounting_entries ae
+        WHERE ae.id IS NOT NULL
     """,
 }
 
@@ -89,6 +96,8 @@ def query_variant_for_domain(domain: str) -> str:
     if raw not in {"v1", "v2"}:
         logger.warning("[sync:%s] invalid query variant=%s, fallback=v1", domain_key, raw)
         return "v1"
+    if domain_key == "eerr":
+        return "v2"
     return raw
 
 

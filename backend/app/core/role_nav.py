@@ -10,6 +10,7 @@ ALL_NAV_IDS: tuple[str, ...] = (
     'analisisCarteraAnuales',
     'analisisCarteraRendimiento',
     'analisisCobranzaCohorte',
+    'eerr',
     'config',
 )
 
@@ -20,6 +21,7 @@ NAV_LABELS: dict[str, str] = {
     'analisisCarteraAnuales': 'Análisis Anuales',
     'analisisCarteraRendimiento': 'Rendimiento de Cartera',
     'analisisCobranzaCohorte': 'Análisis Cobranzas Corte',
+    'eerr': 'EERR',
     'config': 'Configuración',
 }
 

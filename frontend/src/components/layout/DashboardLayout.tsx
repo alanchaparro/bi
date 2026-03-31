@@ -120,6 +120,18 @@ function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function computeSubmenuDefaultOpen(pathname: string, items: readonly NavItem[]): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  for (const item of items) {
+    const kids = item.children;
+    if (!kids?.length) continue;
+    const parentMatch = isActivePath(pathname, item.href);
+    const childMatch = kids.some((c) => isActivePath(pathname, c.href));
+    out[item.id] = parentMatch || childMatch;
+  }
+  return out;
+}
+
 /** Glifos Material Symbols por id de nav (color hereda del tema vía currentColor). */
 const SIDEBAR_MATERIAL_ICON: Record<string, string> = {
   cartera: "dashboard",
@@ -128,6 +140,7 @@ const SIDEBAR_MATERIAL_ICON: Record<string, string> = {
   analisisCarteraAnuales: "calendar_month",
   analisisCarteraRendimiento: "trending_up",
   analisisCobranzaCohorte: "account_balance_wallet",
+  eerr: "assessment",
   config: "settings",
 };
 
@@ -186,6 +199,26 @@ function ChevronLeftIcon() {
   return (
     <svg width={ICON_SIZE} height={ICON_SIZE} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <polyline points="15 18 9 12 15 6" />
+    </svg>
+  );
+}
+
+/** Chevron lateral: sin expandir apunta a la derecha; expandido rota 90° (abajo). */
+function SubmenuChevronIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      width={18}
+      height={18}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={`dashboard-sidebar-submenu-chevron ${expanded ? "dashboard-sidebar-submenu-chevron--open" : ""}`}
+    >
+      <polyline points="9 18 15 12 9 6" />
     </svg>
   );
 }
@@ -519,6 +552,36 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const groups = useMemo(() => groupNavItems(visibleNavItems), [visibleNavItems]);
   const canOpenConfigNav = Boolean(auth?.permissions?.includes("nav:config"));
 
+  const submenuDefaultOpen = useMemo(
+    () => computeSubmenuDefaultOpen(pathname, visibleNavItems),
+    [pathname, visibleNavItems]
+  );
+  const [submenuOverrides, setSubmenuOverrides] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setSubmenuOverrides({});
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!sidebarOpen) setSubmenuOverrides({});
+  }, [sidebarOpen]);
+
+  const isSubmenuExpanded = useCallback(
+    (id: string) => (id in submenuOverrides ? submenuOverrides[id] : (submenuDefaultOpen[id] ?? false)),
+    [submenuDefaultOpen, submenuOverrides]
+  );
+
+  const toggleSubmenu = useCallback(
+    (id: string) => {
+      setSubmenuOverrides((prev) => {
+        const def = submenuDefaultOpen[id] ?? false;
+        const cur = id in prev ? prev[id] : def;
+        return { ...prev, [id]: !cur };
+      });
+    },
+    [submenuDefaultOpen]
+  );
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[var(--bg-color)]">
@@ -648,25 +711,58 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 {items.map((item) => {
                   const isActive = isActivePath(pathname, item.href);
                   const showChildren = Boolean(item.children?.length);
+                  const submenuOpen = showChildren ? isSubmenuExpanded(item.id) : false;
                   const isRendimiento = item.id === "analisisCarteraRendimiento";
                   return (
                     <div key={item.id} className="dashboard-sidebar-item-block">
-                      <Link
-                        href={item.href}
-                        onClick={() => (typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches ? setSidebarOpen(false) : undefined)}
-                        className={`dashboard-sidebar-link ${isActive ? "is-active" : ""} ${isRendimiento ? "sidebar-item-rendimiento" : ""}`}
-                        aria-current={isActive ? "page" : undefined}
-                        aria-label={item.label}
-                        title={item.label}
-                        data-testid={item.id === "config" ? "nav-config" : isRendimiento ? "nav-rendimiento-cartera" : undefined}
-                      >
-                        <span className="dashboard-sidebar-link-icon" aria-hidden>
-                          <SidebarMaterialIcon id={item.id} active={isActive} />
-                        </span>
-                        <span className="dashboard-sidebar-link-text">{item.label}</span>
-                      </Link>
                       {showChildren ? (
-                        <div className="dashboard-sidebar-submenu is-open">
+                        <div className="dashboard-sidebar-link-row">
+                          <Link
+                            href={item.href}
+                            onClick={() => (typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches ? setSidebarOpen(false) : undefined)}
+                            className={`dashboard-sidebar-link dashboard-sidebar-link--with-toggle ${isActive ? "is-active" : ""} ${isRendimiento ? "sidebar-item-rendimiento" : ""}`}
+                            aria-current={isActive ? "page" : undefined}
+                            aria-label={item.label}
+                            title={item.label}
+                            data-testid={item.id === "config" ? "nav-config" : isRendimiento ? "nav-rendimiento-cartera" : undefined}
+                          >
+                            <span className="dashboard-sidebar-link-icon" aria-hidden>
+                              <SidebarMaterialIcon id={item.id} active={isActive} />
+                            </span>
+                            <span className="dashboard-sidebar-link-text">{item.label}</span>
+                          </Link>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            isIconOnly
+                            className={`dashboard-sidebar-submenu-toggle ${isActive ? "dashboard-sidebar-submenu-toggle--active-parent" : ""}`}
+                            aria-expanded={submenuOpen}
+                            aria-controls={`nav-submenu-${item.id}`}
+                            aria-label={submenuOpen ? `Contraer submenú: ${item.label}` : `Expandir submenú: ${item.label}`}
+                            onPress={() => toggleSubmenu(item.id)}
+                          >
+                            <SubmenuChevronIcon expanded={submenuOpen} />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Link
+                          href={item.href}
+                          onClick={() => (typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches ? setSidebarOpen(false) : undefined)}
+                          className={`dashboard-sidebar-link ${isActive ? "is-active" : ""} ${isRendimiento ? "sidebar-item-rendimiento" : ""}`}
+                          aria-current={isActive ? "page" : undefined}
+                          aria-label={item.label}
+                          title={item.label}
+                          data-testid={item.id === "config" ? "nav-config" : isRendimiento ? "nav-rendimiento-cartera" : undefined}
+                        >
+                          <span className="dashboard-sidebar-link-icon" aria-hidden>
+                            <SidebarMaterialIcon id={item.id} active={isActive} />
+                          </span>
+                          <span className="dashboard-sidebar-link-text">{item.label}</span>
+                        </Link>
+                      )}
+                      {showChildren && submenuOpen ? (
+                        <div id={`nav-submenu-${item.id}`} className="dashboard-sidebar-submenu">
                           {item.children?.map((child) => {
                             const isChildActive = isActivePath(pathname, child.href);
                             return (

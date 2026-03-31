@@ -1325,6 +1325,29 @@ body.sidebar-open .tabs-nav {
   }
 }
 
+/* Metadata “Actualizado”: DateField + TimeField HeroUI dentro de la pastilla */
+.analysis-meta-chip--freshness {
+  gap: 0.25rem;
+  padding: 0.1rem 0.4rem 0.1rem 0.45rem;
+  max-width: 100%;
+}
+
+.analysis-meta-chip--freshness .analytics-freshness-field-group {
+  flex-shrink: 0;
+}
+
+.analysis-meta-chip--freshness .date-input-group__input {
+  padding-left: 0.2rem;
+  padding-right: 0.2rem;
+  min-height: 0;
+}
+
+.analysis-meta-chip--freshness .date-input-group__segment {
+  font-size: inherit;
+  padding-left: 0.05rem;
+  padding-right: 0.05rem;
+}
+
 /* Analysis filters grid (unified responsive) */
 .analysis-filters-grid {
   display: grid;
@@ -3515,8 +3538,23 @@ label.input-label {
   margin-inline-start: 0.15rem;
 }
 
+/* Por encima de tabs, barras fijas y bloques con stacking propio (Config importaciones / logs) */
 .config-dropdown-popover {
-  z-index: 50;
+  z-index: 10000;
+}
+
+.config-dropdown-inline {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+/* Dropdown.Trigger usa el Button de react-aria (HeroUI), no acepta variant/size del Button temático */
+.config-dropdown-trigger-compact.button {
+  min-height: 36px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.8125rem;
 }
 
 .config-theme-grid {
@@ -3556,6 +3594,21 @@ label.input-label {
   color: var(--color-text-muted);
 }
 
+/* HeroUI .button fuerza inline-flex + h-10 + whitespace-nowrap + w-fit: rompe tarjetas de tema en Config. */
+button.button.config-theme-card {
+  display: grid !important;
+  height: auto !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  max-width: 100%;
+  align-items: stretch;
+  justify-content: start;
+  justify-items: stretch;
+  white-space: normal !important;
+  text-align: left;
+  box-sizing: border-box;
+}
+
 .config-theme-card {
   display: grid;
   gap: 0.7rem;
@@ -3568,6 +3621,12 @@ label.input-label {
   color: var(--color-text);
   box-shadow: 0 10px 20px rgba(2, 6, 23, 0.08);
   transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+button.button.config-theme-card .config-theme-card-top,
+button.button.config-theme-card .config-theme-swatches {
+  min-width: 0;
+  width: 100%;
 }
 
 .config-theme-card:hover {
@@ -3621,11 +3680,18 @@ label.input-label {
 
 .config-theme-swatches {
   display: flex;
+  flex-wrap: nowrap;
   gap: 0.45rem;
+  width: 100%;
+  min-width: 0;
 }
 
+/* Antes: width 100% en cada hijo flex = todas peleaban el ancho completo y se solapaban. */
 .config-theme-swatch {
-  width: 100%;
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  max-width: 100%;
   height: 18px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.22);
@@ -3688,6 +3754,14 @@ label.input-label {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
+}
+
+/* Importaciones: todos los dominios sync visibles (incl. EERR) sin depender solo del wrap en una fila */
+.config-sync-domains-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.5rem 1rem;
+  align-items: center;
 }
 
 .config-row-wrap-tight {
@@ -5759,4 +5833,277 @@ body.is-dragging-floating-filter {
 
 .schedule-runtime-label--idle {
   color: var(--color-text-muted);
+}
+
+/* —— EERR dashboard (HeroUI-style layout) —— */
+.eerr-dash-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.eerr-dash-toolbar .eerr-tabs {
+  flex: 1 1 auto;
+  min-width: min(100%, 280px);
+}
+
+.eerr-dash-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.eerr-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+/* Rango año/mes EERR: ocupar todo el ancho del grid de filtros */
+.eerr-gestion-range-wrap {
+  grid-column: 1 / -1;
+  align-self: stretch;
+}
+
+.eerr-gestion-range-wrap--in-compare {
+  grid-column: auto;
+}
+
+/* Comparativo EERR: dos columnas con panel propio */
+.eerr-compare-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .eerr-compare-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.eerr-compare-col {
+  min-width: 0;
+  border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.12));
+  border-radius: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: color-mix(in srgb, var(--table-head-bg, #1a1d24) 55%, transparent);
+}
+
+.eerr-compare-col-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-text-muted);
+  margin: 0 0 0.5rem 0;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.1));
+}
+
+/*
+ * EERR Select multiaño:
+ * - El `Select.Popover` se renderiza en PORTAL (fuera del `.eerr-year-multi-select` en el DOM). Por eso
+ *   NUNCA apliqué reglas que descendían de `.eerr-year-multi-select .select__popover`. Clase ancla: `.eerr-year-select-popover`.
+ * - Overflow/animación HeroUI en el popover + zoom recortaban texto; listado centrado con label a ancho completo.
+ */
+.eerr-year-multi-select .select__trigger {
+  height: auto;
+  min-height: 2.5rem;
+  align-items: flex-start;
+  padding-block: 0.45rem;
+  /* Espacio similar a la derecha (cheurón absoluto) para centrar el valor visualmente en la píldora */
+  padding-left: 2.25rem;
+  padding-right: 2.25rem;
+}
+
+.eerr-year-multi-select .select__value {
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  align-items: center;
+  justify-content: center !important;
+  text-align: center !important;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  width: 100%;
+}
+
+/* Popover en portal: clase puesta en <Select.Popover className="…" /> */
+.eerr-year-select-popover.select__popover,
+.eerr-year-select-popover {
+  box-sizing: border-box;
+  padding: 0.65rem 0.75rem !important;
+  overflow: visible !important;
+}
+
+.eerr-year-select-popover[data-entering="true"],
+.eerr-year-select-popover[data-exiting="true"] {
+  animation: none !important;
+  transform: none !important;
+  opacity: 1 !important;
+}
+
+.eerr-year-select-popover .eerr-year-listbox.list-box {
+  box-sizing: border-box;
+  max-height: 15rem;
+  width: 100%;
+  min-width: 0;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  overflow-x: visible;
+  padding: 0.5rem 0.6rem;
+  margin: 0;
+  align-items: stretch;
+  text-align: center;
+}
+
+.eerr-year-select-popover .eerr-year-listbox [data-slot="list-box-item"] {
+  display: flex !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  font-size: 0.875rem;
+  line-height: 1.35rem;
+  box-sizing: border-box;
+  justify-content: center !important;
+  align-items: center !important;
+  padding-left: 2rem !important;
+  padding-right: 2rem !important;
+  margin-inline: 0 !important;
+  transform: none !important;
+}
+
+.eerr-year-select-popover .eerr-year-listbox [data-slot="list-box-item"]:active,
+.eerr-year-select-popover .eerr-year-listbox [data-slot="list-box-item"][data-pressed="true"] {
+  transform: none !important;
+}
+
+.eerr-year-select-popover .eerr-year-listbox [data-slot="list-box-item"] [data-slot="label"] {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  flex: 0 0 100% !important;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: 400;
+  text-align: center !important;
+  margin: 0 auto !important;
+  padding-inline: 0.5rem;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+/* En columnas angostas, gráficos EERR siempre apilados (no lado a lado) */
+.eerr-charts-grid--compare {
+  grid-template-columns: 1fr !important;
+}
+
+/** KPIs EERR en columna (una tarjeta debajo de otra). */
+.eerr-kpi-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  width: 100%;
+}
+
+.eerr-kpi-card-heroui {
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
+  background: color-mix(in srgb, var(--table-head-bg, #1a1d24) 88%, transparent);
+}
+
+.eerr-kpi-card-heroui .eerr-kpi-card-head {
+  padding-bottom: 0.25rem;
+}
+
+.eerr-kpi-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.eerr-charts-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 1024px) {
+  .eerr-charts-grid {
+    grid-template-columns: 1.05fr 0.95fr;
+  }
+}
+
+.eerr-chart-card .eerr-chart-card-body {
+  padding-top: 0.5rem;
+  min-width: 0;
+}
+
+.eerr-chart-empty {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  margin: 0;
+  padding: 1rem 0;
+}
+
+.eerr-chart-hint {
+  margin: 0;
+}
+
+.eerr-chart-wrap {
+  width: 100%;
+}
+
+.eerr-chart-legend {
+  flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+}
+
+/* Contenedor: scroll horizontal; el SVG mantiene ancho intrínseco (muchos meses) sin aplastar altura. */
+.analysis-stack-svg-scroll {
+  overflow-x: auto;
+  overflow-y: visible;
+  max-width: 100%;
+  min-height: 260px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.eerr-chart-svg {
+  display: block;
+  max-width: none;
+  width: auto;
+  min-height: 240px;
+  height: auto;
+  overflow: visible;
+}
+
+.eerr-chart-gridline {
+  stroke: var(--color-border, rgba(255, 255, 255, 0.08));
+  stroke-dasharray: 4 4;
+}
+
+.eerr-chart-baseline {
+  stroke: var(--color-border, rgba(255, 255, 255, 0.2));
+  stroke-width: 1;
+}
+
+.eerr-chart-axis {
+  fill: var(--color-text-muted);
+  font-size: 9px;
+}
+
+.eerr-chart-xlabel {
+  fill: var(--color-text-muted);
+  font-size: 9px;
+}
+
+.eerr-line-dot {
+  cursor: default;
 }

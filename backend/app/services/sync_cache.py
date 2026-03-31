@@ -3,7 +3,13 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.core.analytics_cache import RENDIMIENTO_V2_SUMMARY_CACHE_SCOPE, set as cache_set
-from app.schemas.analytics import AnalyticsFilters, CobranzasCohorteFirstPaintIn, CobranzasCohorteIn, PortfolioSummaryIn
+from app.schemas.analytics import (
+    AnalyticsFilters,
+    CobranzasCohorteFirstPaintIn,
+    CobranzasCohorteIn,
+    EerrV2In,
+    PortfolioSummaryIn,
+)
 from app.services.analytics_service import AnalyticsService
 
 
@@ -31,6 +37,11 @@ def prewarm_analytics_cache_after_sync(db: Session, domain: str, append_log) -> 
             cache_set("anuales-v2/summary", base_filters, anuales_summary, ttl_seconds=300)
             anuales_fp = AnalyticsService.fetch_anuales_first_paint_v2(db, base_filters)
             cache_set("anuales-v2/first-paint", base_filters, anuales_fp, ttl_seconds=180)
+        if domain == "eerr":
+            eerr_opts = AnalyticsService.fetch_eerr_options_v2(db)
+            cache_set("eerr-v2/options", {}, eerr_opts, ttl_seconds=600)
+            eerr_sum = AnalyticsService.fetch_eerr_summary_v2(db, EerrV2In())
+            cache_set("eerr-v2/summary", EerrV2In(), eerr_sum, ttl_seconds=120)
         if domain in {"cobranzas", "cartera"}:
             cohorte_options_filters = CobranzasCohorteIn()
             cohorte_options = AnalyticsService.fetch_cobranzas_cohorte_options_v1(db, cohorte_options_filters)

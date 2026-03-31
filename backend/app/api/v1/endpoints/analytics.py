@@ -11,6 +11,7 @@ from app.schemas.analytics import (
     CobranzasCohorteFirstPaintIn,
     CobranzasCohorteIn,
     CobranzasCohorteOptionsOut,
+    EerrV2In,
     ExportRequest,
     PortfolioCorteOptionsOut,
     PortfolioRoloSummaryOut,
@@ -43,6 +44,8 @@ COHORTE_V2_DETAIL_CACHE_TTL = 300
 PORTFOLIO_CORTE_V2_FIRST_PAINT_CACHE_TTL = 180
 RENDIMIENTO_V2_FIRST_PAINT_CACHE_TTL = 180
 ANUALES_V2_FIRST_PAINT_CACHE_TTL = 180
+EERR_V2_OPTIONS_CACHE_TTL = 600
+EERR_V2_SUMMARY_CACHE_TTL = 120
 
 
 def _call(endpoint: str, filters: AnalyticsFilters):
@@ -344,6 +347,34 @@ def rendimiento_options_v2(
     result = AnalyticsService.fetch_rendimiento_options_v2(db, filters)
     cache_set('rendimiento-v2/options', filters, result, ttl_seconds=RENDIMIENTO_V2_OPTIONS_CACHE_TTL)
     return _decorate_meta(db, result, cache_hit=False, source_table='analytics_rendimiento_agg')
+
+
+@router.post('/eerr-v2/options')
+def eerr_options_v2(
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('analytics:read')),
+):
+    cache_key: dict = {}
+    cached = cache_get('eerr-v2/options', cache_key)
+    if cached is not None:
+        return _decorate_meta(db, cached, cache_hit=True, source_table='eerr_fact,eerr_monthly_agg')
+    result = AnalyticsService.fetch_eerr_options_v2(db)
+    cache_set('eerr-v2/options', cache_key, result, ttl_seconds=EERR_V2_OPTIONS_CACHE_TTL)
+    return _decorate_meta(db, result, cache_hit=False, source_table='eerr_fact,eerr_monthly_agg')
+
+
+@router.post('/eerr-v2/summary')
+def eerr_summary_v2(
+    filters: EerrV2In,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('analytics:read')),
+):
+    cached = cache_get('eerr-v2/summary', filters)
+    if cached is not None:
+        return _decorate_meta(db, cached, cache_hit=True, source_table='eerr_fact,eerr_monthly_agg')
+    result = AnalyticsService.fetch_eerr_summary_v2(db, filters)
+    cache_set('eerr-v2/summary', filters, result, ttl_seconds=EERR_V2_SUMMARY_CACHE_TTL)
+    return _decorate_meta(db, result, cache_hit=False, source_table='eerr_fact,eerr_monthly_agg')
 
 
 @router.post('/anuales/options')

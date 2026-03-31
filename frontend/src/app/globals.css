@@ -746,6 +746,56 @@ body {
   flex-direction: column;
 }
 
+.dashboard-sidebar-link-row {
+  display: flex;
+  width: 100%;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.dashboard-sidebar-link--with-toggle {
+  flex: 1;
+  min-width: 0;
+}
+
+.dashboard-sidebar-submenu-toggle {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 48px;
+  width: 44px;
+  height: auto;
+  align-self: stretch;
+  border-radius: 0.75rem;
+  padding: 0;
+  color: var(--color-text-muted);
+  background: transparent;
+}
+
+.dashboard-sidebar-submenu-toggle:hover {
+  background: var(--sidebar-surface-press);
+  color: var(--color-text);
+}
+
+:root[data-theme="dark"] .dashboard-sidebar-submenu-toggle:hover {
+  color: #fff;
+}
+
+.dashboard-sidebar-submenu-toggle--active-parent {
+  color: color-mix(in srgb, #fff 88%, transparent);
+}
+
+.dashboard-sidebar-submenu-toggle--active-parent:hover {
+  color: #fff;
+}
+
+.dashboard-sidebar-submenu-chevron {
+  transition: transform 0.2s ease;
+}
+
+.dashboard-sidebar-submenu-chevron--open {
+  transform: rotate(90deg);
+}
+
 .dashboard-sidebar-link {
   display: flex;
   align-items: center;

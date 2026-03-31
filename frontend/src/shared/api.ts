@@ -570,7 +570,7 @@ export async function putRoleNavMatrix(payload: {
   return response.data;
 }
 
-export type SyncDomain = "analytics" | "cartera" | "cobranzas" | "contratos" | "gestores";
+export type SyncDomain = "analytics" | "cartera" | "cobranzas" | "contratos" | "eerr" | "gestores";
 export type AnalyticsMeta = {
   generated_at?: string;
   source?: string;
@@ -581,6 +581,9 @@ export type AnalyticsMeta = {
   pipeline_version?: string;
   signature?: string;
   portfolio_keys?: number;
+  /** EERR v2: el detalle `rows` puede ir capado; ver backend `eerr_detail_truncated`. */
+  eerr_detail_truncated?: boolean;
+  eerr_rows_total?: number;
 };
 
 export type PortfolioOptionsResponse = {
@@ -829,7 +832,59 @@ export type AnualesFirstPaintResponse = {
   meta?: AnalyticsMeta;
 };
 
-export type FrontendPerfRoute = "cartera" | "cohorte" | "rendimiento" | "anuales" | "brokers";
+export type EerrV2SocialOption = { id: string; label: string };
+
+export type EerrV2OptionsResponse = {
+  options: {
+    gestion_month?: string[];
+    eerr_block?: string[];
+    social_reason?: EerrV2SocialOption[];
+  };
+  meta?: AnalyticsMeta;
+};
+
+export type EerrV2SummaryRow = {
+  gestion_month: string;
+  eerr_block: string;
+  social_reason_id: number;
+  empresa: string;
+  accounting_plan_id: number;
+  group_type: number;
+  mayor: string;
+  cuenta: string;
+  debit_total: number;
+  credit_total: number;
+};
+
+/** Serie mensual agregada (todos los hechos bajo filtro); evita sesgo del detalle capado a 50k filas. */
+export type EerrV2ChartPoint = {
+  gestion_month: string;
+  ventas_net: number;
+  costos_net: number;
+  gastos_net: number;
+  margen: number;
+  ebitda: number;
+};
+
+export type EerrV2SummaryResponse = {
+  rows: EerrV2SummaryRow[];
+  chart_series?: EerrV2ChartPoint[];
+  totals_by_block: Record<string, { debit: number; credit: number }>;
+  kpis: {
+    ingresos_operativo: number;
+    costos_operativo: number;
+    margen: number;
+    gastos_operativo: number;
+    ebitda: number;
+    /** margen / ingresos_operativo × 100 */
+    margen_pct?: number;
+    /** ebitda / ingresos_operativo × 100 */
+    ebitda_pct?: number;
+  };
+  meta?: AnalyticsMeta;
+};
+
+export type FrontendPerfRoute = "cartera" | "cohorte" | "rendimiento" | "anuales" | "brokers" | "eerr";
 
 export type FrontendPerfIn = {
   route: FrontendPerfRoute;
@@ -1365,6 +1420,18 @@ export async function getRendimientoFirstPaint(payload: {
   tramo?: string[];
 }): Promise<RendimientoFirstPaintResponse> {
   return cachedAnalyticsPost<RendimientoFirstPaintResponse>("/analytics/rendimiento-v2/first-paint", payload, "first_paint");
+}
+
+export async function getEerrV2Options(): Promise<EerrV2OptionsResponse> {
+  return cachedAnalyticsPost<EerrV2OptionsResponse>("/analytics/eerr-v2/options", {}, "options");
+}
+
+export async function getEerrV2Summary(payload: {
+  gestion_month?: string[];
+  eerr_block?: string[];
+  social_reason_id?: string[];
+}): Promise<EerrV2SummaryResponse> {
+  return cachedAnalyticsPost<EerrV2SummaryResponse>("/analytics/eerr-v2/summary", payload, "summary");
 }
 
 export async function getAnualesOptions(payload: {

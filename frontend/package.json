@@ -17,6 +17,8 @@
   "dependencies": {
     "@heroui/react": "beta",
     "@heroui/styles": "beta",
+    "@internationalized/date": "^3.12.0",
+    "@react-aria/i18n": "^3.12.15",
     "axios": "^1.7.9",
     "framer-motion": "^11.9.0",
     "next": "^15.1.0",

@@ -37,7 +37,7 @@ LEFT JOIN payment_methods pm
     ON apw.payment_method_id = pm.id
 WHERE p.status = 1
   AND p.type < 2
-  AND p.date >= '2021-01-01'
+  AND p.date >= '2020-01-01'
   AND (
 -- @include sql/common/enterprise_scope.sql
   )

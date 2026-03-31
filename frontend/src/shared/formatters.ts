@@ -6,6 +6,13 @@ export function formatGsFull(value: number): string {
   return `Gs. ${formatCount(value)}`;
 }
 
+/** Porcentaje para KPIs (escala 0–100; p. ej. 29.6 → "29,6 %"). */
+export function formatPercent(value: number, fractionDigits = 1): string {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return `${n.toLocaleString("es-PY", { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits })} %`;
+}
+
 export function formatGsCompact(value: number): string {
   const numeric = Number(value || 0);
   const abs = Math.abs(numeric);

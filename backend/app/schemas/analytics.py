@@ -105,3 +105,29 @@ class CobranzasCohorteDetailIn(CobranzasCohorteIn):
     page_size: int = Field(default=24, ge=1, le=120)
     sort_by: str = Field(default='sale_month', pattern='^(sale_month|cobrado|deberia|pagaron)$')
     sort_dir: str = Field(default='asc', pattern='^(asc|desc)$')
+
+
+class EerrV2In(BaseModel):
+    gestion_month: list[str] = Field(default_factory=list)
+    eerr_block: list[str] = Field(default_factory=list)
+    social_reason_id: list[str] = Field(default_factory=list)
+
+    @field_validator('gestion_month')
+    @classmethod
+    def validate_gestion_months(cls, values: list[str]):
+        for v in values:
+            if not _is_month(v):
+                raise ValueError(f'mes inválido: {v}')
+        return values
+
+    @field_validator('eerr_block')
+    @classmethod
+    def validate_blocks(cls, values: list[str]):
+        allowed = {'ventas', 'costos', 'gastos'}
+        out: list[str] = []
+        for v in values:
+            n = str(v).strip().lower()
+            if n not in allowed:
+                raise ValueError(f'bloque EERR inválido: {v}')
+            out.append(n)
+        return out

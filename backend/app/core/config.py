@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     sync_max_rows_cobranzas: int = Field(default=0, alias='SYNC_MAX_ROWS_COBRANZAS')
     sync_max_rows_contratos: int = Field(default=0, alias='SYNC_MAX_ROWS_CONTRATOS')
     sync_max_rows_gestores: int = Field(default=0, alias='SYNC_MAX_ROWS_GESTORES')
+    sync_max_rows_eerr: int = Field(default=0, alias='SYNC_MAX_ROWS_EERR')
     sync_safe_mode: bool = Field(default=True, alias='SYNC_SAFE_MODE')
     sync_preview_enabled: bool = Field(default=True, alias='SYNC_PREVIEW_ENABLED')
     sync_preview_sample_rows: int = Field(default=20000, alias='SYNC_PREVIEW_SAMPLE_ROWS')

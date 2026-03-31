@@ -11,7 +11,7 @@ class FrontendApiCallMetric(BaseModel):
 
 
 class FrontendPerfIn(BaseModel):
-    route: str = Field(pattern='^(cartera|cohorte|rendimiento|anuales|brokers)$')
+    route: str = Field(pattern='^(cartera|cohorte|rendimiento|anuales|brokers|eerr)$')
     session_id: str = Field(min_length=8, max_length=128)
     trace_id: str | None = Field(default=None, max_length=128)
     ttfb_ms: float | None = Field(default=None, ge=0.0)
@@ -23,7 +23,7 @@ class FrontendPerfIn(BaseModel):
 
 
 class FrontendPerfSummaryQuery(BaseModel):
-    route: str | None = Field(default=None, pattern='^(cartera|cohorte|rendimiento|anuales|brokers)$')
+    route: str | None = Field(default=None, pattern='^(cartera|cohorte|rendimiento|anuales|brokers|eerr)$')
     from_utc: datetime | None = None
     to_utc: datetime | None = None
     limit: int = Field(default=5000, ge=100, le=50000)

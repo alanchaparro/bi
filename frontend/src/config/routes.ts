@@ -6,6 +6,7 @@ export const ROUTES = {
   analisisAnuales: "/analisis-anuales",
   rendimiento: "/rendimiento",
   cobranzasCohorte: "/cobranzas-cohorte",
+  eerr: "/eerr",
   config: "/config",
 } as const;
 
@@ -16,6 +17,7 @@ export const ROUTE_TO_SECTION_ID: Record<string, string> = {
   "/analisis-anuales": "analisisCarteraAnuales",
   "/rendimiento": "analisisCarteraRendimiento",
   "/cobranzas-cohorte": "analisisCobranzaCohorte",
+  "/eerr": "eerr",
   "/config": "config",
 };
 
@@ -50,5 +52,6 @@ export const NAV_ITEMS = [
   { id: "analisisCarteraAnuales", label: "Análisis Anuales", href: ROUTES.analisisAnuales, group: "Análisis de Cartera" },
   { id: "analisisCarteraRendimiento", label: "Rendimiento de Cartera", href: ROUTES.rendimiento, group: "Análisis de Cartera" },
   { id: "analisisCobranzaCohorte", label: "Análisis Cobranzas Corte", href: ROUTES.cobranzasCohorte, group: "Análisis de Cartera" },
+  { id: "eerr", label: "EERR", href: ROUTES.eerr, group: "Finanzas" },
   { id: "config", label: "Configuración", href: ROUTES.config, group: "Sistema" },
 ] as const satisfies readonly NavItem[];

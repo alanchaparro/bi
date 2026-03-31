@@ -62,6 +62,7 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
    - Empresas permitidas: `enterprise_id IN (1,2,5)`.
 8.1. **Exclusion de contratos en cobranzas**:
    - En sync y queries de cobranzas (MySQL) se excluyen por regla de negocio los contratos `contract_id NOT IN (55411, 55414, 59127, 59532, 60402)`. Este listado está en `query_cobranzas.sql` y en `MYSQL_PRECHECK_QUERIES` de sync; cualquier cambio debe reflejarse en ambos y documentarse aquí.
+   - **Ventana de fechas del extracto de pagos:** `payments.date >= '2020-01-01'` en `sql/v2/query_cobranzas.sql` y en el precheck `MYSQL_PRECHECK_QUERIES['cobranzas']`; cualquier cambio de piso temporal debe reflejarse en ambos y en `docs/base.md`.
 9. **Rendimiento de cartera (dos metricas obligatorias)**:
    - `rendimiento_monto_% = cobrado / monto_a_cobrar`.
    - `monto_a_cobrar = monto_vencido + monto_cuota`, donde `monto_vencido` respeta la regla **5.1** cuando `cuotas_vencidas >= 7`.
@@ -73,6 +74,14 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
      - categoria (`VIGENTE`/`MOROSO`)
      - tramo
      - via de pago/cobro
+10. **Estado de resultado (EERR)** — módulo **EERR** en el frontend (`/eerr`):
+   - **Datos canónicos en Postgres:** la carga operativa del cuadro proviene de la tabla **`eerr_fact`** (sync dominio **`eerr`**, SQL `sql/v2/query_eerr.sql` en MySQL). Los KPIs expuestos por API pueden usar heurísticas débito/crédito por bloque hasta cerrar convención contable detallada.
+   - **Ventana de años en MySQL (extracto unificado):** los tres bloques (ventas, costos, gastos) usan `YEAR(accounting_entries.date) >= 2020` para incluir el año calendario 2020 completo; cambios de piso deben mantenerse alineados en `query_eerr.sql` y en los SQL de referencia `query_eerr_*.sql`, y documentarse en `docs/base.md`.
+   - **Presentación:** tabla de composición dinámica (estilo pivot / desglose por partidas) agrupada en bloques **ingresos (ventas)**, **costos** y **gastos**. Los importes deben poder desglosarse y totalizar por periodo y dimensiones que defina el producto (p. ej. UN), sin contradecir las fórmulas siguientes.
+   - **Margen (bruto operativo de referencia):** `margen = ingresos - costos` (ingresos netos de ventas menos costos asociados a esas ventas, según el catálogo de partidas vigente).
+   - **EBITDA (resultado objetivo del cuadro):** `ebitda = margen - gastos` (gastos operativos / estructura que el modelo clasifique fuera de costos directos de ventas).
+   - **Orden de cálculo obligatorio:** primero margen (ingresos − costos), luego EBITDA (margen − gastos). Cualquier API, agregado SQL o KPI visible en este módulo debe respetar este orden y nomenclatura (**margen**, **EBITDA**).
+   - **Nota:** si más adelante se incorporan ajustes contables (impuestos, intereses, depreciaciones, etc.), se documentan aquí como reglas adicionales para no redefinir en silos el significado de **margen** y **EBITDA** operativos anteriores.
 
 ## Reglas tecnicas de sync y agregados
 1. Si hay filas upsert en facts, no puede quedar agg en cero.
@@ -199,3 +208,4 @@ Actualizar inmediatamente si cambia:
 12. Inventario de extracción MySQL / referencias en `docs/base.md` si las reglas anteriores alteran los SQL de sync o el grafo documentado de tablas.
 13. Catálogo de códigos legacy: si el monolito PHP cambia mapeos id→etiqueta, actualizar el **Apéndice A** dentro de `docs/base.md` (y §10–§11 si cambia semántica de columnas en extractos v2).
 14. Política de adopción HeroUI o reglas operativas en `docs/heroui/README.md` / `docs/heroui/PLAN-MIGRACION.md` (incluidas excepciones temporales o decisiones de fase, p. ej. tablas).
+15. Definición del **Estado de resultado (EERR)**: estructura de la tabla dinámica, clasificación ingresos/costos/gastos y fórmulas **margen** y **EBITDA** (regla **10** de negocio).

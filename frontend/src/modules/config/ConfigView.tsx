@@ -128,6 +128,7 @@ const SYNC_DOMAINS: Array<{ value: SyncDomain; label: string }> = [
   { value: 'cobranzas', label: 'Cobranzas' },
   { value: 'contratos', label: 'Contratos' },
   { value: 'gestores', label: 'Gestores' },
+  { value: 'eerr', label: 'EERR (estado de resultado)' },
 ]
 
 const SYNC_QUERY_FILES: Record<SyncDomain, string> = {
@@ -136,6 +137,7 @@ const SYNC_QUERY_FILES: Record<SyncDomain, string> = {
   cobranzas: 'query_cobranzas.sql',
   contratos: 'query_contratos.sql',
   gestores: 'query_gestores.sql',
+  eerr: 'sql/v2/query_eerr.sql',
 }
 
 const STATUS_POLL_MS = 2000
@@ -1302,13 +1304,14 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
         let shouldSkipDomain = false
         if (previewEnabledRef.current) {
           try {
+            // Cartera: sin muestreo (rango acotado). Resto: igual que cobranzas — preview muestreado para no barrer todo MySQL ni timeouts.
             const previewOptions = allDomainsSelected
               ? {
                   sampled: true,
                   sample_rows: MASSIVE_PREVIEW_SAMPLE_ROWS,
                   timeout_seconds: MASSIVE_PREVIEW_TIMEOUT_SECONDS,
                 }
-              : domain === 'cobranzas'
+              : domain !== 'cartera'
                 ? { sampled: true, sample_rows: 10000, timeout_seconds: 25 }
                 : undefined
             const preview = await previewSync(payload, previewOptions)
@@ -1870,6 +1873,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                         key={preset.id}
                         type="button"
                         variant="ghost"
+                        fullWidth
                         className={`config-theme-card ${selected ? 'is-active' : ''}`}
                         onPress={() => applyThemeChoice(preset.id)}
                         aria-pressed={selected}
@@ -1999,7 +2003,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
 
           <div className="config-stack-xs config-mb-md">
             <span className="config-label-caption">Dominios SQL (multiple)</span>
-            <div className="config-row-wrap">
+            <div className="config-row-wrap config-sync-domains-grid">
               {SYNC_DOMAINS.map((d) => (
                 <label key={d.value} className="config-check-row">
                   <input
@@ -2012,16 +2016,27 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                 </label>
               ))}
             </div>
-            <div className="config-row-wrap-tight config-mt-2xs">
+            <div className="config-row-wrap-tight config-mt-2xs config-dropdown-inline">
               <Dropdown>
-                <Button type="button" variant="outline" size="sm" isDisabled={busy} aria-label="Atajos de selección de dominios SQL">
+                <Dropdown.Trigger
+                  type="button"
+                  className="button button--outline config-dropdown-trigger-compact"
+                  isDisabled={busy}
+                  aria-label="Atajos de selección de dominios SQL"
+                >
                   Dominios rápidos
                   <span className="config-dropdown-chevron" aria-hidden>
                     {' '}
                     ▾
                   </span>
-                </Button>
-                <Dropdown.Popover placement="bottom start" className="config-dropdown-popover">
+                </Dropdown.Trigger>
+                <Dropdown.Popover
+                  placement="bottom start"
+                  offset={6}
+                  shouldFlip
+                  className="config-dropdown-popover"
+                  UNSTABLE_portalContainer={typeof document !== 'undefined' ? document.body : undefined}
+                >
                   <Dropdown.Menu
                     onAction={(key) => {
                       if (key === 'all') selectAllSyncDomains()
@@ -2029,10 +2044,10 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                     }}
                   >
                     <Dropdown.Item id="all" textValue="Seleccionar todos los dominios">
-                      <Label>Seleccionar todos los dominios</Label>
+                      Seleccionar todos los dominios
                     </Dropdown.Item>
                     <Dropdown.Item id="default" textValue="Solo Analytics (por defecto)">
-                      <Label>Solo Analytics (por defecto)</Label>
+                      Solo Analytics (por defecto)
                     </Dropdown.Item>
                   </Dropdown.Menu>
                 </Dropdown.Popover>
@@ -2101,6 +2116,12 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
           <p className="config-section-subtitle config-mt-sm">
             Modo de carga: <strong>{modeLabel}</strong>
           </p>
+          {selectedDomains.includes('eerr') && (
+            <p className="config-section-subtitle config-mt-2xs config-no-margin text-[var(--color-text-muted)]">
+              <strong>EERR:</strong> la carga manual desde aquí es la misma que cobranzas (completa, sin año). Las programaciones siguen siendo{' '}
+              <strong>incremental</strong>; si en /eerr solo ves meses recientes, hacé una carga manual de EERR o reset de watermark.
+            </p>
+          )}
           {allDomainsSelected && (
             <p className="config-warn-text">
               Modo masivo: se ejecutara en cola estricta (1 dominio por vez) para proteger RAM/CPU.
@@ -2260,35 +2281,43 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
             <pre className="sync-logs-pre">
               {displayLog.length > 0 ? displayLog.join('\n') : 'No hay entradas de log aún. Ejecuta una carga para ver el registro aquí.'}
             </pre>
-            <Dropdown>
-              <Button
-                type="button"
-                variant="outline"
-                isDisabled={displayLog.length === 0 && !displayError}
-                aria-label="Acciones del registro de importación"
-              >
-                Acciones del log
-                <span className="config-dropdown-chevron" aria-hidden>
-                  {' '}
-                  ▾
-                </span>
-              </Button>
-              <Dropdown.Popover placement="bottom start" className="config-dropdown-popover">
-                <Dropdown.Menu
-                  onAction={(key) => {
-                    if (key === 'export-txt') handleExportLogTxt()
-                    if (key === 'copy') void copyImportLogToClipboard()
-                  }}
+            <div className="config-dropdown-inline config-mt-2xs">
+              <Dropdown>
+                <Dropdown.Trigger
+                  type="button"
+                  className="button button--outline"
+                  isDisabled={displayLog.length === 0 && !displayError}
+                  aria-label="Acciones del registro de importación"
                 >
-                  <Dropdown.Item id="export-txt" textValue="Exportar a archivo TXT">
-                    <Label>Exportar a TXT</Label>
-                  </Dropdown.Item>
-                  <Dropdown.Item id="copy" textValue="Copiar todo al portapapeles">
-                    <Label>Copiar al portapapeles</Label>
-                  </Dropdown.Item>
-                </Dropdown.Menu>
-              </Dropdown.Popover>
-            </Dropdown>
+                  Acciones del log
+                  <span className="config-dropdown-chevron" aria-hidden>
+                    {' '}
+                    ▾
+                  </span>
+                </Dropdown.Trigger>
+                <Dropdown.Popover
+                  placement="bottom start"
+                  offset={6}
+                  shouldFlip
+                  className="config-dropdown-popover"
+                  UNSTABLE_portalContainer={typeof document !== 'undefined' ? document.body : undefined}
+                >
+                  <Dropdown.Menu
+                    onAction={(key) => {
+                      if (key === 'export-txt') handleExportLogTxt()
+                      if (key === 'copy') void copyImportLogToClipboard()
+                    }}
+                  >
+                    <Dropdown.Item id="export-txt" textValue="Exportar a archivo TXT">
+                      Exportar a TXT
+                    </Dropdown.Item>
+                    <Dropdown.Item id="copy" textValue="Copiar todo al portapapeles">
+                      Copiar al portapapeles
+                    </Dropdown.Item>
+                  </Dropdown.Menu>
+                </Dropdown.Popover>
+              </Dropdown>
+            </div>
           </div>
         </div>
         )}
@@ -2475,7 +2504,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
             </div>
             <div className="config-stack-sm">
               <span className="config-label-caption">Dominios</span>
-              <div className="config-row-wrap-tight">
+              <div className="config-row-wrap-tight config-sync-domains-grid">
                 {SYNC_DOMAINS.map((d) => (
                   <label key={d.value} className="config-check-row">
                     <input

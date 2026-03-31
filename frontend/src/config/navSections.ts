@@ -4,6 +4,7 @@ export const NAV_SECTIONS = [
   { id: 'analisisCarteraAnuales', label: 'Análisis Anuales', group: 'Análisis de Cartera' },
   { id: 'analisisCarteraRendimiento', label: 'Rendimiento de Cartera', group: 'Análisis de Cartera' },
   { id: 'analisisCobranzaCohorte', label: 'Análisis Cobranzas Corte', group: 'Análisis de Cartera' },
+  { id: 'eerr', label: 'EERR', group: 'Finanzas' },
   { id: 'config', label: 'Configuración', group: 'Sistema' },
 ] as const
 

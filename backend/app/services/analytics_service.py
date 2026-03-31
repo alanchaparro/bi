@@ -32,6 +32,8 @@ from app.models.brokers import (
     CarteraFact,
     CobranzasCohorteAgg,
     CobranzasFact,
+    EerrFact,
+    EerrMonthlyAgg,
     MvOptionsAnuales,
     MvOptionsCartera,
     MvOptionsCohorte,
@@ -46,6 +48,7 @@ from app.schemas.analytics import (
     CobranzasCohorteDetailIn,
     CobranzasCohorteFirstPaintIn,
     CobranzasCohorteIn,
+    EerrV2In,
     PortfolioSummaryIn,
 )
 
@@ -383,6 +386,10 @@ class AnalyticsService:
                 return db.query(CarteraFact.updated_at).order_by(CarteraFact.updated_at.desc()).limit(1).scalar()
             if source == 'cobranzas_fact':
                 return db.query(CobranzasFact.updated_at).order_by(CobranzasFact.updated_at.desc()).limit(1).scalar()
+            if source == 'eerr_fact':
+                return db.query(EerrFact.updated_at).order_by(EerrFact.updated_at.desc()).limit(1).scalar()
+            if source == 'eerr_monthly_agg':
+                return db.query(EerrMonthlyAgg.updated_at).order_by(EerrMonthlyAgg.updated_at.desc()).limit(1).scalar()
             if source == 'cartera_corte_agg':
                 return db.query(CarteraCorteAgg.updated_at).order_by(CarteraCorteAgg.updated_at.desc()).limit(1).scalar()
             if source == 'cobranzas_cohorte_agg':
@@ -449,6 +456,8 @@ class AnalyticsService:
             'mv_options_cohorte',
             'mv_options_rendimiento',
             'mv_options_anuales',
+            'eerr_fact',
+            'eerr_monthly_agg',
         ]
         rows = db.query(AnalyticsSourceFreshness).all()
         existing = {str(row.source_table or '').strip().lower(): row for row in rows}
@@ -3851,6 +3860,194 @@ class AnalyticsService:
                 'source_table': 'analytics_anuales_agg',
                 'generated_at': datetime.utcnow().isoformat(),
                 'signature': f'anuales-v2|{cutoff}',
+            },
+        }
+
+    @staticmethod
+    def fetch_eerr_options_v2(db: Session) -> dict:
+        fact_months = {str(r[0] or '').strip() for r in db.query(EerrFact.gestion_month).distinct().all() if r and r[0]}
+        agg_months = {
+            str(r[0] or '').strip() for r in db.query(EerrMonthlyAgg.gestion_month).distinct().all() if r and r[0]
+        }
+        months = sorted(fact_months | agg_months, key=_month_serial, reverse=True)
+        sr_rows = (
+            db.query(EerrFact.social_reason_id, func.max(EerrFact.empresa))
+            .group_by(EerrFact.social_reason_id)
+            .order_by(EerrFact.social_reason_id.asc())
+            .all()
+        )
+        social_options = [
+            {'id': str(int(r[0])), 'label': str(r[1] or '').strip() or str(int(r[0]))}
+            for r in sr_rows
+            if r[0] is not None
+        ]
+        return {
+            'options': {
+                'gestion_month': months,
+                'eerr_block': ['ventas', 'costos', 'gastos'],
+                'social_reason': social_options,
+            },
+            'meta': {
+                'source': 'api-v2',
+                'source_table': 'eerr_fact',
+                'generated_at': datetime.utcnow().isoformat(),
+            },
+        }
+
+    @staticmethod
+    def fetch_eerr_summary_v2(db: Session, filters: EerrV2In) -> dict:
+        gm = [str(m).strip() for m in (filters.gestion_month or []) if str(m).strip()]
+        blocks = list(filters.eerr_block or [])
+        sr_ids: list[int] = []
+        for s in filters.social_reason_id or []:
+            t = str(s).strip()
+            if t.isdigit():
+                sr_ids.append(int(t))
+
+        def _apply_fact_filters(qf):
+            if gm:
+                qf = qf.filter(EerrFact.gestion_month.in_(gm))
+            if blocks:
+                qf = qf.filter(EerrFact.eerr_block.in_(blocks))
+            if sr_ids:
+                qf = qf.filter(EerrFact.social_reason_id.in_(sr_ids))
+            return qf
+
+        q = _apply_fact_filters(db.query(EerrFact))
+        rows_out: list[dict] = []
+        # calendar_year evita orden lexicográfico incorrecto en mm/yyyy entre años; el detalle sigue capado.
+        for r in q.order_by(
+            EerrFact.calendar_year.desc(),
+            EerrFact.gestion_month.desc(),
+            EerrFact.eerr_block.asc(),
+            EerrFact.social_reason_id.asc(),
+            EerrFact.accounting_plan_id.asc(),
+        ).limit(50_000):
+            rows_out.append(
+                {
+                    'gestion_month': str(r.gestion_month or ''),
+                    'eerr_block': str(r.eerr_block or ''),
+                    'social_reason_id': int(r.social_reason_id or 0),
+                    'empresa': str(r.empresa or ''),
+                    'accounting_plan_id': int(r.accounting_plan_id or 0),
+                    'group_type': int(r.group_type or 0),
+                    'mayor': str(r.mayor or ''),
+                    'cuenta': str(r.cuenta or ''),
+                    'debit_total': float(r.debit_total or 0.0),
+                    'credit_total': float(r.credit_total or 0.0),
+                }
+            )
+
+        # Serie mensual para gráficos: agregación completa en SQL (sin tope de 50k filas del detalle).
+        by_chart_month: dict[str, dict[str, float]] = defaultdict(lambda: {'v': 0.0, 'c': 0.0, 'g': 0.0})
+        q_chart = _apply_fact_filters(
+            db.query(
+                EerrFact.gestion_month,
+                EerrFact.eerr_block,
+                func.coalesce(func.sum(EerrFact.debit_total), 0.0),
+                func.coalesce(func.sum(EerrFact.credit_total), 0.0),
+            )
+        )
+        for gestion_m, blk, dbt, crd in q_chart.group_by(EerrFact.gestion_month, EerrFact.eerr_block).all():
+            gm_key = str(gestion_m or '').strip()
+            b = str(blk or '').strip().lower()
+            d = float(dbt or 0.0)
+            c_ = float(crd or 0.0)
+            bucket = by_chart_month[gm_key]
+            if b == 'ventas':
+                bucket['v'] += d - c_
+            elif b == 'costos':
+                bucket['c'] += d - c_
+            elif b == 'gastos':
+                bucket['g'] += d - c_
+        chart_series: list[dict] = []
+        for gm_key in sorted(by_chart_month.keys(), key=_month_serial):
+            if _month_serial(gm_key) <= 0:
+                continue
+            o = by_chart_month[gm_key]
+            chart_series.append(
+                {
+                    'gestion_month': gm_key,
+                    'ventas_net': float(o['v']),
+                    'costos_net': float(o['c']),
+                    'gastos_net': float(o['g']),
+                    'margen': float(o['v'] - o['c']),
+                    'ebitda': float(o['v'] - o['c'] - o['g']),
+                }
+            )
+
+        def _apply_agg_filters(qa):
+            if gm:
+                qa = qa.filter(EerrMonthlyAgg.gestion_month.in_(gm))
+            if blocks:
+                qa = qa.filter(EerrMonthlyAgg.eerr_block.in_(blocks))
+            if sr_ids:
+                qa = qa.filter(EerrMonthlyAgg.social_reason_id.in_(sr_ids))
+            return qa
+
+        q_agg = _apply_agg_filters(
+            db.query(
+                EerrMonthlyAgg.eerr_block,
+                func.coalesce(func.sum(EerrMonthlyAgg.debit_total), 0.0),
+                func.coalesce(func.sum(EerrMonthlyAgg.credit_total), 0.0),
+            )
+        )
+        block_totals = q_agg.group_by(EerrMonthlyAgg.eerr_block).all()
+        fact_in_scope = _apply_fact_filters(db.query(EerrFact.id)).limit(1).first() is not None
+        if not block_totals and fact_in_scope:
+            q_fb = _apply_fact_filters(
+                db.query(
+                    EerrFact.eerr_block,
+                    func.coalesce(func.sum(EerrFact.debit_total), 0.0),
+                    func.coalesce(func.sum(EerrFact.credit_total), 0.0),
+                )
+            )
+            block_totals = q_fb.group_by(EerrFact.eerr_block).all()
+
+        totals: dict[str, dict[str, float]] = defaultdict(lambda: {'debit': 0.0, 'credit': 0.0})
+        for b, db_sum, cr_sum in block_totals:
+            blk = str(b or '')
+            totals[blk]['debit'] = float(db_sum or 0.0)
+            totals[blk]['credit'] = float(cr_sum or 0.0)
+        for name in ('ventas', 'costos', 'gastos'):
+            totals.setdefault(name, {'debit': 0.0, 'credit': 0.0})
+
+        def _blk(name: str) -> dict[str, float]:
+            return dict(totals.get(name) or {'debit': 0.0, 'credit': 0.0})
+
+        v, c, g = _blk('ventas'), _blk('costos'), _blk('gastos')
+        ingresos_operativo = v['credit'] - v['debit']
+        costos_operativo = c['debit'] - c['credit']
+        gastos_operativo = g['debit'] - g['credit']
+        margen = ingresos_operativo - costos_operativo
+        ebitda = margen - gastos_operativo
+        den_ingresos = float(ingresos_operativo) if ingresos_operativo else 0.0
+        margen_pct = (100.0 * float(margen) / den_ingresos) if den_ingresos else 0.0
+        ebitda_pct = (100.0 * float(ebitda) / den_ingresos) if den_ingresos else 0.0
+
+        rows_total = _apply_fact_filters(db.query(EerrFact)).count()
+        return {
+            'rows': rows_out,
+            'chart_series': chart_series,
+            'totals_by_block': {k: dict(v) for k, v in totals.items()},
+            'kpis': {
+                'ingresos_operativo': ingresos_operativo,
+                'costos_operativo': costos_operativo,
+                'margen': margen,
+                'gastos_operativo': gastos_operativo,
+                'ebitda': ebitda,
+                'margen_pct': margen_pct,
+                'ebitda_pct': ebitda_pct,
+            },
+            'meta': {
+                'source': 'api-v2',
+                'source_table': 'eerr_fact,eerr_monthly_agg',
+                'generated_at': datetime.utcnow().isoformat(),
+                'note_kpi_convention': 'Ventas: saldo débito−haber; costos/gastos: débito−crédito. KPIs desde eerr_monthly_agg si existe; si no, desde agregación SQL sobre eerr_fact.',
+                'eerr_detail_cap': 50_000,
+                'eerr_rows_total': int(rows_total or 0),
+                'eerr_detail_truncated': bool(int(rows_total or 0) > len(rows_out)),
+                'eerr_chart_series_from': 'eerr_fact_aggregate',
             },
         }
 

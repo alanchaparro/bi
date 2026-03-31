@@ -40,6 +40,6 @@ LEFT JOIN payment_methods pm
     ON apw.payment_method_id = pm.id
 WHERE p.status = 1
   AND p.type < 2
-  AND p.date >= '2021-01-01'
+  AND p.date >= '2020-01-01'
   AND c.enterprise_id IN (1, 2, 5)
   AND p.contract_id NOT IN (55411, 55414, 59127, 59532, 60402);
