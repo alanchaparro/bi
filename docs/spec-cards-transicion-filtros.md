@@ -1,6 +1,6 @@
 # Spec: Cards de gráficos unificadas y transición al filtrar
 
-**Origen:** PLAN.md — Tarea "Unificación de cards de gráficos y transición al filtrar", Subtarea 2 (ui-designer).  
+**Origen:** cards de gráficos y transición al filtrar (HeroUI; ver `docs/heroui/PLAN-MIGRACION.md`).  
 **Referencias:** `docs/sugerencias-ui-designer.md` §3.2 (Cards de gráficos) y §4.3 (Transición de datos).
 
 ---

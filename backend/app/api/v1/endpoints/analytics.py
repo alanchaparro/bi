@@ -11,6 +11,7 @@ from app.schemas.analytics import (
     CobranzasCohorteFirstPaintIn,
     CobranzasCohorteIn,
     CobranzasCohorteOptionsOut,
+    CobranzasCohorteOrphanDetailIn,
     EerrV2In,
     ExportRequest,
     PortfolioCorteOptionsOut,
@@ -41,6 +42,7 @@ ANUALES_V2_OPTIONS_CACHE_TTL = 120
 ANUALES_V2_SUMMARY_CACHE_TTL = 300
 COHORTE_V2_FIRST_PAINT_CACHE_TTL = 300
 COHORTE_V2_DETAIL_CACHE_TTL = 300
+COHORTE_V2_ORPHAN_DETAIL_CACHE_TTL = 300
 PORTFOLIO_CORTE_V2_FIRST_PAINT_CACHE_TTL = 180
 RENDIMIENTO_V2_FIRST_PAINT_CACHE_TTL = 180
 ANUALES_V2_FIRST_PAINT_CACHE_TTL = 180
@@ -546,6 +548,25 @@ def cobranzas_cohorte_detail_v2(
     result = AnalyticsService.fetch_cobranzas_cohorte_detail_v2(db, filters)
     cache_set('cobranzas-cohorte-v2/detail', filters, result, ttl_seconds=COHORTE_V2_DETAIL_CACHE_TTL)
     return _decorate_meta(db, result, cache_hit=False, source_table='cobranzas_cohorte_agg')
+
+
+@router.post('/cobranzas-cohorte-v2/orphan-detail')
+def cobranzas_cohorte_orphan_detail_v2(
+    filters: CobranzasCohorteOrphanDetailIn,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('analytics:read')),
+):
+    cached = cache_get('cobranzas-cohorte-v2/orphan-detail', filters)
+    if cached is not None:
+        return _decorate_meta(db, cached, cache_hit=True, source_table='cobranzas_fact')
+    result = AnalyticsService.fetch_cobranzas_cohorte_orphan_detail_v2(db, filters)
+    cache_set(
+        'cobranzas-cohorte-v2/orphan-detail',
+        filters,
+        result,
+        ttl_seconds=COHORTE_V2_ORPHAN_DETAIL_CACHE_TTL,
+    )
+    return _decorate_meta(db, result, cache_hit=False, source_table='cobranzas_fact')
 
 
 @router.post('/export/csv')

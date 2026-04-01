@@ -68,7 +68,7 @@ $checklist = @(
   "[ ] 4) Actualizar bugs_visual.md sin contradicciones (checklist + estado final)",
   "[ ] 5) Ejecutar pruebas/smoke del frontend segun flujo del equipo",
   "[ ] 6) Commit + push de la rama de recovery",
-  "[ ] 7) Abrir PR usando RECUPERACION_DEV_PLAN.md"
+  "[ ] 7) Abrir PR con descripcion de cambios y evidencia en bugs_visual.md"
 )
 
 $outFile = Join-Path $repoRoot "RECOVERY_EXECUTION_CHECKLIST.txt"
@@ -83,4 +83,4 @@ Write-Host "git push -u origin $BranchName"
 
 Write-Step "Recovery preparado"
 Write-Host "Rama creada: $BranchName" -ForegroundColor Green
-Write-Host "Plan detallado: RECUPERACION_DEV_PLAN.md" -ForegroundColor Green
+Write-Host "Guia de estado: bugs_visual.md y skill experiencia-cliente si aplica." -ForegroundColor Green

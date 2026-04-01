@@ -35,7 +35,7 @@ Fecha base: 2026-02-17
 
 ## Evidencias
 - [ ] `docs/evidence/` contiene solo evidencia del ciclo nuevo
-- [ ] reporte de limpieza completado en `docs/prod-reset-cleanup-report.md`
+- [ ] Limpieza/archivado de legado documentado en `docs/runbook-prod.md` o nota en `qa.md` si aplica
 
 ## Checklist manual externo (cron/systemd)
 - [ ] host/servicio:

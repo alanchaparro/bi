@@ -615,7 +615,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <SyncLiveContext.Provider value={syncContextValue}>
       <div
-        className={`dashboard-sidebar-overlay fixed inset-0 z-[100] bg-black/50 lg:hidden transition-opacity duration-200 ${
+        className={`dashboard-sidebar-overlay fixed inset-0 z-[100] bg-black/50 lg:hidden transition-opacity duration-[calc(200ms*var(--motion-scale))] ${
           sidebarOpen ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         role="presentation"
@@ -644,7 +644,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         onMouseEnter={openSidebarFromEdge}
       />
       <aside
-        className={`dashboard-sidebar fixed inset-y-0 left-0 z-[150] flex h-[100dvh] min-h-[100dvh] w-[85vw] max-w-72 flex-col transition-transform duration-300 ease-out lg:w-[var(--sidebar-width)] ${
+        className={`dashboard-sidebar fixed inset-y-0 left-0 z-[150] flex h-[100dvh] min-h-[100dvh] w-[85vw] max-w-72 flex-col transition-transform duration-[calc(300ms*var(--motion-scale))] ease-out lg:w-[var(--sidebar-width)] ${
           sidebarOpen ? "translate-x-0 pointer-events-auto lg:translate-x-0" : "-translate-x-full pointer-events-none lg:-translate-x-full"
         }`}
         onMouseEnter={clearScheduledSidebarClose}
@@ -813,13 +813,13 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <div
-        className={`dashboard-shell min-h-screen overflow-x-visible transition-[padding-left] duration-300 ease-out ${sidebarOpen ? "dashboard-shell--with-sidebar" : "dashboard-shell--without-sidebar"}`}
+        className={`dashboard-shell min-h-screen overflow-x-visible transition-[padding-left] duration-[calc(300ms*var(--motion-scale))] ease-out ${sidebarOpen ? "dashboard-shell--with-sidebar" : "dashboard-shell--without-sidebar"}`}
       >
         <Button
           isIconOnly
           variant="secondary"
           size="md"
-          className={`dashboard-fab-sidebar-toggle fixed top-3 left-3 z-[160] min-h-[var(--touch-min)] min-w-[var(--touch-min)] shrink-0 rounded-full border border-[var(--glass-border)] !bg-[var(--color-surface-elevated)] !text-[var(--color-text-muted)] !shadow-none backdrop-blur-none transition-[color,background-color,transform] duration-150 hover:!bg-[color-mix(in_srgb,var(--color-text)_7%,var(--color-surface-elevated))] hover:!text-[var(--color-text)] active:scale-[0.96] data-[pressed=true]:scale-[0.96] lg:hidden ${
+          className={`dashboard-fab-sidebar-toggle fixed top-3 left-3 z-[160] min-h-[var(--touch-min)] min-w-[var(--touch-min)] shrink-0 rounded-full border border-[var(--glass-border)] !bg-[var(--color-surface-elevated)] !text-[var(--color-text-muted)] !shadow-none backdrop-blur-none transition-[color,background-color,transform] duration-[calc(150ms*var(--motion-scale))] hover:!bg-[color-mix(in_srgb,var(--color-text)_7%,var(--color-surface-elevated))] hover:!text-[var(--color-text)] active:scale-[0.96] data-[pressed=true]:scale-[0.96] lg:hidden ${
             sidebarOpen ? "max-lg:hidden max-lg:pointer-events-none" : ""
           }`}
           aria-label={sidebarOpen ? "Cerrar menú lateral" : "Abrir menú lateral"}

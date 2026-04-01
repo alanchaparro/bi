@@ -132,7 +132,7 @@ Documento de sugerencias desde el rol del **agente ui-designer** (`.cursor/agent
 ## 6. Próximos pasos sugeridos (estado)
 
 1. **Implementar íconos en el sidebar** — ✅ Hecho (SVG) + `docs/design-tokens.md`.
-2. **Auditar estados** — ✅ Hecho. Ver `docs/audit-estados-vistas.md`.
+2. **Auditar estados** — ✅ Hecho (revision historica; evidencia actual en `bugs_visual.md` / `qa.md`).
 3. **Revisar contraste** — ✅ Título header en modo claro con color sólido; pills con clases semánticas y colores del sistema (design-tokens).
 4. **Unificar encabezados** — ✅ Kicker "PANEL EJECUTIVO" en análisis; Config con `AnalyticsPageHeader` kicker "SISTEMA"; misma spec (kicker + título + subtítulo).
 5. **Opcional** — ✅ Config con `<Tabs>` HeroUI; pills del header en clases `.header-pill--*`; overlay móvil del sidebar con transición de opacidad (200ms).

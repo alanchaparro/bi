@@ -1,6 +1,6 @@
 # Spec: Unificación de títulos de página y kicker
 
-**Origen:** PLAN.md — Tarea "Unificación de títulos de página y kicker", Subtarea 2 (ui-designer).  
+**Origen:** unificación títulos/kicker (rebuild HeroUI; ver `docs/heroui/PLAN-MIGRACION.md`).  
 **Referencia:** docs/sugerencias-ui-designer.md §3.1 (Kicker, Título de página).
 
 ---

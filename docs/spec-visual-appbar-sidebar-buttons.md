@@ -1,6 +1,6 @@
 # Spec visual — App bar, Sidebar y Botones
 
-**Origen:** Subtarea 2 del PLAN.md (ui-designer).  
+**Origen:** especificación de shell HeroUI (rebuild UI histórico; ver `docs/heroui/PLAN-MIGRACION.md`).  
 **Objetivo:** Especificación concreta para que el frontend implemente consistencia HeroUI en header, menú lateral y botones, con tokens del sistema y accesibilidad.
 
 ---

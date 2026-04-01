@@ -747,6 +747,29 @@ export type CobranzasCohorteDetailResponse = {
   meta?: AnalyticsMeta;
 };
 
+export type CobranzasCohorteOrphanDetailRow = {
+  contract_id: string;
+  un: string;
+  supervisor: string;
+  via: string;
+  tramo: number;
+  categoria: string;
+  transacciones: number;
+  cobrado: number;
+};
+
+export type CobranzasCohorteOrphanDetailResponse = {
+  cutoff_month: string;
+  effective_cartera_month?: string;
+  items: CobranzasCohorteOrphanDetailRow[];
+  total_items: number;
+  page: number;
+  page_size: number;
+  has_next: boolean;
+  totals?: { contratos: number; transacciones: number; cobrado: number };
+  meta?: AnalyticsMeta;
+};
+
 export type RendimientoOptionsResponse = {
   options: {
     uns?: string[];
@@ -1323,6 +1346,18 @@ export async function getCobranzasCohorteOptions(payload: {
   return cachedAnalyticsPost<CobranzasCohorteOptionsResponse>("/analytics/cobranzas-cohorte-v2/options", payload, "options");
 }
 
+/** Igual que options pero sin caché de cliente; sirve para polling de frescura tras sync. */
+export async function peekCobranzasCohorteOptionsUncached(payload: {
+  cutoff_month?: string;
+  un?: string[];
+  via_cobro?: string[];
+  categoria?: string[];
+  supervisor?: string[];
+} = {}): Promise<CobranzasCohorteOptionsResponse> {
+  const response = await api.post<CobranzasCohorteOptionsResponse>("/analytics/cobranzas-cohorte-v2/options", payload);
+  return response.data;
+}
+
 export async function getCobranzasCohorteSummary(payload: {
   cutoff_month?: string;
   un?: string[];
@@ -1370,6 +1405,24 @@ export async function getCobranzasCohorteDetail(payload: {
   sort_dir?: "asc" | "desc";
 }): Promise<CobranzasCohorteDetailResponse> {
   return cachedAnalyticsPost<CobranzasCohorteDetailResponse>("/analytics/cobranzas-cohorte-v2/detail", payload, "detail");
+}
+
+export async function getCobranzasCohorteOrphanDetail(payload: {
+  cutoff_month?: string;
+  un?: string[];
+  via_cobro?: string[];
+  categoria?: string[];
+  supervisor?: string[];
+  page?: number;
+  page_size?: number;
+  sort_by?: "cobrado" | "contract_id" | "transacciones" | "un";
+  sort_dir?: "asc" | "desc";
+}): Promise<CobranzasCohorteOrphanDetailResponse> {
+  return cachedAnalyticsPost<CobranzasCohorteOrphanDetailResponse>(
+    "/analytics/cobranzas-cohorte-v2/orphan-detail",
+    payload,
+    "detail"
+  );
 }
 
 export async function getRendimientoOptions(payload: {

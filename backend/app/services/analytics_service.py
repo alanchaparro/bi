@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.domain import (
     category_expr_for_tramo,
+    categoria_from_tramo,
     deberia_cartera_from_payload,
     latest_month,
     month_from_any,
@@ -48,6 +49,7 @@ from app.schemas.analytics import (
     CobranzasCohorteDetailIn,
     CobranzasCohorteFirstPaintIn,
     CobranzasCohorteIn,
+    CobranzasCohorteOrphanDetailIn,
     EerrV2In,
     PortfolioSummaryIn,
 )
@@ -1179,19 +1181,8 @@ class AnalyticsService:
         }
 
     @staticmethod
-    def _cohorte_orphan_cobranzas(
-        db: Session,
-        resolved_cutoff: str,
-        effective_cartera_month: str,
-        un_filter: set[str],
-        supervisor_filter: set[str],
-        via_filter: set[str],
-    ) -> tuple[float, int, int]:
-        """
-        Cobranzas del mes de corte (payment_month) que no tienen cartera con esa fecha de gestión.
-        Devuelve (cobrado_total, transacciones, contratos_que_pagaron).
-        """
-        contract_ids_in_cartera = {
+    def _contract_ids_in_cartera_for_month(db: Session, effective_cartera_month: str) -> set[str]:
+        return {
             str(r[0] or '').strip()
             for r in db.query(CarteraFact.contract_id)
             .filter(CarteraFact.gestion_month == effective_cartera_month)
@@ -1199,27 +1190,63 @@ class AnalyticsService:
             .all()
             if str(r[0] or '').strip()
         }
+
+    @staticmethod
+    def _cohorte_orphan_fact_query(
+        db: Session,
+        resolved_cutoff: str,
+        contract_ids_in_cartera: set[str],
+        un_filter: set[str],
+        supervisor_filter: set[str],
+        via_filter: set[str],
+        category_filter: set[str],
+    ):
         cutoff_variants = _payment_month_variants(resolved_cutoff)
         if cutoff_variants:
             pm_filter = func.trim(CobranzasFact.payment_month).in_(cutoff_variants)
         else:
             pm_filter = func.trim(CobranzasFact.payment_month) == resolved_cutoff
-        q = (
-            db.query(CobranzasFact)
-            .filter(pm_filter)
-        )
+        q = db.query(CobranzasFact).filter(pm_filter)
         if contract_ids_in_cartera:
             q = q.filter(CobranzasFact.contract_id.notin_(contract_ids_in_cartera))
         if un_filter:
-            q = q.filter(func.upper(func.coalesce(CobranzasFact.un, '')).in_([u.upper() for u in un_filter]))
+            q = q.filter(func.upper(func.coalesce(CobranzasFact.un, '')).in_(list(un_filter)))
         if supervisor_filter:
-            q = q.filter(func.upper(func.coalesce(CobranzasFact.supervisor, '')).in_([s.upper() for s in supervisor_filter]))
+            q = q.filter(func.upper(func.coalesce(CobranzasFact.supervisor, '')).in_(list(supervisor_filter)))
         if via_filter:
-            q = q.filter(func.upper(func.coalesce(CobranzasFact.via, '')).in_([v.upper() for v in via_filter]))
-        orphan_cobrado = float(q.with_entities(func.coalesce(func.sum(CobranzasFact.payment_amount), 0.0)).scalar() or 0.0)
-        orphan_tx = int(q.with_entities(func.count()).scalar() or 0)
+            q = q.filter(func.upper(func.coalesce(CobranzasFact.via, '')).in_(list(via_filter)))
+        if category_filter:
+            q = q.filter(category_expr_for_tramo(CobranzasFact.tramo).in_(list(category_filter)))
+        return q
+
+    @staticmethod
+    def _cohorte_orphan_cobranzas(
+        db: Session,
+        resolved_cutoff: str,
+        effective_cartera_month: str,
+        un_filter: set[str],
+        supervisor_filter: set[str],
+        via_filter: set[str],
+        category_filter: set[str],
+    ) -> tuple[float, int, int]:
+        """
+        Cobranzas del mes de corte (payment_month) que no tienen cartera con esa fecha de gestión.
+        Devuelve (cobrado_total, transacciones, contratos_que_pagaron).
+        """
+        cids = AnalyticsService._contract_ids_in_cartera_for_month(db, effective_cartera_month)
+
+        def _orphan_q():
+            return AnalyticsService._cohorte_orphan_fact_query(
+                db, resolved_cutoff, cids, un_filter, supervisor_filter, via_filter, category_filter
+            )
+
+        orphan_cobrado = float(
+            _orphan_q().with_entities(func.coalesce(func.sum(CobranzasFact.payment_amount), 0.0)).scalar() or 0.0
+        )
+        orphan_tx = int(_orphan_q().count() or 0)
         orphan_pagaron = int(
-            q.filter(CobranzasFact.payment_amount > 0)
+            _orphan_q()
+            .filter(CobranzasFact.payment_amount > 0)
             .with_entities(CobranzasFact.contract_id)
             .distinct()
             .count()
@@ -1605,7 +1632,13 @@ class AnalyticsService:
 
             # Incluir cobranzas del mes de corte que no tienen cartera con esa fecha de gestión.
             orphan_cobrado, orphan_tx, orphan_pagaron = AnalyticsService._cohorte_orphan_cobranzas(
-                db, resolved_cutoff, resolved_cutoff, un_filter, supervisor_filter, via_filter,
+                db,
+                resolved_cutoff,
+                effective_cartera_month,
+                un_filter,
+                supervisor_filter,
+                via_filter,
+                category_filter,
             )
             totals['cobrado'] += orphan_cobrado
             totals['transacciones'] += orphan_tx
@@ -1823,7 +1856,13 @@ class AnalyticsService:
 
         # Incluir cobranzas del mes de corte que no tienen cartera con esa fecha de gestión.
         orphan_cobrado, orphan_tx, orphan_pagaron = AnalyticsService._cohorte_orphan_cobranzas(
-            db, resolved_cutoff, effective_cartera_month, un_filter, supervisor_filter, via_filter,
+            db,
+            resolved_cutoff,
+            effective_cartera_month,
+            un_filter,
+            supervisor_filter,
+            via_filter,
+            category_filter,
         )
         totals['cobrado'] += orphan_cobrado
         totals['transacciones'] += orphan_tx
@@ -2124,6 +2163,129 @@ class AnalyticsService:
                 'source': 'api-v1',
                 'source_table': 'cobranzas_cohorte_agg',
                 'payload_mode': 'detail',
+                'generated_at': datetime.utcnow().isoformat(),
+            },
+        }
+
+    @staticmethod
+    def fetch_cobranzas_cohorte_orphan_detail_v2(db: Session, filters: CobranzasCohorteOrphanDetailIn) -> dict:
+        """
+        Listado de cobranzas sin cierre cartera: pagos en cobranzas_fact para el corte cuyo contrato
+        no tiene fila en cartera_fact para el mes de gestión efectivo alineado al corte.
+        """
+        resolved_cutoff = str(filters.cutoff_month or '').strip()
+        if not resolved_cutoff:
+            payment_months = [
+                str(v[0]).strip()
+                for v in db.query(CobranzasFact.payment_month).distinct().all()
+                if _month_serial(str(v[0] or '').strip()) > 0
+            ]
+            resolved_cutoff = _latest_month(payment_months)
+        page = int(filters.page or 1)
+        page_size = int(filters.page_size or 50)
+        empty_out = {
+            'cutoff_month': '',
+            'effective_cartera_month': '',
+            'items': [],
+            'total_items': 0,
+            'page': page,
+            'page_size': page_size,
+            'has_next': False,
+            'totals': {'contratos': 0, 'transacciones': 0, 'cobrado': 0.0},
+            'meta': {
+                'source': 'api-v1',
+                'source_table': 'cobranzas_fact',
+                'payload_mode': 'orphan_detail',
+                'generated_at': datetime.utcnow().isoformat(),
+            },
+        }
+        if not resolved_cutoff:
+            return empty_out
+
+        effective_cartera_month = _effective_cartera_month_for_cutoff(db, resolved_cutoff)
+        if not effective_cartera_month:
+            out = dict(empty_out)
+            out['cutoff_month'] = resolved_cutoff
+            out['meta'] = dict(empty_out['meta'])
+            out['meta']['reason'] = 'no_cartera_month_for_cutoff'
+            return out
+
+        un_filter = _normalize_str_set(filters.un)
+        supervisor_filter = _normalize_str_set(filters.supervisor)
+        via_filter = _normalize_str_set(filters.via_cobro)
+        category_filter = _normalize_str_set(filters.categoria)
+        cids = AnalyticsService._contract_ids_in_cartera_for_month(db, effective_cartera_month)
+        q = AnalyticsService._cohorte_orphan_fact_query(
+            db, resolved_cutoff, cids, un_filter, supervisor_filter, via_filter, category_filter
+        )
+        agg_rows = (
+            q.with_entities(
+                CobranzasFact.contract_id,
+                func.max(func.coalesce(CobranzasFact.un, '')).label('un'),
+                func.max(func.coalesce(CobranzasFact.supervisor, '')).label('supervisor'),
+                func.max(func.coalesce(CobranzasFact.via, '')).label('via'),
+                func.max(CobranzasFact.tramo).label('tramo'),
+                func.count().label('transacciones'),
+                func.coalesce(func.sum(CobranzasFact.payment_amount), 0.0).label('cobrado'),
+            )
+            .group_by(CobranzasFact.contract_id)
+            .all()
+        )
+        items_raw: list[dict] = []
+        for contract_id, un, supervisor, via, tramo, transacciones, cobrado in agg_rows:
+            cid = str(contract_id or '').strip()
+            if not cid:
+                continue
+            tramo_i = int(tramo or 0)
+            items_raw.append(
+                {
+                    'contract_id': cid,
+                    'un': str(un or '').strip() or 'S/D',
+                    'supervisor': str(supervisor or '').strip() or 'S/D',
+                    'via': str(via or '').strip() or 'S/D',
+                    'tramo': tramo_i,
+                    'categoria': categoria_from_tramo(tramo_i),
+                    'transacciones': int(transacciones or 0),
+                    'cobrado': round(float(cobrado or 0.0), 2),
+                }
+            )
+
+        sort_by = str(filters.sort_by or 'cobrado')
+        sort_dir = str(filters.sort_dir or 'desc').lower()
+        reverse = sort_dir == 'desc'
+        if sort_by == 'contract_id':
+            items_raw.sort(key=lambda r: r['contract_id'], reverse=reverse)
+        elif sort_by == 'un':
+            items_raw.sort(key=lambda r: (r['un'], r['contract_id']), reverse=reverse)
+        elif sort_by == 'transacciones':
+            items_raw.sort(key=lambda r: (r['transacciones'], r['contract_id']), reverse=reverse)
+        else:
+            items_raw.sort(key=lambda r: (r['cobrado'], r['contract_id']), reverse=reverse)
+
+        total_cobrado = sum(float(r['cobrado'] or 0) for r in items_raw)
+        total_tx = sum(int(r['transacciones'] or 0) for r in items_raw)
+        total_items = len(items_raw)
+        start = (page - 1) * page_size
+        end = start + page_size
+        items = items_raw[start:end]
+
+        return {
+            'cutoff_month': resolved_cutoff,
+            'effective_cartera_month': effective_cartera_month,
+            'items': items,
+            'total_items': total_items,
+            'page': page,
+            'page_size': page_size,
+            'has_next': end < total_items,
+            'totals': {
+                'contratos': total_items,
+                'transacciones': total_tx,
+                'cobrado': round(total_cobrado, 2),
+            },
+            'meta': {
+                'source': 'api-v1',
+                'source_table': 'cobranzas_fact',
+                'payload_mode': 'orphan_detail',
                 'generated_at': datetime.utcnow().isoformat(),
             },
         }

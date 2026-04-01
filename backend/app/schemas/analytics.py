@@ -107,6 +107,13 @@ class CobranzasCohorteDetailIn(CobranzasCohorteIn):
     sort_dir: str = Field(default='asc', pattern='^(asc|desc)$')
 
 
+class CobranzasCohorteOrphanDetailIn(CobranzasCohorteIn):
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=50, ge=1, le=500)
+    sort_by: str = Field(default='cobrado', pattern='^(cobrado|contract_id|transacciones|un)$')
+    sort_dir: str = Field(default='desc', pattern='^(asc|desc)$')
+
+
 class EerrV2In(BaseModel):
     gestion_month: list[str] = Field(default_factory=list)
     eerr_block: list[str] = Field(default_factory=list)

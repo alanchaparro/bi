@@ -256,7 +256,7 @@ export function UnByPeriodStackedColumnChart({
                     className="rend-vbar-hover-target rend-stack-col"
                     style={{
                       opacity: isHovered ? 1 : 0.97,
-                      transition: "opacity 0.16s ease",
+                      transition: "opacity calc(0.16s * var(--motion-scale)) ease",
                     }}
                     onMouseEnter={() => setHoveredPeriod(period)}
                     onMouseLeave={() => setHoveredPeriod((prev) => (prev === period ? null : prev))}

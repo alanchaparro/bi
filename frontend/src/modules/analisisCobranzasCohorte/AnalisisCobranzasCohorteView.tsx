@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, Card } from '@heroui/react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Button, Card, Tabs } from '@heroui/react'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
 import { STRING_SELECT_TRIGGER_ANALYTICS, StringSelect } from '../../components/filters/StringSelect'
@@ -14,10 +14,14 @@ import { EmptyState } from '../../components/feedback/EmptyState'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { LoadingState } from '../../components/feedback/LoadingState'
 import {
+  clearAnalyticsApiCache,
   getCobranzasCohorteFirstPaint,
   getCobranzasCohorteOptions,
+  getCobranzasCohorteOrphanDetail,
   markPerfReady,
+  peekCobranzasCohorteOptionsUncached,
   type CobranzasCohorteFirstPaintResponse,
+  type CobranzasCohorteOrphanDetailResponse,
   type CobranzasCohorteSummaryResponse,
 } from '../../shared/api'
 import { getApiErrorMessage } from '../../shared/apiErrors'
@@ -38,6 +42,8 @@ type KpiId =
   | 'cobertura_monto'
   | 'ticket_transaccional'
   | 'ticket_contrato'
+
+type CohorteMainTab = 'principal' | 'sin_cierre_cartera'
 
 type Options = {
   cutoffMonths: string[]
@@ -65,6 +71,16 @@ const EMPTY_FILTERS: Filters = {
 
 /** Tope canónico de tramo (cuotas_vencidas ≥ 7 → 7); la tabla debe listar siempre 0..7. */
 const COHORTE_TRAMO_MAX = 7
+
+const COHORTE_POLL_MS = 30_000
+
+function cohorteFreshnessKey(meta: { data_freshness_at?: string; pipeline_version?: string } | undefined): string {
+  if (!meta) return ''
+  const a = meta.data_freshness_at ?? ''
+  const b = meta.pipeline_version ?? ''
+  if (!a && !b) return ''
+  return `${a}\u001f${b}`
+}
 
 const COHORTE_KPI_ORDER_STORAGE = 'analisis_cobranzas_cohorte_kpi_order_v1'
 const DEFAULT_KPI_ORDER: KpiId[] = [
@@ -170,6 +186,22 @@ export function AnalisisCobranzasCohorteView() {
   const [floatUns, setFloatUns] = useState<string[]>([])
   const [floatVia, setFloatVia] = useState('')
   const [floatCategoria, setFloatCategoria] = useState('')
+  const [cohorteTab, setCohorteTab] = useState<CohorteMainTab>('principal')
+  const [orphanDetail, setOrphanDetail] = useState<CobranzasCohorteOrphanDetailResponse | null>(null)
+  const [loadingOrphan, setLoadingOrphan] = useState(false)
+  const [orphanError, setOrphanError] = useState<string | null>(null)
+  const [orphanPage, setOrphanPage] = useState(1)
+
+  const lastCohorteFreshnessRef = useRef('')
+  const cohortePollLockRef = useRef(false)
+  const appliedFiltersRef = useRef(appliedFilters)
+  appliedFiltersRef.current = appliedFilters
+  const cohorteTabRef = useRef(cohorteTab)
+  cohorteTabRef.current = cohorteTab
+  const orphanPageRef = useRef(orphanPage)
+  orphanPageRef.current = orphanPage
+  const pollBlockRef = useRef({ applying: false, loadingSummary: false })
+  pollBlockRef.current = { applying, loadingSummary }
 
   useEffect(() => {
     try {
@@ -211,6 +243,9 @@ export function AnalisisCobranzasCohorteView() {
           supervisors: opts.options.supervisors || [],
         }
 
+        const fp0 = cohorteFreshnessKey(opts.meta)
+        if (fp0) lastCohorteFreshnessRef.current = fp0
+
         const cutoff = opts.default_cutoff || nextOptions.cutoffMonths[nextOptions.cutoffMonths.length - 1] || ''
         const nextFilters: Filters = {
           cutoffMonth: cutoff,
@@ -244,6 +279,7 @@ export function AnalisisCobranzasCohorteView() {
         setError(null)
         setFilters(next)
         setAppliedFilters(next)
+        setOrphanPage(1)
         await loadFirstPaint(next)
       } catch (e: unknown) {
         setError(getApiErrorMessage(e))
@@ -303,6 +339,7 @@ export function AnalisisCobranzasCohorteView() {
       }
       setFilters(resetFilters)
       setAppliedFilters(resetFilters)
+      setOrphanPage(1)
       await loadFirstPaint(resetFilters)
     } catch (e: unknown) {
       setError(getApiErrorMessage(e))
@@ -310,6 +347,106 @@ export function AnalisisCobranzasCohorteView() {
       setApplying(false)
     }
   }, [loadFirstPaint, options.cutoffMonths])
+
+  const loadOrphanDetail = useCallback(async (page: number, filtersIn: Filters) => {
+    setLoadingOrphan(true)
+    setOrphanError(null)
+    try {
+      const data = await getCobranzasCohorteOrphanDetail({
+        cutoff_month: filtersIn.cutoffMonth || undefined,
+        un: filtersIn.uns,
+        via_cobro: filtersIn.vias,
+        categoria: filtersIn.categorias,
+        supervisor: filtersIn.supervisors,
+        page,
+        page_size: 50,
+        sort_by: 'cobrado',
+        sort_dir: 'desc',
+      })
+      setOrphanDetail(data)
+    } catch (e: unknown) {
+      setOrphanError(getApiErrorMessage(e))
+    } finally {
+      setLoadingOrphan(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (loadingOptions) return
+
+    let cancelled = false
+
+    const tick = async () => {
+      if (cancelled || document.visibilityState !== 'visible') return
+      if (cohortePollLockRef.current) return
+      if (pollBlockRef.current.applying || pollBlockRef.current.loadingSummary) return
+
+      try {
+        const peek = await peekCobranzasCohorteOptionsUncached({})
+        if (cancelled) return
+        const fp = cohorteFreshnessKey(peek.meta)
+        if (!fp) return
+        if (lastCohorteFreshnessRef.current === '') {
+          lastCohorteFreshnessRef.current = fp
+          return
+        }
+        if (fp === lastCohorteFreshnessRef.current) return
+
+        cohortePollLockRef.current = true
+        const previousFp = lastCohorteFreshnessRef.current
+        try {
+          clearAnalyticsApiCache('/analytics/cobranzas-cohorte-v2')
+          const opts = await getCobranzasCohorteOptions({})
+          if (cancelled) return
+
+          const nextOptions: Options = {
+            cutoffMonths: opts.options.cutoff_months || [],
+            uns: opts.options.uns || [],
+            vias: opts.options.vias || [],
+            categorias: opts.options.categories || [],
+            supervisors: opts.options.supervisors || [],
+          }
+          setOptions(nextOptions)
+
+          let nextAf = appliedFiltersRef.current
+          if (nextAf.cutoffMonth && !nextOptions.cutoffMonths.includes(nextAf.cutoffMonth)) {
+            const fallback =
+              opts.default_cutoff || nextOptions.cutoffMonths[nextOptions.cutoffMonths.length - 1] || ''
+            nextAf = { ...nextAf, cutoffMonth: fallback }
+            appliedFiltersRef.current = nextAf
+            setFilters((f) => ({ ...f, cutoffMonth: fallback }))
+            setAppliedFilters(nextAf)
+          }
+
+          await loadFirstPaint(nextAf, false)
+          if (cancelled) return
+
+          if (cohorteTabRef.current === 'sin_cierre_cartera') {
+            await loadOrphanDetail(orphanPageRef.current, nextAf)
+          }
+          lastCohorteFreshnessRef.current = fp
+        } catch {
+          lastCohorteFreshnessRef.current = previousFp
+        } finally {
+          cohortePollLockRef.current = false
+        }
+      } catch {
+        // red intermitente; el usuario puede usar Reintentar
+      }
+    }
+
+    const id = window.setInterval(tick, COHORTE_POLL_MS)
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void tick()
+    }
+    document.addEventListener('visibilitychange', onVis)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [loadingOptions, loadFirstPaint, loadOrphanDetail])
 
   const retryLastRequest = useCallback(async () => {
     try {
@@ -322,6 +459,10 @@ export function AnalisisCobranzasCohorteView() {
       setApplying(false)
     }
   }, [appliedFilters, loadFirstPaint])
+
+  const retryOrphanRequest = useCallback(() => {
+    void loadOrphanDetail(orphanPage, appliedFilters)
+  }, [appliedFilters, loadOrphanDetail, orphanPage])
 
   useEffect(() => {
     if (!summary || loadingSummary || applying) return
@@ -411,6 +552,11 @@ export function AnalisisCobranzasCohorteView() {
 
   const hasRows = byTramoEntries.length > 0
   const noCohorteData = options.cutoffMonths.length === 0
+
+  useEffect(() => {
+    if (cohorteTab !== 'sin_cierre_cartera' || loadingOptions || noCohorteData) return
+    void loadOrphanDetail(orphanPage, appliedFilters)
+  }, [appliedFilters, cohorteTab, loadOrphanDetail, loadingOptions, noCohorteData, orphanPage])
 
   const moveKpi = useCallback((fromId: KpiId, toId: KpiId) => {
     if (fromId === toId) return
@@ -638,6 +784,20 @@ export function AnalisisCobranzasCohorteView() {
             ]}
           />
 
+          <Tabs
+            selectedKey={cohorteTab}
+            onSelectionChange={(key) => key != null && setCohorteTab(String(key) as CohorteMainTab)}
+            className="cohorte-view-tabs mt-3 mb-2"
+            aria-label="Vistas de análisis por corte"
+          >
+            <Tabs.ListContainer>
+              <Tabs.List>
+                <Tabs.Tab id="principal">Vista cohorte</Tabs.Tab>
+                <Tabs.Tab id="sin_cierre_cartera">Cobranzas sin cierre cartera</Tabs.Tab>
+              </Tabs.List>
+            </Tabs.ListContainer>
+          </Tabs>
+
           {noCohorteData ? (
             <EmptyState
               className="analysis-empty"
@@ -646,123 +806,240 @@ export function AnalisisCobranzasCohorteView() {
             />
           ) : null}
 
-          {error ? <ErrorState message={error} className="analysis-error" onRetry={() => void retryLastRequest()} disabled={applying} /> : null}
+          {cohorteTab === 'principal' ? (
+            <>
+              {error ? <ErrorState message={error} className="analysis-error" onRetry={() => void retryLastRequest()} disabled={applying} /> : null}
 
-          {applying && summary ? <LoadingState message="Actualizando resultados..." className="summary-loading-note" /> : null}
-          {loadingSummary && !summary ? <LoadingState message="Cargando resumen inicial..." className="summary-loading-note" /> : null}
-          <div className={`analysis-results data-transition ${applying || loadingSummary ? 'data-transition--loading' : ''}`}>
-            <div className="summary-grid cohorte-kpi-summary-grid rendimiento-kpi-summary-grid">
-              {kpiOrder.map((kpiId) => {
-                const card = kpiCards[kpiId]
-                const isDragging = draggingKpi === kpiId
-                const isDropTarget = dragOverKpi === kpiId && draggingKpi !== kpiId
-                return (
-                  <article
-                    key={kpiId}
-                    className={`card kpi-card analysis-card-pad ${isDragging ? 'dragging-card' : ''} ${isDropTarget ? 'chart-drop-target' : ''}`}
-                    style={{ borderLeft: `4px solid ${card.borderColor}` }}
-                    draggable
-                    onDragStart={(e) => {
-                      setDraggingKpi(kpiId)
-                      setDragOverKpi(kpiId)
-                      e.dataTransfer.effectAllowed = 'move'
-                      e.dataTransfer.setData('text/plain', kpiId)
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault()
-                      if (dragOverKpi !== kpiId) setDragOverKpi(kpiId)
-                      e.dataTransfer.dropEffect = 'move'
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault()
-                      const fromId = (e.dataTransfer.getData('text/plain') || draggingKpi || '') as KpiId
-                      if (fromId) moveKpi(fromId, kpiId)
-                      setDraggingKpi(null)
-                      setDragOverKpi(null)
-                    }}
-                    onDragEnd={() => {
-                      setDraggingKpi(null)
-                      setDragOverKpi(null)
-                    }}
-                  >
-                    <div className="chart-card-header">
-                      <div className="kpi-card-title-wrap">
-                        <span className="kpi-card-icon" aria-hidden>
-                          <CohorteKpiIcon icon={card.icon} />
-                        </span>
-                        <span className="analysis-kpi-title">{card.title}</span>
-                      </div>
-                      <span className="chart-drag-handle" title="Arrastrar para reordenar" aria-hidden>
-                        ::
-                      </span>
-                    </div>
-                    <div
-                      className="kpi-card-value"
-                      style={{ color: card.valueColor || 'var(--color-text)' }}
-                      title={card.fullValue || card.value}
-                    >
-                      {card.value}
-                    </div>
-                    {card.note ? <div className="analysis-kpi-note kpi-card-footnote">{card.note}</div> : null}
-                  </article>
-                )
-              })}
-            </div>
+              {applying && summary ? <LoadingState message="Actualizando resultados..." className="summary-loading-note" /> : null}
+              {loadingSummary && !summary ? <LoadingState message="Cargando resumen inicial..." className="summary-loading-note" /> : null}
+              <div className={`analysis-results data-transition ${applying || loadingSummary ? 'data-transition--loading' : ''}`}>
+                <div className="summary-grid cohorte-kpi-summary-grid rendimiento-kpi-summary-grid">
+                  {kpiOrder.map((kpiId) => {
+                    const card = kpiCards[kpiId]
+                    const isDragging = draggingKpi === kpiId
+                    const isDropTarget = dragOverKpi === kpiId && draggingKpi !== kpiId
+                    return (
+                      <article
+                        key={kpiId}
+                        className={`card kpi-card analysis-card-pad ${isDragging ? 'dragging-card' : ''} ${isDropTarget ? 'chart-drop-target' : ''}`}
+                        style={{ borderLeft: `4px solid ${card.borderColor}` }}
+                        draggable
+                        onDragStart={(e) => {
+                          setDraggingKpi(kpiId)
+                          setDragOverKpi(kpiId)
+                          e.dataTransfer.effectAllowed = 'move'
+                          e.dataTransfer.setData('text/plain', kpiId)
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault()
+                          if (dragOverKpi !== kpiId) setDragOverKpi(kpiId)
+                          e.dataTransfer.dropEffect = 'move'
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          const fromId = (e.dataTransfer.getData('text/plain') || draggingKpi || '') as KpiId
+                          if (fromId) moveKpi(fromId, kpiId)
+                          setDraggingKpi(null)
+                          setDragOverKpi(null)
+                        }}
+                        onDragEnd={() => {
+                          setDraggingKpi(null)
+                          setDragOverKpi(null)
+                        }}
+                      >
+                        <div className="chart-card-header">
+                          <div className="kpi-card-title-wrap">
+                            <span className="kpi-card-icon" aria-hidden>
+                              <CohorteKpiIcon icon={card.icon} />
+                            </span>
+                            <span className="analysis-kpi-title">{card.title}</span>
+                          </div>
+                          <span className="chart-drag-handle" title="Arrastrar para reordenar" aria-hidden>
+                            ::
+                          </span>
+                        </div>
+                        <div
+                          className="kpi-card-value"
+                          style={{ color: card.valueColor || 'var(--color-text)' }}
+                          title={card.fullValue || card.value}
+                        >
+                          {card.value}
+                        </div>
+                        {card.note ? <div className="analysis-kpi-note kpi-card-footnote">{card.note}</div> : null}
+                      </article>
+                    )
+                  })}
+                </div>
 
-            {!hasRows ? <EmptyState className="analysis-empty" message="Sin datos para los filtros seleccionados." suggestion="Ajusta los filtros y vuelve a aplicar para ver resultados." /> : null}
+                {!hasRows ? <EmptyState className="analysis-empty" message="Sin datos para los filtros seleccionados." suggestion="Ajusta los filtros y vuelve a aplicar para ver resultados." /> : null}
 
-            <div className="analysis-table-section analysis-table-section--cohorte-resumen">
-              <p className="analysis-table-caption">
-                {usesTramoBreakdown ? 'Resumen de efectividad por tramo.' : 'Resumen de efectividad por año de venta.'}
-              </p>
-              <p className="table-scroll-hint">
-                {usesTramoBreakdown
-                  ? 'Incluye tramos 0 al 7. Si el panel es estrecho, desplázate horizontalmente en la tabla.'
-                  : 'Desliza la tabla horizontalmente para revisar todas las métricas.'}
-              </p>
-              <div className="table-wrap analysis-table-wrap analysis-table-wrap-annual analysis-table-wrap--cohorte-resumen">
-                <table className="cohorte-resumen-table">
-                  <thead>
-                    <tr>
-                      <th>{usesTramoBreakdown ? 'Tramo' : 'Año'}</th>
-                      <th className="num">Activos</th>
-                      <th className="num">Pagaron</th>
-                      <th className="num">% Pago Contratos</th>
-                      <th className="num">Debería</th>
-                      <th className="num">Cobrado</th>
-                      <th className="num">% Cobertura Monto</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {byTramoEntries.map(([key, row]) => (
-                      <tr key={key}>
-                        <td className="analysis-key-cell">{usesTramoBreakdown ? `Tramo ${key}` : key}</td>
-                        <td className="num">{formatCount(row.activos || 0)}</td>
-                        <td className="num">{formatCount(row.pagaron || 0)}</td>
-                        <td className="num">{pct(row.pct_pago_contratos || 0)}</td>
-                        <td className="num">{formatGsFull(row.deberia || 0)}</td>
-                        <td className="num">{formatGsFull(row.cobrado || 0)}</td>
-                        <td className="num">{pct(row.pct_cobertura_monto || 0)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  {hasRows ? (
-                    <tfoot className="cohorte-resumen-tfoot">
-                      <tr>
-                        <td className="analysis-key-cell">Total</td>
-                        <td className="num">{formatCount(cohorteResumenTableTotals.activos)}</td>
-                        <td className="num">{formatCount(cohorteResumenTableTotals.pagaron)}</td>
-                        <td className="num">{pct(cohorteResumenTableTotals.pctPagoContratos)}</td>
-                        <td className="num">{formatGsFull(cohorteResumenTableTotals.deberia)}</td>
-                        <td className="num">{formatGsFull(cohorteResumenTableTotals.cobrado)}</td>
-                        <td className="num">{pct(cohorteResumenTableTotals.pctCoberturaMonto)}</td>
-                      </tr>
-                    </tfoot>
-                  ) : null}
-                </table>
+                <div className="analysis-table-section analysis-table-section--cohorte-resumen">
+                  <p className="analysis-table-caption">
+                    {usesTramoBreakdown ? 'Resumen de efectividad por tramo.' : 'Resumen de efectividad por año de venta.'}
+                  </p>
+                  <p className="table-scroll-hint">
+                    {usesTramoBreakdown
+                      ? 'Incluye tramos 0 al 7. Si el panel es estrecho, desplázate horizontalmente en la tabla.'
+                      : 'Desliza la tabla horizontalmente para revisar todas las métricas.'}
+                  </p>
+                  <div className="table-wrap analysis-table-wrap analysis-table-wrap-annual analysis-table-wrap--cohorte-resumen">
+                    <table className="cohorte-resumen-table">
+                      <thead>
+                        <tr>
+                          <th>{usesTramoBreakdown ? 'Tramo' : 'Año'}</th>
+                          <th className="num">Activos</th>
+                          <th className="num">Pagaron</th>
+                          <th className="num">% Pago Contratos</th>
+                          <th className="num">Debería</th>
+                          <th className="num">Cobrado</th>
+                          <th className="num">% Cobertura Monto</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {byTramoEntries.map(([key, row]) => (
+                          <tr key={key}>
+                            <td className="analysis-key-cell">{usesTramoBreakdown ? `Tramo ${key}` : key}</td>
+                            <td className="num">{formatCount(row.activos || 0)}</td>
+                            <td className="num">{formatCount(row.pagaron || 0)}</td>
+                            <td className="num">{pct(row.pct_pago_contratos || 0)}</td>
+                            <td className="num">{formatGsFull(row.deberia || 0)}</td>
+                            <td className="num">{formatGsFull(row.cobrado || 0)}</td>
+                            <td className="num">{pct(row.pct_cobertura_monto || 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      {hasRows ? (
+                        <tfoot className="cohorte-resumen-tfoot">
+                          <tr>
+                            <td className="analysis-key-cell">Total</td>
+                            <td className="num">{formatCount(cohorteResumenTableTotals.activos)}</td>
+                            <td className="num">{formatCount(cohorteResumenTableTotals.pagaron)}</td>
+                            <td className="num">{pct(cohorteResumenTableTotals.pctPagoContratos)}</td>
+                            <td className="num">{formatGsFull(cohorteResumenTableTotals.deberia)}</td>
+                            <td className="num">{formatGsFull(cohorteResumenTableTotals.cobrado)}</td>
+                            <td className="num">{pct(cohorteResumenTableTotals.pctCoberturaMonto)}</td>
+                          </tr>
+                        </tfoot>
+                      ) : null}
+                    </table>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            </>
+          ) : !noCohorteData ? (
+            <>
+              {orphanError ? (
+                <ErrorState
+                  message={orphanError}
+                  className="analysis-error"
+                  onRetry={() => void retryOrphanRequest()}
+                  disabled={loadingOrphan}
+                />
+              ) : null}
+              {loadingOrphan && !orphanDetail?.items?.length ? (
+                <LoadingState message="Cargando detalle de cobranzas sin cierre cartera..." className="summary-loading-note" />
+              ) : null}
+              <div className={`analysis-results data-transition ${loadingOrphan ? 'data-transition--loading' : ''}`}>
+                <p className="analysis-table-caption">
+                  Cobranzas sin cierre cartera: pagos del corte <strong>{orphanDetail?.cutoff_month || appliedFilters.cutoffMonth || '—'}</strong> sin fila de cartera para la gestión efectiva{' '}
+                  <strong>{orphanDetail?.effective_cartera_month || '—'}</strong>. Tramo y categoría se infieren desde el extracto de cobranzas (tramos 0 a 7).
+                </p>
+                <p className="table-scroll-hint">
+                  Estos montos se suman al total cobrado de la cohorte; aquí puedes auditar contratos y transacciones afectadas.
+                </p>
+                <div className="analysis-meta-row--with-info mb-3">
+                  <div className="analysis-meta-chips-cluster">
+                    <AnalyticsMetaBadges meta={orphanDetail?.meta} embed />
+                    {orphanDetail?.totals ? (
+                      <>
+                        <span className="analysis-meta-chip">
+                          Contratos: <strong>{formatCount(orphanDetail.totals.contratos || 0)}</strong>
+                        </span>
+                        <span className="analysis-meta-chip">
+                          Transacciones: <strong>{formatCount(orphanDetail.totals.transacciones || 0)}</strong>
+                        </span>
+                        <span className="analysis-meta-chip">
+                          Cobrado sin cierre cartera: <strong>{formatGsFull(orphanDetail.totals.cobrado || 0)}</strong>
+                        </span>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="table-wrap analysis-table-wrap analysis-table-wrap-annual">
+                  <table className="cohorte-resumen-table">
+                    <thead>
+                      <tr>
+                        <th>Contrato</th>
+                        <th>UN</th>
+                        <th>Supervisor</th>
+                        <th>Vía</th>
+                        <th className="num">Tramo</th>
+                        <th>Categoría</th>
+                        <th className="num">Líneas</th>
+                        <th className="num">Cobrado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(orphanDetail?.items || []).map((row) => (
+                        <tr key={row.contract_id}>
+                          <td className="analysis-key-cell">{row.contract_id}</td>
+                          <td>{row.un}</td>
+                          <td>{row.supervisor}</td>
+                          <td>{row.via}</td>
+                          <td className="num">{row.tramo}</td>
+                          <td>{row.categoria}</td>
+                          <td className="num">{formatCount(row.transacciones || 0)}</td>
+                          <td className="num">{formatGsFull(row.cobrado || 0)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    {(orphanDetail?.items || []).length === 0 && !loadingOrphan ? (
+                      <tbody>
+                        <tr>
+                          <td colSpan={8}>
+                            <EmptyState
+                              className="analysis-empty analysis-empty--inline"
+                              message="No hay cobranzas sin cierre cartera para los filtros aplicados."
+                              suggestion="Si esperabas filas, revisa el mes de corte o sincronización de cartera y cobranzas."
+                            />
+                          </td>
+                        </tr>
+                      </tbody>
+                    ) : null}
+                  </table>
+                </div>
+                {(() => {
+                  const ps = orphanDetail?.page_size || 50
+                  const total = orphanDetail?.total_items || 0
+                  const pages = Math.max(1, Math.ceil(total / ps))
+                  if (total <= ps) return null
+                  return (
+                    <div className="analysis-actions-row analysis-actions mt-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onPress={() => setOrphanPage((p) => Math.max(1, p - 1))}
+                        isDisabled={loadingOrphan || orphanPage <= 1}
+                      >
+                        Anterior
+                      </Button>
+                      <span className="text-sm text-[var(--color-text-muted)]">
+                        Página {orphanPage} de {pages} ({formatCount(total)} contratos)
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onPress={() => setOrphanPage((p) => Math.min(pages, p + 1))}
+                        isDisabled={loadingOrphan || orphanPage >= pages || !orphanDetail?.has_next}
+                      >
+                        Siguiente
+                      </Button>
+                    </div>
+                  )
+                })()}
+              </div>
+            </>
+          ) : null}
         </>
       ) : null}
       </Card>

@@ -15,6 +15,7 @@ import mysql.connector
 from sqlalchemy import Integer, and_, case, cast, func, select, text as sa_text, tuple_ as sa_tuple
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.analytics_cache import RENDIMIENTO_V2_SUMMARY_CACHE_SCOPE, invalidate_endpoint, invalidate_prefix
@@ -1882,26 +1883,36 @@ def _refresh_analytics_snapshot(
 
 
 def _persist_sync_run(db: Session, payload: dict) -> None:
-    row = db.query(SyncRun).filter(SyncRun.job_id == payload['job_id']).first()
-    if row is None:
-        row = SyncRun(job_id=payload['job_id'])
-        db.add(row)
-    for key, value in payload.items():
-        if key == 'log':
-            row.log_json = json.dumps(value or [], ensure_ascii=False)
-        elif key == 'chunk_key':
-            # DB column is varchar(256); avoid breaking status updates with long month lists.
-            text_value = str(value or '')
-            setattr(row, key, text_value[:250] if text_value else None)
-        elif hasattr(row, key):
-            setattr(row, key, value)
-    # Heartbeat: keeps queue lock fresh while the worker is alive.
-    # This prevents false "job_interrupted_on_restart" when another worker process boots.
-    if bool(payload.get('running')):
-        qrow = db.query(SyncJob).filter(SyncJob.job_id == payload['job_id']).first()
-        if qrow is not None and str(qrow.status or '').strip().lower() == 'running':
-            qrow.locked_at = datetime.utcnow()
-    db.commit()
+    """Crea o actualiza sync_runs por job_id. Reintenta si hay carrera (doble INSERT mismo job_id)."""
+    job_id = payload['job_id']
+    for attempt in range(2):
+        row = db.query(SyncRun).filter(SyncRun.job_id == job_id).first()
+        if row is None:
+            row = SyncRun(job_id=job_id)
+            db.add(row)
+        try:
+            for key, value in payload.items():
+                if key == 'log':
+                    row.log_json = json.dumps(value or [], ensure_ascii=False)
+                elif key == 'chunk_key':
+                    # DB column is varchar(256); avoid breaking status updates with long month lists.
+                    text_value = str(value or '')
+                    setattr(row, key, text_value[:250] if text_value else None)
+                elif hasattr(row, key):
+                    setattr(row, key, value)
+            # Heartbeat: keeps queue lock fresh while the worker is alive.
+            # This prevents false "job_interrupted_on_restart" when another worker process boots.
+            if bool(payload.get('running')):
+                qrow = db.query(SyncJob).filter(SyncJob.job_id == job_id).first()
+                if qrow is not None and str(qrow.status or '').strip().lower() == 'running':
+                    qrow.locked_at = datetime.utcnow()
+            db.commit()
+            return
+        except IntegrityError:
+            db.rollback()
+            if attempt == 0:
+                continue
+            raise
 
 
 def _persist_job_step(db: Session, job_id: str, domain: str, step_name: str, status: str, details: dict | None = None) -> None:

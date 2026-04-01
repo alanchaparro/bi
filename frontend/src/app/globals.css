@@ -28,9 +28,9 @@
   --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 18px;
-  --shadow-card: 0 16px 36px rgba(3, 7, 18, 0.28), 0 3px 10px rgba(0, 0, 0, 0.09);
-  --shadow-panel: 0 26px 58px rgba(3, 7, 18, 0.38), 0 8px 20px rgba(0, 0, 0, 0.13);
-  --shadow-button-hover: 0 10px 20px rgba(74, 179, 165, 0.2);
+  --shadow-card: 0 calc(16px * var(--motion-scale)) calc(36px * var(--motion-scale)) rgba(3, 7, 18, 0.28), 0 calc(3px * var(--motion-scale)) calc(10px * var(--motion-scale)) rgba(0, 0, 0, 0.09);
+  --shadow-panel: 0 calc(26px * var(--motion-scale)) calc(58px * var(--motion-scale)) rgba(3, 7, 18, 0.38), 0 calc(8px * var(--motion-scale)) calc(20px * var(--motion-scale)) rgba(0, 0, 0, 0.13);
+  --shadow-button-hover: 0 calc(10px * var(--motion-scale)) calc(20px * var(--motion-scale)) rgba(74, 179, 165, 0.2);
   --color-chart-1: #52c48a;
   --color-chart-2: #f0b429;
   --color-chart-3: #c084fc;
@@ -66,6 +66,9 @@
   --sidebar-user-card-bg: color-mix(in srgb, var(--sidebar-bg) 78%, #1a2330 22%);
   --sidebar-user-card-border: color-mix(in srgb, var(--sidebar-border) 70%, transparent);
   --focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-primary) 35%, transparent);
+  /* ~10% más breve; mismo factor para blur/sombras (GPU) */
+  --motion-scale: 0.9;
+  --motion-infinite-boost: 1.1;
 }
 
 :root[data-theme="light"] {
@@ -105,9 +108,9 @@
   --sidebar-active-border: var(--color-primary);
   --sidebar-hover-bg: rgba(15, 23, 42, 0.05);
   --sidebar-blur: 16px;
-  --shadow-card: 0 12px 28px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(0, 0, 0, 0.03);
-  --shadow-panel: 0 18px 40px rgba(15, 23, 42, 0.1), 0 8px 18px rgba(0, 0, 0, 0.03);
-  --shadow-button-hover: 0 10px 20px rgba(33, 102, 94, 0.12);
+  --shadow-card: 0 calc(12px * var(--motion-scale)) calc(28px * var(--motion-scale)) rgba(15, 23, 42, 0.08), 0 calc(2px * var(--motion-scale)) calc(8px * var(--motion-scale)) rgba(0, 0, 0, 0.03);
+  --shadow-panel: 0 calc(18px * var(--motion-scale)) calc(40px * var(--motion-scale)) rgba(15, 23, 42, 0.1), 0 calc(8px * var(--motion-scale)) calc(18px * var(--motion-scale)) rgba(0, 0, 0, 0.03);
+  --shadow-button-hover: 0 calc(10px * var(--motion-scale)) calc(20px * var(--motion-scale)) rgba(33, 102, 94, 0.12);
   --text-base: 1rem;
   --text-heading: 1.25rem;
   --text-display: 1.5rem;
@@ -126,7 +129,7 @@
 }
 
 html {
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
 }
 
 @media (max-width: 1023px) {
@@ -210,11 +213,11 @@ body {
 }
 
 .dashboard-page-enter {
-  animation: page-enter 0.35s ease-out forwards;
+  animation: page-enter calc(0.35s * var(--motion-scale)) ease-out forwards;
 }
 
 .dashboard-header {
-  box-shadow: 0 1px 0 0 var(--glass-border), 0 10px 20px rgba(3, 7, 18, 0.16);
+  box-shadow: 0 1px 0 0 var(--glass-border), 0 calc(10px * var(--motion-scale)) calc(20px * var(--motion-scale)) rgba(3, 7, 18, 0.16);
 }
 
 /* Appbar: altura fija compacta para no tapar el sidebar ni ocupar de más */
@@ -294,7 +297,7 @@ body {
   background: color-mix(in srgb, var(--card-bg) 98%, #0c1320);
   color: var(--color-text);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.02), 0 4px 10px rgba(3, 7, 18, 0.1);
-  transition: border-color 0.18s ease, background 0.18s ease, transform 0.15s ease, box-shadow 0.18s ease;
+  transition: border-color calc(0.18s * var(--motion-scale)) ease, background calc(0.18s * var(--motion-scale)) ease, transform calc(0.15s * var(--motion-scale)) ease, box-shadow calc(0.18s * var(--motion-scale)) ease;
 }
 
 .dashboard-toggle-button:hover {
@@ -318,7 +321,7 @@ body {
   border-radius: 9999px;
   font-size: 0.8125rem;
   text-decoration: none;
-  transition: opacity 0.15s ease, transform 0.15s ease, border-color 0.18s ease, background 0.18s ease;
+  transition: opacity calc(0.15s * var(--motion-scale)) ease, transform calc(0.15s * var(--motion-scale)) ease, border-color calc(0.18s * var(--motion-scale)) ease, background calc(0.18s * var(--motion-scale)) ease;
 }
 .header-pill:hover {
   opacity: 0.9;
@@ -456,10 +459,10 @@ body {
   padding: 1.65rem 0.85rem 0.85rem;
   box-sizing: border-box;
   background: color-mix(in srgb, var(--sidebar-bg) 34%, var(--sidebar-heroui-base));
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(calc(12px * var(--motion-scale)));
+  -webkit-backdrop-filter: blur(calc(12px * var(--motion-scale)));
   border-right: 1px solid var(--sidebar-border-soft);
-  box-shadow: 4px 0 28px rgba(2, 8, 22, 0.14);
+  box-shadow: calc(4px * var(--motion-scale)) 0 calc(28px * var(--motion-scale)) rgba(2, 8, 22, 0.14);
 }
 
 .dashboard-sidebar-mobile-header {
@@ -588,7 +591,7 @@ body {
   background: var(--sidebar-surface-press);
   border: 1px solid color-mix(in srgb, #fff 10%, transparent);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transition: background calc(0.2s * var(--motion-scale)) ease, border-color calc(0.2s * var(--motion-scale)) ease;
 }
 
 .dashboard-sidebar-user-card:hover {
@@ -789,7 +792,7 @@ body {
 }
 
 .dashboard-sidebar-submenu-chevron {
-  transition: transform 0.2s ease;
+  transition: transform calc(0.2s * var(--motion-scale)) ease;
 }
 
 .dashboard-sidebar-submenu-chevron--open {
@@ -808,11 +811,11 @@ body {
   color: var(--color-text-muted);
   text-decoration: none;
   transition:
-    background 0.2s ease,
-    color 0.2s ease,
-    box-shadow 0.2s ease,
-    transform 0.15s ease,
-    filter 0.15s ease;
+    background calc(0.2s * var(--motion-scale)) ease,
+    color calc(0.2s * var(--motion-scale)) ease,
+    box-shadow calc(0.2s * var(--motion-scale)) ease,
+    transform calc(0.15s * var(--motion-scale)) ease,
+    filter calc(0.15s * var(--motion-scale)) ease;
   border: none;
   box-shadow: none;
 }
@@ -874,7 +877,7 @@ body {
   border-radius: 0;
   background: transparent;
   color: inherit;
-  transition: opacity 0.2s ease, color 0.2s ease;
+  transition: opacity calc(0.2s * var(--motion-scale)) ease, color calc(0.2s * var(--motion-scale)) ease;
 }
 
 .dashboard-sidebar-link:hover .dashboard-sidebar-link-icon {
@@ -910,7 +913,7 @@ body {
   font-size: 0.8125rem;
   font-weight: 500;
   border: none;
-  transition: background 0.2s ease, color 0.2s ease;
+  transition: background calc(0.2s * var(--motion-scale)) ease, color calc(0.2s * var(--motion-scale)) ease;
 }
 
 .dashboard-sidebar-sublink:hover {
@@ -1015,7 +1018,7 @@ body {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
   border: 1px solid var(--glass-border);
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  transition: box-shadow calc(0.2s * var(--motion-scale)) ease, border-color calc(0.2s * var(--motion-scale)) ease;
 }
 
 /* Contenedores de gráficos: mismo radius y sombra en todas las vistas */
@@ -1024,21 +1027,21 @@ body {
   box-shadow: var(--shadow-card);
 }
 
-/* Transición al filtrar: fade 150ms para evitar salto al cambiar datos */
+/* Transición al filtrar: fade calc(150ms * var(--motion-scale)) para evitar salto al cambiar datos */
 .data-transition {
-  transition: opacity 150ms ease-out;
+  transition: opacity calc(150ms * var(--motion-scale)) ease-out;
 }
 .data-transition.data-transition--loading {
   opacity: 0.45;
 }
 .card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 calc(4px * var(--motion-scale)) calc(16px * var(--motion-scale)) rgba(0, 0, 0, 0.14), 0 calc(2px * var(--motion-scale)) calc(6px * var(--motion-scale)) rgba(0, 0, 0, 0.08);
 }
 :root[data-theme="light"] .card {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 :root[data-theme="light"] .card:hover {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 calc(4px * var(--motion-scale)) calc(20px * var(--motion-scale)) rgba(0, 0, 0, 0.08), 0 calc(2px * var(--motion-scale)) calc(8px * var(--motion-scale)) rgba(0, 0, 0, 0.04);
 }
 
 /* Tablas: filas legibles, alternancia sutil */

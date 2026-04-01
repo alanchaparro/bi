@@ -9,7 +9,7 @@
 - Si hubo pérdida de avances locales, ejecutar recovery guiado desde la raíz:
   - Windows (doble clic): `RECUPERAR_DEV.bat`
   - CLI: `powershell -ExecutionPolicy Bypass -File ".\scripts\recovery_dev_execute.ps1"`
-- Seguir el runbook: `RECUPERACION_DEV_PLAN.md`.
+- Seguir el flujo de recovery: script `scripts/recovery_dev_execute.ps1` y estado en `bugs_visual.md`.
 - Para hallazgos visuales UX/UI, el registro canónico es `bugs_visual.md`.
 - Para optimizacion continua (hardware + UX) y su evidencia, el canónico adicional obligatorio es `optimo.md`.
 - Todo cierre/reapertura debe mantener consistencia entre `bugs.md`, `bugs_visual.md` y `optimo.md`.
@@ -317,7 +317,7 @@
 | 2026-03-23 | Dev: AUD-33 pasa a **Listo para verificar** al forzar `APP_ENV=prod` en launchers one-click (`scripts/start_one_click.ps1`, `iniciar.sh`) con validación posterior de escritura. |
 | 2026-03-23 | Auditoría **audit**: añadido **AUD-2026-03-23-33** (**Abierto**, **P1**) por regresión de “un clic” en `INICIAR`/`iniciar.sh` (guardrail `APP_ENV=prod` + `.env.example` en `dev`). |
 | 2026-03-23 | Auditoría **audit**: sin hallazgos técnicos nuevos en esta pasada; se mantiene el backlog en **Listo para verificar** para **AUD-32** y **AUD-33**. |
-| 2026-03-23 | Auditoría **audit**: sin hallazgos técnicos nuevos; precondiciones de recovery presentes (`RECUPERAR_DEV.bat`, `scripts/recovery_dev_execute.ps1`, `RECUPERACION_DEV_PLAN.md`) y sin residuos `tmp*` en `sql/common` ni `sql/v2`. |
+| 2026-03-23 | Auditoría **audit**: sin hallazgos técnicos nuevos; precondiciones de recovery presentes (`RECUPERAR_DEV.bat`, `scripts/recovery_dev_execute.ps1`) y sin residuos `tmp*` en `sql/common` ni `sql/v2`. |
 | 2026-03-23 | Verificación final: **AUD-32 Cerrado** tras limpieza elevada de residuos `tmp*` (conteo 0 en `sql/common` y `sql/v2`) y estado git sin warnings de acceso. |
 | 2026-03-23 | Verificación final: **AUD-33 Cerrado** tras prueba one-click con `.env` inexistente, creación automática de `.env` y ajuste automático a `APP_ENV=prod` sin edición manual. |
 | 2026-03-23 | Auditoría **audit**: sin hallazgos nuevos; se mantiene backlog técnico en cero y se confirma consistencia de launchers one-click (`start_one_click.ps1` / `iniciar.sh`) con hardening de `APP_ENV` y secretos por defecto. |

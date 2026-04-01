@@ -74,7 +74,7 @@ Marcar con `[x]` al completar cada ítem y añadir evidencia o enlace si aplica.
 
 **Evidencia:** Referencias a `docs/cutover-checklist-final.md`, `docs/rollback-drill-report.md` y logs/métricas según cada ítem.
 
-**Seguimiento:** Las tareas M-001 a M-006 son operativas (estabilidad, monitoreo, parity, rollback, firmas, cierre). Se llevan en `docs/mejoras-pendientes-seguimiento.md` y en `docs/cutover-checklist-final.md`. Este plan no las ejecuta; solo referencia dónde completarlas.
+**Seguimiento:** Las tareas M-001 a M-006 eran operativas de cutover (estabilidad, monitoreo, parity, rollback, firmas, cierre). Checklist histórico: `docs/archive/legacy-prod-20260217/cutover-checklist-final.md`. Estado actual: `qa.md` / `optimo.md`.
 
 ---
 
@@ -217,10 +217,10 @@ Marcar con `[x]` al completar cada ítem y añadir evidencia o enlace si aplica.
 **Problema:** Mejora de UX en módulo Cobranzas (validación funcional pendiente).
 
 **Acciones:**
-- [x] Documentar criterios de aceptación y smoke manual en `docs/mejoras-pendientes-seguimiento.md`.
+- [x] Documentar criterios de aceptación y smoke manual en `qa.md` (histórico consolidado).
 - [ ] Verificación en UI (legacy) y cierre de M-007 cuando se cumpla.
 
-**Evidencia:** `docs/mejoras-pendientes-seguimiento.md`: subsección "Criterios de aceptación M-007 (Cobranzas UX)". El cierre definitivo queda pendiente de validación funcional en legacy.
+**Evidencia:** criterios M-007 (Cobranzas UX) registrados en `qa.md` o cerrados en código; cutover legacy archivado bajo `docs/archive/`.
 
 ---
 

@@ -293,7 +293,7 @@ export function RendimientoStyleStackedColumnChart({
                     className="rend-vbar-hover-target rend-stack-col"
                     style={{
                       opacity: isHovered ? 1 : 0.97,
-                      transition: "opacity 0.16s ease",
+                      transition: "opacity calc(0.16s * var(--motion-scale)) ease",
                     }}
                     onMouseEnter={() => setHoveredLabel(d.label)}
                     onMouseLeave={() => setHoveredLabel((prev) => (prev === d.label ? null : prev))}
