@@ -896,9 +896,15 @@ body.sidebar-open .tabs-nav {
 
 .grid-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11.5rem), 1fr));
+  grid-auto-flow: dense;
   gap: 1rem;
   margin-bottom: 1rem;
+}
+
+.grid-cards > .un-filter-tag-group {
+  order: 99;
+  grid-column: 1 / -1;
 }
 
 .flex-actions {
@@ -1353,16 +1359,22 @@ body.sidebar-open .tabs-nav {
   padding-right: 0.05rem;
 }
 
-/* Analysis filters grid (unified responsive) */
+/* Analysis filters grid: auto-ubicación por ancho; UN al final a ancho completo (sin scroll) */
 .analysis-filters-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 12.25rem), 1fr));
+  grid-auto-flow: dense;
   gap: 1rem 1.1rem;
   margin-bottom: 1.15rem;
-  align-items: end;
+  align-items: start;
   position: relative;
   z-index: 14;
   max-width: none;
+}
+
+.analysis-filters-grid > .un-filter-tag-group {
+  order: 99;
+  grid-column: 1 / -1;
 }
 
 @media (min-width: 1025px) {
@@ -1387,6 +1399,61 @@ body.sidebar-open .tabs-nav {
 .analysis-filter-control {
   position: relative;
   z-index: 14;
+}
+
+/* Filtro UN: grid padre coloca el bloque; aquí flex-wrap para ancho según texto (sin desbordar el pill) */
+.un-filter-tag-group {
+  position: relative;
+  z-index: 14;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.un-filter-un-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.45rem;
+  width: 100%;
+}
+
+/*
+ * HeroUI .button usa whitespace-nowrap + w-fit; en celdas angostas el texto se sale del borde.
+ * Aquí: ancho al contenido (tope 100% del contenedor), salto de línea y altura auto.
+ */
+.un-filter-un-buttons .un-filter-un-btn.button,
+.un-filter-un-buttons button.un-filter-un-btn {
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 2.35rem;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  text-align: center;
+  justify-content: center;
+  padding-inline: 0.7rem;
+  padding-block: 0.4rem;
+  line-height: 1.25;
+}
+
+.un-filter-un-btn {
+  /* refuerzo si la clase va en el wrapper */
+  box-sizing: border-box;
+}
+
+.un-filter-un-desc {
+  margin-top: 0.05rem;
+  max-width: 100%;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
 }
 
 .analysis-filters-grid .input-label {
@@ -1766,7 +1833,8 @@ body.sidebar-open .tabs-nav {
 
 .analysis-skeleton-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 12.25rem), 1fr));
+  grid-auto-flow: dense;
   gap: 0.75rem 0.9rem;
 }
 
@@ -1928,22 +1996,16 @@ body.sidebar-open .tabs-nav {
 
 @media (max-width: 1280px) {
   .analysis-filters-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr));
   }
 
   .analysis-skeleton-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr));
   }
 
   .analysis-kpis,
   .analysis-skeleton-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 1536px) {
-  .analysis-filters-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -2073,6 +2135,92 @@ body.sidebar-open .tabs-nav {
 
 .chart-card-wide {
   grid-column: 1 / -1;
+}
+
+/* Análisis de cartera: KPIs ~20% más compactos */
+.analisis-cartera-kpi-grid {
+  gap: 0.8rem;
+  margin-bottom: 0.85rem;
+}
+
+.analisis-cartera-kpi-grid .analysis-card-pad {
+  padding: 0.8rem;
+}
+
+.analisis-cartera-kpi-grid .kpi-card {
+  min-height: 6.56rem;
+}
+
+.analisis-cartera-kpi-grid .kpi-card-value {
+  font-size: clamp(1.08rem, 1.68vw, 1.88rem);
+}
+
+.analisis-cartera-kpi-grid .kpi-card-icon svg {
+  width: 11px;
+  height: 11px;
+}
+
+.analisis-cartera-kpi-grid .analysis-kpi-title {
+  font-size: 0.64rem;
+}
+
+.analisis-cartera-kpi-grid .kpi-skeleton,
+.analisis-cartera-kpi-grid .kpi-skeleton-heroui {
+  height: 73.6px !important;
+}
+
+.analisis-cartera-kpi-grid .kpi-zero-hint {
+  font-size: 0.58rem;
+  margin-top: 0.32rem;
+}
+
+/* Gráficos en solapas (lista bajo KPIs) — alinea a HeroUI tabs--secondary: fila única + scroll suave */
+.analisis-cartera-charts-tabs {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-top: 0.15rem;
+}
+
+.analisis-cartera-chart-tablist-container {
+  margin-bottom: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.analisis-cartera-chart-tablist {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  gap: 0;
+  /* HeroUI ya pone overflow-x: auto y oculta scrollbar en .tabs--secondary .tabs__list */
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Pestañas con ancho al contenido (el default w-full reparte mal varias solapas en una fila) */
+.analisis-cartera-charts-tabs .tabs__list[data-orientation="horizontal"] .tabs__tab {
+  width: auto;
+  flex: 0 0 auto;
+  min-width: 0;
+  white-space: nowrap;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.analisis-cartera-chart-panel {
+  min-width: 0;
+  outline: none;
+}
+
+.analisis-cartera-chart-card.chart-card-wide {
+  grid-column: unset;
+  width: 100%;
+}
+
+.analisis-cartera-chart-loading {
+  min-height: 11rem;
 }
 
 .kpi-card {
@@ -2443,12 +2591,18 @@ body.sidebar-open .tabs-nav {
 
 .cohorte-filters-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr));
+  grid-auto-flow: dense;
   gap: 0.75rem 0.9rem;
   margin-bottom: 0.72rem;
-  align-items: end;
+  align-items: start;
   position: relative;
   z-index: 14;
+}
+
+.cohorte-filters-grid > .un-filter-tag-group {
+  order: 99;
+  grid-column: 1 / -1;
 }
 
 .cohorte-filter-control .input {
@@ -2769,11 +2923,11 @@ body.sidebar-open .tabs-nav {
 
 @media (max-width: 1280px) {
   .cohorte-filters-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr));
   }
 
   .cohorte-skeleton-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr));
   }
 
   .cohorte-kpis,
@@ -3377,22 +3531,33 @@ label.input-label {
 }
 
 .analytics-segmented__track {
-  display: grid;
   align-items: stretch;
-  gap: 0.2rem;
+  gap: 0.32rem;
   padding: 0.28rem;
+  min-width: 0;
   border-radius: 9999px;
   border: 1px solid color-mix(in srgb, var(--color-border) 82%, #94a3b8 18%);
   background: linear-gradient(180deg, color-mix(in srgb, var(--card-bg) 92%, #e2e8f0 8%) 0%, color-mix(in srgb, var(--color-surface) 94%, #cbd5e1 6%) 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
+/* Full width: una sola fila; sin scroll; texto con ellipsis si falta ancho */
 .analytics-segmented--full .analytics-segmented__track {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
   width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.analytics-segmented--full .analytics-segmented__option {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .analytics-segmented--inline .analytics-segmented__track {
-  display: inline-grid;
   width: auto;
   max-width: 100%;
 }
@@ -3404,22 +3569,34 @@ label.input-label {
   background: transparent;
   color: color-mix(in srgb, var(--color-text) 72%, var(--color-text-muted) 28%);
   font-weight: 500;
-  font-size: 0.8125rem;
+  /* Ligeramente fluido en viewports angostos sin depender de celdas 1fr iguales */
+  font-size: clamp(0.7rem, 0.28vw + 0.66rem, 0.8125rem);
   line-height: 1.2;
   border-radius: 9999px;
   padding: 0.5rem 0.65rem;
   min-height: var(--touch-min);
+  text-align: center;
+  white-space: nowrap;
   transition: color calc(0.15s * var(--motion-scale)) ease, background calc(0.18s * var(--motion-scale)) ease, box-shadow calc(0.18s * var(--motion-scale)) ease;
   font-family: inherit;
 }
 
+.analytics-segmented__option-label {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
 .analytics-segmented--md .analytics-segmented__option {
-  font-size: 0.875rem;
+  font-size: clamp(0.76rem, 0.32vw + 0.7rem, 0.875rem);
   padding: 0.55rem 0.85rem;
 }
 
 .analytics-segmented--lg .analytics-segmented__option {
-  font-size: 0.9375rem;
+  font-size: clamp(0.82rem, 0.38vw + 0.74rem, 0.9375rem);
   padding: 0.62rem 1rem;
 }
 
@@ -3475,14 +3652,81 @@ label.input-label {
 }
 
 @media (max-width: 900px) {
-  .analytics-segmented--full .analytics-segmented__track {
-    grid-template-columns: 1fr !important;
-    border-radius: var(--radius-md);
-  }
-
   .analytics-segmented--full .analytics-segmented__option {
-    border-radius: var(--radius-md);
+    padding-left: 0.42rem;
+    padding-right: 0.42rem;
   }
+}
+
+/* Filtro abreviado (HeroUI ButtonGroup): una fila, abreviatura + leyenda */
+.analytics-abbrev-filter__track {
+  min-width: 0;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, #94a3b8 18%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--card-bg) 92%, #e2e8f0 8%) 0%, color-mix(in srgb, var(--color-surface) 94%, #cbd5e1 6%) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding: 0.22rem;
+}
+
+.analytics-abbrev-filter__group[data-slot="button-group"] {
+  display: flex;
+  flex-wrap: nowrap;
+  width: 100%;
+  min-width: 0;
+  gap: 0.28rem;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.analytics-abbrev-filter__btn {
+  flex: 1 1 0;
+  min-width: 0;
+  height: auto;
+  min-height: 2.55rem;
+  padding: 0.32rem 0.28rem;
+}
+
+.analytics-abbrev-filter__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.12rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.analytics-abbrev-filter__abbrev {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.analytics-abbrev-filter__caption {
+  font-size: 0.625rem;
+  font-weight: 500;
+  line-height: 1.1;
+  color: var(--color-text-muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.analytics-abbrev-filter__btn--selected .analytics-abbrev-filter__caption {
+  color: rgba(248, 250, 252, 0.88);
+}
+
+:root[data-theme="light"] .analytics-abbrev-filter__track {
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+:root[data-theme="light"] .analytics-abbrev-filter__btn--selected .analytics-abbrev-filter__caption {
+  color: rgba(248, 250, 252, 0.92);
 }
 
 .ui-state {
@@ -4609,7 +4853,8 @@ body.is-dragging-floating-filter {
 
 .analysis-skeleton-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 12.25rem), 1fr));
+  grid-auto-flow: dense;
   gap: 0.75rem 1rem;
   margin-bottom: 1rem;
 }
@@ -5161,20 +5406,32 @@ body.is-dragging-floating-filter {
   box-shadow: 0 10px 22px rgba(2, 6, 23, 0.08);
 }
 
-/* Resumen de Cartera: filtros en grilla 3×3 (7 ítems ocupan 3 filas; celdas vacías al final). */
+/* Resumen de Cartera: filtros con auto-columnas; UN al final a ancho completo */
 .rendimiento-filters-panel.cartera-filters-grid-3 {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11.25rem), 1fr));
+  grid-auto-flow: dense;
   gap: 0.85rem 1rem;
   align-items: start;
 }
 
-/* Cobranzas cohorte: grilla 3×3 dentro del panel (filtros + ayudas debajo). */
+.rendimiento-filters-panel.cartera-filters-grid-3 > .un-filter-tag-group {
+  order: 99;
+  grid-column: 1 / -1;
+}
+
+/* Cobranzas cohorte: misma lógica de rejilla adaptable */
 .cohorte-filters-grid-3 {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11.25rem), 1fr));
+  grid-auto-flow: dense;
   gap: 0.85rem 1rem;
   align-items: start;
+}
+
+.cohorte-filters-grid-3 > .un-filter-tag-group {
+  order: 99;
+  grid-column: 1 / -1;
 }
 
 .cohorte-filters-grid-3 .analysis-filter-control {

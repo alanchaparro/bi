@@ -6,6 +6,7 @@ import { EmptyState } from "../../components/feedback/EmptyState"
 import { ErrorState } from "../../components/feedback/ErrorState"
 import { LoadingState } from "../../components/feedback/LoadingState"
 import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter"
+import { UnidadNegocioTagFilter } from "../../components/filters/UnidadNegocioTagFilter"
 import { ViaSegmentedOrMulti } from "../../components/filters/ViaSegmentedOrMulti"
 
 type Row = {
@@ -100,7 +101,7 @@ export function BrokersView(props: Props) {
 
       <div className="grid-cards">
         <MultiSelectFilter label="Supervisor" options={props.options.supervisors} selected={draft.supervisors} onChange={(v) => setFilter("supervisors", v)} />
-        <MultiSelectFilter label="UN" options={props.options.uns} selected={draft.uns} onChange={(v) => setFilter("uns", v)} />
+        <UnidadNegocioTagFilter label="UN" options={props.options.uns} selected={draft.uns} onChange={(v) => setFilter("uns", v)} />
         <ViaSegmentedOrMulti
           label="Vía"
           options={props.options.vias}

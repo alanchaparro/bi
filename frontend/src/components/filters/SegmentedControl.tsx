@@ -37,10 +37,13 @@ export function SegmentedControl({
   className,
 }: SegmentedControlProps) {
   const groupId = id ?? `segmented-${label.replace(/\s+/g, "-").toLowerCase()}`;
-  /** Siempre N columnas; sin esto el grid implícito es 1 columna y las opciones se apilan (p. ej. KPI con fullWidth=false). */
-  const gridStyle = {
-    gridTemplateColumns: `repeat(${Math.max(1, options.length)}, minmax(0, 1fr))`,
-  } as React.CSSProperties;
+  /** Modo inline (p. ej. toggles compactos): grid por contenido. Modo full: solo CSS flex-wrap, sin scroll. */
+  const inlineTrackStyle = !fullWidth
+    ? ({
+        display: "inline-grid",
+        gridTemplateColumns: `repeat(${Math.max(1, options.length)}, minmax(min-content, max-content))`,
+      } as React.CSSProperties)
+    : undefined;
 
   const sizeClass = size === "lg" ? "analytics-segmented--lg" : size === "md" ? "analytics-segmented--md" : "analytics-segmented--sm";
 
@@ -59,10 +62,11 @@ export function SegmentedControl({
         aria-label={ariaLabel ?? label}
         aria-labelledby={`${groupId}-label`}
         className="analytics-segmented__track"
-        style={gridStyle}
+        style={inlineTrackStyle}
       >
         {options.map((opt) => {
-          const isSelected = value === opt.value;
+          const isSelected =
+            opt.value === "" ? value === "" : opt.value.toUpperCase() === (value || "").toUpperCase();
           return (
             <button
               key={opt.value === "" ? "__all__" : opt.value}
@@ -70,11 +74,12 @@ export function SegmentedControl({
               role="radio"
               aria-checked={isSelected}
               aria-label={opt.label}
+              title={opt.label}
               disabled={isDisabled}
               className={`analytics-segmented__option${isSelected ? " analytics-segmented__option--active" : ""}`}
               onClick={() => onChange(opt.value)}
             >
-              {opt.label}
+              <span className="analytics-segmented__option-label">{opt.label}</span>
             </button>
           );
         })}

@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Checkbox, Label } from '@heroui/react'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
+import { UnidadNegocioTagFilter } from '../../components/filters/UnidadNegocioTagFilter'
 import { FloatingQuickFilters } from '../../components/filters/FloatingQuickFilters'
-import { SegmentedControl } from '../../components/filters/SegmentedControl'
+import { AbbrevSegmentedFilter } from '../../components/filters/AbbrevSegmentedFilter'
+import { CATEGORIA_ABBREV_OPTIONS } from '../../components/filters/analyticsAbbrev'
 import { ViaSegmentedOrMulti } from '../../components/filters/ViaSegmentedOrMulti'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
@@ -977,13 +979,11 @@ export function AnalisisRendimientoView() {
               onChange={(values) => setFilters((prev) => ({ ...prev, gestionMonths: values }))}
               placeholder="Historia"
             />
-            <MultiSelectFilter
+            <UnidadNegocioTagFilter
               className="analysis-filter-control"
-              label="Unidad de negocio"
               options={options.uns}
               selected={filters.uns}
               onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
-              placeholder="Todas"
             />
             <MultiSelectFilter
               className="analysis-filter-control"
@@ -1007,14 +1007,10 @@ export function AnalisisRendimientoView() {
               selected={filters.viasPago}
               onChange={(values) => setFilters((prev) => ({ ...prev, viasPago: values }))}
             />
-            <SegmentedControl
+            <AbbrevSegmentedFilter
               className="analysis-filter-control"
               label="Categoría"
-              options={[
-                { value: '', label: 'Todas' },
-                { value: 'VIGENTE', label: 'Vigente' },
-                { value: 'MOROSO', label: 'Moroso' },
-              ]}
+              options={CATEGORIA_ABBREV_OPTIONS}
               value={(filters.categorias[0] || '').toUpperCase()}
               onChange={(value) => setFilters((prev) => ({ ...prev, categorias: value ? [value] : [] }))}
             />
@@ -1294,14 +1290,7 @@ export function AnalisisRendimientoView() {
           placeholder="Historia"
         />
         {hasUnOptions ? (
-          <MultiSelectFilter
-            className="analysis-filter-control"
-            label="Unidad de negocio"
-            options={options.uns}
-            selected={floatUns}
-            onChange={setFloatUns}
-            placeholder="Todas"
-          />
+          <UnidadNegocioTagFilter className="analysis-filter-control" options={options.uns} selected={floatUns} onChange={setFloatUns} />
         ) : (
           <>
             <ViaSegmentedOrMulti
@@ -1311,14 +1300,10 @@ export function AnalisisRendimientoView() {
               selected={floatViasCobro}
               onChange={setFloatViasCobro}
             />
-            <SegmentedControl
+            <AbbrevSegmentedFilter
               className="analysis-filter-control"
               label="Categoría"
-              options={[
-                { value: '', label: 'Todas' },
-                { value: 'VIGENTE', label: 'Vigente' },
-                { value: 'MOROSO', label: 'Moroso' },
-              ]}
+              options={CATEGORIA_ABBREV_OPTIONS}
               value={floatCategoria}
               onChange={(value) => setFloatCategoria(value)}
             />

@@ -2,9 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Card, Tabs } from '@heroui/react'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
+import { UnidadNegocioTagFilter } from '../../components/filters/UnidadNegocioTagFilter'
 import { STRING_SELECT_TRIGGER_ANALYTICS, StringSelect } from '../../components/filters/StringSelect'
 import { FloatingQuickFilters } from '../../components/filters/FloatingQuickFilters'
-import { SegmentedControl } from '../../components/filters/SegmentedControl'
+import { AbbrevSegmentedFilter } from '../../components/filters/AbbrevSegmentedFilter'
+import { CATEGORIA_ABBREV_OPTIONS, VIA_DEBITO_COBRADOR_ABBREV_OPTIONS } from '../../components/filters/analyticsAbbrev'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
 import { AnalyticsMetaBadges } from '../../components/analytics/AnalyticsMetaBadges'
 import { AnalysisSelectionSummary } from '../../components/analytics/AnalysisSelectionSummary'
@@ -709,23 +711,17 @@ export function AnalisisCobranzasCohorteView() {
                 )}
               </div>
 
-              <MultiSelectFilter
+              <UnidadNegocioTagFilter
                 className="analysis-filter-control"
-                label="Unidad de negocio"
                 options={options.uns}
                 selected={filters.uns}
                 onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
-                placeholder="Todos"
               />
 
-              <SegmentedControl
+              <AbbrevSegmentedFilter
                 className="analysis-filter-control"
                 label="Vía de cobro"
-                options={[
-                  { value: '', label: 'Todos' },
-                  { value: 'DEBITO', label: 'Débito' },
-                  { value: 'COBRADOR', label: 'Cobrador' },
-                ]}
+                options={VIA_DEBITO_COBRADOR_ABBREV_OPTIONS}
                 value={selectedVia}
                 onChange={(v) => setFilters((prev) => ({ ...prev, vias: v === '' ? [] : [v] }))}
               />
@@ -739,14 +735,10 @@ export function AnalisisCobranzasCohorteView() {
                 placeholder="Todos"
               />
 
-              <SegmentedControl
+              <AbbrevSegmentedFilter
                 className="analysis-filter-control"
                 label="Categoría"
-                options={[
-                  { value: '', label: 'Todas' },
-                  { value: 'VIGENTE', label: 'Vigente' },
-                  { value: 'MOROSO', label: 'Moroso' },
-                ]}
+                options={CATEGORIA_ABBREV_OPTIONS}
                 value={selectedCategoria}
                 onChange={(v) => setFilters((prev) => ({ ...prev, categorias: v === '' ? [] : [v] }))}
               />
@@ -1068,35 +1060,25 @@ export function AnalisisCobranzasCohorteView() {
             )}
           </div>
           {hasUnOptions ? (
-            <MultiSelectFilter
+            <UnidadNegocioTagFilter
               className="analysis-filter-control"
-              label="Unidad de negocio"
               options={options.uns}
               selected={floatUns}
               onChange={setFloatUns}
-              placeholder="Todos"
             />
           ) : (
             <>
-              <SegmentedControl
+              <AbbrevSegmentedFilter
                 className="analysis-filter-control"
                 label="Vía de cobro"
-                options={[
-                  { value: '', label: 'Todos' },
-                  { value: 'DEBITO', label: 'Débito' },
-                  { value: 'COBRADOR', label: 'Cobrador' },
-                ]}
+                options={VIA_DEBITO_COBRADOR_ABBREV_OPTIONS}
                 value={floatVia}
                 onChange={(v) => setFloatVia(v)}
               />
-              <SegmentedControl
+              <AbbrevSegmentedFilter
                 className="analysis-filter-control"
                 label="Categoría"
-                options={[
-                  { value: '', label: 'Todas' },
-                  { value: 'VIGENTE', label: 'Vigente' },
-                  { value: 'MOROSO', label: 'Moroso' },
-                ]}
+                options={CATEGORIA_ABBREV_OPTIONS}
                 value={floatCategoria}
                 onChange={(v) => setFloatCategoria(v)}
               />

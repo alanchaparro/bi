@@ -9,6 +9,8 @@
 **Cambios 2.0 (cierre Fase 2):** **`TextField`** + **`Input`** (login, Config formularios texto); **`SearchField`** en **`MultiSelectFilter`**; **`Checkbox`** HeroUI (Cartera / Rendimiento). Matrices de checkboxes en Config siguen nativas.  
 **Cambios 3.0 (cierre Fase 3):** **`Toast.Provider`** en `providers.tsx` (`placement="bottom end"`); notificaciones globales vía **`toast`** imperativo de HeroUI; wrapper **`pushAppToast`** (`frontend/src/shared/pushAppToast.ts`) con tipos `success` / `info` / `error` → `danger` y **`timeout` 3500 ms** (paridad con el antiguo `ToastStack`). Eliminado componente custom **`ToastStack`** y CSS `.toast-*` asociado. **`Alert`** HeroUI no adoptado aún: errores de página siguen en **`ErrorState`** / inline según módulo.  
 **Cambios 4.0 (cierre Fase 4):** Spike **`Table`** HeroUI en **Resumen de brokers** (`BrokersSummaryTable` + `BrokersView` dentro de `.table-wrap--brokers-summary`). Decisión documentada abajo (**híbrido**): no migración masiva del resto de tablas analytics en este entregable.  
+**Cambios 5.1:** Filtro **unidad de negocio (UN)** unificado con **`Button`** HeroUI (`UnidadNegocioTagFilter`): multi-selección con **`variant="primary"`** al estar activo y **`outline`** en reposo, **`aria-pressed`**, **`Label`** + **`Description`**; sin pulsaciones = todas las UN. Vistas: Cartera, Análisis cartera, Cohorte cobranzas, Rendimiento, Anuales, Rolo cartera, Brokers. Referencia: [Button](https://heroui.com/docs/react/components/button).
+
 **Cambios 5.0 (cierre Fase 5):** Menú móvil (**≤1024px**) como **drawer equivalente**: panel lateral fijo + **`.sidebar-overlay`** visible (sin empujar `app-shell`). Confirmaciones destructivas con **`AlertDialog`** + `isOpen` / `onOpenChange` (`useOverlayState`) en **Config** (parada emergencia, borrar programación) y **Brokers** comisiones/premios. **`Tooltip`** en **App** (tema L/O, pills sync/programación) y botón menú en **`SidebarNav`**. El paquete **beta** no exporta **`Drawer`**; patrón documentado en README.  
 **Canónico asociado:** `docs/heroui/README.md`
 
@@ -29,7 +31,7 @@ Unificar progresivamente **botones, menús desplegable (dropdown), selects/combo
 
 ## Inventario actual (referencia rápida)
 
-Imports frecuentes hoy: `Button`, `Input`, `Label`, `TextField`, `SearchField`, `Checkbox`, `Card`, `Modal`, `AlertDialog`, `Tooltip`, `Tabs`, `Dropdown`, `Skeleton`, `Spinner`, `Text`, `Popover`, `RouterProvider`, `Toast`, `useOverlayState`; **`StringSelect`** en `frontend/src/components/filters/StringSelect.tsx`.
+Imports frecuentes hoy: `Button`, `Input`, `Label`, `TextField`, `SearchField`, `Checkbox`, `Card`, `Modal`, `AlertDialog`, `Tooltip`, `Tabs`, `Dropdown`, `Skeleton`, `Spinner`, `Text`, `Popover`, `RouterProvider`, `Toast`, `useOverlayState`, **`Button`** + **`Description`** (filtro UN vía **`UnidadNegocioTagFilter`**); **`StringSelect`** en `frontend/src/components/filters/StringSelect.tsx`.
 
 **Post–Fase 2:** Valorar **`ComboBox`** si algún filtro necesita teclear para acotar listas muy largas (además de la búsqueda ya integrada en `MultiSelectFilter` vía `SearchField`).
 

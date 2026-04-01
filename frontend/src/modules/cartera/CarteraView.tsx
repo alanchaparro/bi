@@ -5,7 +5,9 @@ import { EmptyState } from '../../components/feedback/EmptyState'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { LoadingState } from '../../components/feedback/LoadingState'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
-import { SegmentedControl } from '../../components/filters/SegmentedControl'
+import { UnidadNegocioTagFilter } from '../../components/filters/UnidadNegocioTagFilter'
+import { AbbrevSegmentedFilter } from '../../components/filters/AbbrevSegmentedFilter'
+import { CATEGORIA_ABBREV_OPTIONS } from '../../components/filters/analyticsAbbrev'
 import { ViaSegmentedOrMulti } from '../../components/filters/ViaSegmentedOrMulti'
 import { FloatingQuickFilters } from '../../components/filters/FloatingQuickFilters'
 import { getPortfolioCorteOptions, getPortfolioCorteSummary } from '../../shared/api'
@@ -192,20 +194,16 @@ export function CarteraView() {
 
       <div className="rendimiento-filters-panel cartera-filters-grid-3">
         <MultiSelectFilter label="Supervisor" options={options.supervisors} selected={draftFilters.supervisors} onChange={(values) => setDraftFilters((prev) => ({ ...prev, supervisors: values }))} />
-        <MultiSelectFilter label="UN" options={options.uns} selected={draftFilters.uns} onChange={(values) => setDraftFilters((prev) => ({ ...prev, uns: values }))} />
+        <UnidadNegocioTagFilter label="UN" options={options.uns} selected={draftFilters.uns} onChange={(values) => setDraftFilters((prev) => ({ ...prev, uns: values }))} />
         <ViaSegmentedOrMulti
           label="Vía de cobro"
           options={options.vias}
           selected={draftFilters.vias}
           onChange={(values) => setDraftFilters((prev) => ({ ...prev, vias: values }))}
         />
-        <SegmentedControl
+        <AbbrevSegmentedFilter
           label="Categoría"
-          options={[
-            { value: '', label: 'Todas' },
-            { value: 'VIGENTE', label: 'Vigente' },
-            { value: 'MOROSO', label: 'Moroso' },
-          ]}
+          options={CATEGORIA_ABBREV_OPTIONS}
           value={(draftFilters.categorias[0] || '').toUpperCase()}
           onChange={(categoria) => setDraftFilters((prev) => ({ ...prev, categorias: categoria ? [categoria] : [] }))}
         />
@@ -296,14 +294,7 @@ export function CarteraView() {
           selected={floatMonths}
           onChange={setFloatMonths}
         />
-        <MultiSelectFilter
-          className="analysis-filter-control"
-          label="Unidad de negocio"
-          options={options.uns}
-          selected={floatUns}
-          onChange={setFloatUns}
-          placeholder="Todas"
-        />
+        <UnidadNegocioTagFilter className="analysis-filter-control" options={options.uns} selected={floatUns} onChange={setFloatUns} />
       </FloatingQuickFilters>
     </section>
   )

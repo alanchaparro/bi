@@ -5,6 +5,7 @@ import { AnalyticsPageHeader } from "../../components/analytics/AnalyticsPageHea
 import { AnalysisSelectionSummary } from "../../components/analytics/AnalysisSelectionSummary";
 import { MetricExplainer } from "../../components/analytics/MetricExplainer";
 import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter";
+import { UnidadNegocioTagFilter } from "../../components/filters/UnidadNegocioTagFilter";
 import { ViaSegmentedOrMulti } from "../../components/filters/ViaSegmentedOrMulti";
 import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
 import { EmptyState } from "../../components/feedback/EmptyState";
@@ -272,7 +273,7 @@ export function AnalisisRoloCarteraView() {
             selected={filters.closeMonths}
             onChange={(closeMonths) => setFilters((prev) => ({ ...prev, closeMonths: closeMonths.length ? [closeMonths[closeMonths.length - 1]] : [] }))}
           />
-          <MultiSelectFilter className="analysis-filter-control" label="Unidad de negocio" options={options.uns || []} selected={filters.uns} onChange={(uns) => setFilters((prev) => ({ ...prev, uns }))} />
+          <UnidadNegocioTagFilter className="analysis-filter-control" options={options.uns || []} selected={filters.uns} onChange={(uns) => setFilters((prev) => ({ ...prev, uns }))} />
           <MultiSelectFilter className="analysis-filter-control" label="Supervisor" options={options.supervisors || []} selected={filters.supervisors} onChange={(supervisors) => setFilters((prev) => ({ ...prev, supervisors }))} />
           <ViaSegmentedOrMulti
             className="analysis-filter-control"
@@ -354,13 +355,7 @@ export function AnalisisRoloCarteraView() {
           selected={floatingCloseMonths}
           onChange={(closeMonths) => setFloatingCloseMonths(closeMonths.length ? [closeMonths[closeMonths.length - 1]] : [])}
         />
-        <MultiSelectFilter
-          className="analysis-filter-control"
-          label="Unidad de negocio"
-          options={options.uns || []}
-          selected={floatingUns}
-          onChange={setFloatingUns}
-        />
+        <UnidadNegocioTagFilter className="analysis-filter-control" options={options.uns || []} selected={floatingUns} onChange={setFloatingUns} />
       </FloatingQuickFilters>
     </>
   );

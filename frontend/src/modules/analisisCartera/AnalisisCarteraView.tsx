@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Checkbox, Label, Skeleton } from "@heroui/react";
+import { Button, Checkbox, Label, Skeleton, Tabs } from "@heroui/react";
 import { DomButton } from "@/components/ui/DomButton";
 import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter";
+import { UnidadNegocioTagFilter } from "../../components/filters/UnidadNegocioTagFilter";
 import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
 import { ActiveFilterChips, type FilterChip } from "../../components/filters/ActiveFilterChips";
+import { AbbrevSegmentedFilter } from "../../components/filters/AbbrevSegmentedFilter";
+import { CATEGORIA_ABBREV_OPTIONS } from "../../components/filters/analyticsAbbrev";
 import { SegmentedControl } from "../../components/filters/SegmentedControl";
 import { ViaSegmentedOrMulti } from "../../components/filters/ViaSegmentedOrMulti";
 import { pushAppToast, type AppToastType } from "../../shared/pushAppToast";
@@ -89,6 +92,18 @@ const CHART_COLORS = [
 const CHART_COLORS_LIGHT = CHART_COLORS;
 
 const STORAGE_KPI_MODE = "analisis_cartera_kpi_mode_v1";
+const STORAGE_ACTIVE_CHART_TAB = "analisis_cartera_active_chart_tab_v1";
+
+const CHART_TAB_SHORT: Record<ChartId, string> = {
+  series_vig_mor_month: "Vigente / Moroso",
+  series_via_month: "Cobrador / Débito",
+  by_un: "Por UN",
+  by_tramo: "Por tramo",
+  by_via: "Por vía",
+  by_contract_year: "Año contrato",
+};
+
+const CHART_ID_SET = new Set<ChartId>(DEFAULT_CHART_ORDER);
 
 /** Tramos canónicos 0..7 (AGENTS.md); donut y leyenda siempre completos y en orden fijo. */
 const TRAMO_DONUT_KEYS = [0, 1, 2, 3, 4, 5, 6, 7] as const;
@@ -290,8 +305,7 @@ export function AnalisisCarteraView() {
   const [summaryError, setSummaryError] = useState("");
   const [optionsReady, setOptionsReady] = useState(false);
   const [chartOrder, setChartOrder] = useState<ChartId[]>(() => readStoredOrder(STORAGE_CHART_ORDER, DEFAULT_CHART_ORDER));
-  const [draggingChart, setDraggingChart] = useState<ChartId | null>(null);
-  const [dragOverChart, setDragOverChart] = useState<ChartId | null>(null);
+  const [activeChartTab, setActiveChartTab] = useState<ChartId>(() => DEFAULT_CHART_ORDER[0]);
   const [kpiOrder, setKpiOrder] = useState<KpiId[]>(() => readStoredOrder(STORAGE_KPI_ORDER, DEFAULT_KPI_ORDER));
   const [draggingKpi, setDraggingKpi] = useState<KpiId | null>(null);
   const [dragOverKpi, setDragOverKpi] = useState<KpiId | null>(null);
@@ -314,6 +328,18 @@ export function AnalisisCarteraView() {
   useEffect(() => { window.localStorage.setItem(STORAGE_KPI_ORDER, JSON.stringify(kpiOrder)); }, [kpiOrder]);
   useEffect(() => { window.localStorage.setItem(STORAGE_AMOUNT_VIEW, showFullAmounts ? "full" : "compact"); }, [showFullAmounts]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KPI_MODE, kpiMode); }, [kpiMode]);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_ACTIVE_CHART_TAB);
+      if (raw && CHART_ID_SET.has(raw as ChartId)) setActiveChartTab(raw as ChartId);
+    } catch {
+      /* noop */
+    }
+  }, []);
+  useEffect(() => { window.localStorage.setItem(STORAGE_ACTIVE_CHART_TAB, activeChartTab); }, [activeChartTab]);
+  useEffect(() => {
+    setActiveChartTab((prev) => (chartOrder.includes(prev) ? prev : chartOrder[0]));
+  }, [chartOrder]);
 
   const getLatestCloseMonth = useCallback((months: string[]) => {
     if (!months || months.length === 0) return null;
@@ -605,11 +631,6 @@ export function AnalisisCarteraView() {
   const viaCobradorTotal = Number(effectiveKpis?.via_cobrador_total || 0);
   const viaDebitoTotal = Number(effectiveKpis?.via_debito_total || 0);
 
-  const moveChart = useCallback((fromId: ChartId, toId: ChartId) => {
-    if (fromId === toId) return;
-    setChartOrder((prev) => { const fromIdx = prev.indexOf(fromId); const toIdx = prev.indexOf(toId); if (fromIdx < 0 || toIdx < 0) return prev; const next = [...prev]; next.splice(fromIdx, 1); next.splice(toIdx, 0, fromId); return next; });
-  }, []);
-
   const moveKpi = useCallback((fromId: KpiId, toId: KpiId) => {
     if (fromId === toId) return;
     setKpiOrder((prev) => { const fromIdx = prev.indexOf(fromId); const toIdx = prev.indexOf(toId); if (fromIdx < 0 || toIdx < 0) return prev; const next = [...prev]; next.splice(fromIdx, 1); next.splice(toIdx, 0, fromId); return next; });
@@ -759,7 +780,7 @@ export function AnalisisCarteraView() {
         <>
       <div className="rendimiento-filters-panel">
       <div className="analysis-filters-grid">
-        <MultiSelectFilter className="analysis-filter-control" label="Unidad de negocio" options={options.uns || []} selected={filters.uns} onChange={(uns) => setFilters((f) => ({ ...f, uns }))} />
+        <UnidadNegocioTagFilter className="analysis-filter-control" options={options.uns || []} selected={filters.uns} onChange={(uns) => setFilters((f) => ({ ...f, uns }))} />
         <MultiSelectFilter className="analysis-filter-control" label="Supervisor" options={options.supervisors || []} selected={filters.supervisors} onChange={(supervisors) => setFilters((f) => ({ ...f, supervisors }))} />
         <MultiSelectFilter className="analysis-filter-control" label="Año de contrato" options={options.contract_years || []} selected={filters.years} onChange={(years) => setFilters((f) => ({ ...f, years }))} />
         <ViaSegmentedOrMulti
@@ -770,14 +791,10 @@ export function AnalisisCarteraView() {
           onChange={(vias) => setFilters((f) => ({ ...f, vias }))}
         />
         <MultiSelectFilter className="analysis-filter-control" label="Tramo" options={options.tramos || []} selected={filters.tramos} onChange={(tramos) => setFilters((f) => ({ ...f, tramos }))} />
-        <SegmentedControl
+        <AbbrevSegmentedFilter
           className="analysis-filter-control"
           label="Categoría"
-          options={[
-            { value: "", label: "Todas" },
-            { value: "VIGENTE", label: "Vigente" },
-            { value: "MOROSO", label: "Moroso" },
-          ]}
+          options={CATEGORIA_ABBREV_OPTIONS}
           value={(filters.categorias[0] || "").toUpperCase()}
           onChange={(categoria) => setFilters((f) => ({ ...f, categorias: categoria ? [categoria] : [] }))}
         />
@@ -870,7 +887,7 @@ export function AnalisisCarteraView() {
             Faltaban meses sin datos reales en la serie y se completaron en cero: {missingGestionMonths.join(", ")}.
           </div>
         ) : null}
-        <div className={`summary-grid ${loadingSummary || loadingKpis ? "summary-grid-loading" : ""}`}>
+        <div className={`summary-grid analisis-cartera-kpi-grid ${loadingSummary || loadingKpis ? "summary-grid-loading" : ""}`}>
           {kpiOrder.map((kpiId) => {
             const k = kpiCards[kpiId];
             if (loadingSummary || loadingKpis) {
@@ -929,29 +946,49 @@ export function AnalisisCarteraView() {
             );
           })}
         </div>
-        <div className={`charts-grid ${loadingSummary ? "summary-grid-loading" : ""}`}>
+        <Tabs
+          selectedKey={activeChartTab}
+          onSelectionChange={(key) => key != null && setActiveChartTab(key as ChartId)}
+          variant="secondary"
+          className={`w-full min-w-0 analisis-cartera-charts-tabs ${loadingSummary ? "summary-grid-loading" : ""}`}
+        >
+          <Tabs.ListContainer className="analisis-cartera-chart-tablist-container">
+            <Tabs.List aria-label="Gráficos de cartera" className="analisis-cartera-chart-tablist">
+              {chartOrder.map((chartId) => (
+                <Tabs.Tab key={chartId} id={chartId}>
+                  {CHART_TAB_SHORT[chartId]}
+                  <Tabs.Indicator />
+                </Tabs.Tab>
+              ))}
+            </Tabs.List>
+          </Tabs.ListContainer>
           {chartOrder.map((chartId) => {
             const card = chartCards[chartId];
-            const isChartFullWidth =
-              chartId === "series_vig_mor_month" ||
-              chartId === "series_via_month" ||
-              chartId === "by_un" ||
-              chartId === "by_via" ||
-              chartId === "by_contract_year";
             return (
-              <article key={chartId} className={`card chart-card analysis-card-pad ${isChartFullWidth ? "chart-card-wide" : ""} ${dragOverChart === chartId ? "chart-drop-target" : ""} ${draggingChart === chartId ? "dragging-card" : ""}`} draggable onDragStart={(e) => { setDraggingChart(chartId); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", chartId); }} onDragEnd={() => { setDraggingChart(null); setDragOverChart(null); }} onDragOver={(e) => { e.preventDefault(); if (draggingChart && draggingChart !== chartId) setDragOverChart(chartId); }} onDrop={(e) => { e.preventDefault(); const fromId = (e.dataTransfer.getData("text/plain") || draggingChart || "") as ChartId; if (fromId) moveChart(fromId, chartId); setDraggingChart(null); setDragOverChart(null); }}>
-                <div className="chart-card-header">
-                  <h3 className="analysis-chart-title">{card.title}</h3>
-                  <div className="analysis-chart-actions">
-                    {chartId === "by_contract_year" && <Button size="sm" variant="outline" className="analysis-sort-btn" onPress={() => setYearSort((prev) => (prev === "desc" ? "asc" : "desc"))} aria-label="Ordenar por cantidad">{yearSort === "desc" ? "Mayor->Menor" : "Menor->Mayor"}</Button>}
-                    <span className="chart-drag-handle" title="Arrastrar para reordenar" aria-hidden>::</span>
+              <Tabs.Panel key={chartId} id={chartId} className="pt-4 analisis-cartera-chart-panel">
+                <article className="card chart-card analysis-card-pad chart-card-wide analisis-cartera-chart-card">
+                  <div className="chart-card-header">
+                    <h3 className="analysis-chart-title">{card.title}</h3>
+                    <div className="analysis-chart-actions">
+                      {chartId === "by_contract_year" && !loadingSummary ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="analysis-sort-btn"
+                          onPress={() => setYearSort((prev) => (prev === "desc" ? "asc" : "desc"))}
+                          aria-label="Ordenar por cantidad"
+                        >
+                          {yearSort === "desc" ? "Mayor->Menor" : "Menor->Mayor"}
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-                {card.content}
-              </article>
+                  {loadingSummary ? <LoadingState message="Actualizando gráficos…" className="analisis-cartera-chart-loading" /> : card.content}
+                </article>
+              </Tabs.Panel>
             );
           })}
-        </div>
+        </Tabs>
         </div>
       )}
         </>
@@ -982,14 +1019,7 @@ export function AnalisisCarteraView() {
             onChange={setFloatGestion}
           />
         )}
-        <MultiSelectFilter
-          className="analysis-filter-control"
-          label="Unidad de negocio"
-          options={options.uns || []}
-          selected={floatUns}
-          onChange={setFloatUns}
-          placeholder="Todas"
-        />
+        <UnidadNegocioTagFilter className="analysis-filter-control" options={options.uns || []} selected={floatUns} onChange={setFloatUns} />
       </FloatingQuickFilters>
     </section>
   );

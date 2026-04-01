@@ -1,8 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { MultiSelectFilter } from "./MultiSelectFilter";
-import { SegmentedControl } from "./SegmentedControl";
+import { AbbrevSegmentedFilter } from "./AbbrevSegmentedFilter";
+import { abbrevForViaLabel, captionForVia, viaEmptyAbbrev } from "./analyticsAbbrev";
 
 /** Máximo de vías para usar control segmentado (selección única: Todas + cada vía). */
 export const MAX_VIA_OPTIONS_FOR_SEGMENTED = 6;
@@ -31,13 +32,26 @@ export function ViaSegmentedOrMulti({
   const n = options.length;
   const canSegment = n > 0 && n <= MAX_VIA_OPTIONS_FOR_SEGMENTED && selected.length <= 1;
 
+  const abbrevOptions = useMemo(
+    () => [
+      { value: "", label: placeholder, abbrev: viaEmptyAbbrev(placeholder), caption: placeholder },
+      ...options.map((v) => ({
+        value: v,
+        label: v,
+        abbrev: abbrevForViaLabel(v),
+        caption: captionForVia(v),
+      })),
+    ],
+    [options, placeholder],
+  );
+
   if (canSegment) {
     const value = selected[0] ?? "";
     return (
-      <SegmentedControl
+      <AbbrevSegmentedFilter
         className={className}
         label={label}
-        options={[{ value: "", label: "Todas" }, ...options.map((v) => ({ value: v, label: v }))]}
+        options={abbrevOptions}
         value={value}
         onChange={(v) => onChange(v ? [v] : [])}
       />

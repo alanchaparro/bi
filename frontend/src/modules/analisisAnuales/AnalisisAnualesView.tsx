@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@heroui/react";
 import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter";
+import { UnidadNegocioTagFilter } from "../../components/filters/UnidadNegocioTagFilter";
 import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
 import { ActiveFilterChips, type FilterChip } from "../../components/filters/ActiveFilterChips";
 import { AnalyticsPageHeader } from "../../components/analytics/AnalyticsPageHeader";
@@ -247,13 +248,11 @@ export function AnalisisAnualesView() {
         <>
           <div className="rendimiento-filters-panel">
           <div className="analysis-filters-grid">
-            <MultiSelectFilter
+            <UnidadNegocioTagFilter
               className="analysis-filter-control"
-              label="Unidad de negocio"
               options={options.uns}
               selected={filters.uns}
               onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
-              placeholder="Todas"
             />
             <MultiSelectFilter
               className="analysis-filter-control"
@@ -386,14 +385,7 @@ export function AnalisisAnualesView() {
         applying={applying || loadingSummary}
       >
         {hasUnOptions ? (
-          <MultiSelectFilter
-            className="analysis-filter-control"
-            label="Unidad de negocio"
-            options={options.uns}
-            selected={floatUns}
-            onChange={setFloatUns}
-            placeholder="Todas"
-          />
+          <UnidadNegocioTagFilter className="analysis-filter-control" options={options.uns} selected={floatUns} onChange={setFloatUns} />
         ) : null}
         <MultiSelectFilter
           className="analysis-filter-control"
