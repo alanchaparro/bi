@@ -650,10 +650,16 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         onMouseEnter={clearScheduledSidebarClose}
         onMouseLeave={scheduleSidebarCloseDesktop}
       >
-        <div className="dashboard-sidebar-mobile-header flex flex-col gap-2 px-3 py-2 lg:hidden">
-          <div className="flex items-center justify-between gap-2">
-            <strong className="text-sm font-semibold text-[var(--color-text)]">Menú</strong>
-            <div className="flex shrink-0 items-center gap-1.5">
+        <div className="dashboard-sidebar-brand">
+          <div className="dashboard-sidebar-brand-head">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <SidebarBrandMark />
+              <div className="dashboard-sidebar-brand-text">
+                <h1 className="dashboard-sidebar-brand-h1">Sistema BI - EPEM</h1>
+                <div className="dashboard-sidebar-brand-premium">Motor analítico</div>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1 lg:hidden">
               <SidebarUserToolbar
                 auth={auth}
                 themePresetId={themePresetId}
@@ -670,25 +676,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               >
                 <CloseIcon />
               </Button>
-            </div>
-          </div>
-          <SidebarLivePills
-            showSchedule={showSchedule}
-            showSync={showSync}
-            schedulePct={schedulePct}
-            syncPct={syncPct}
-            syncTone={syncTone}
-            syncLive={syncLive}
-            headerLiveLabel={headerLiveLabel}
-            canOpenConfigNav={canOpenConfigNav}
-          />
-        </div>
-        <div className="dashboard-sidebar-brand">
-          <div className="dashboard-sidebar-brand-head">
-            <SidebarBrandMark />
-            <div className="dashboard-sidebar-brand-text">
-              <h1 className="dashboard-sidebar-brand-h1">Sistema BI - EPEM</h1>
-              <div className="dashboard-sidebar-brand-premium">Motor analítico</div>
             </div>
           </div>
           <div className="dashboard-sidebar-brand-note">Indicadores y cortes alineados a gestión.</div>

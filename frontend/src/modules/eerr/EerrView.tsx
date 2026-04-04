@@ -35,6 +35,7 @@ import {
   gestionMonthsForApi,
   monthShortEs,
 } from "@/modules/eerr/eerrGestionRange";
+import { sortMesGestionDesc } from "@/shared/sortMesGestionOptions";
 import {
   aggregateCuentaNetByMayorVentas,
   aggregateMayorNetByBlock,
@@ -920,7 +921,7 @@ export function EerrView() {
     try {
       const data = await getEerrV2Options();
       const opt = data.options || {};
-      setMonths(opt.gestion_month || []);
+      setMonths(sortMesGestionDesc(opt.gestion_month || []));
       setBlocks(opt.eerr_block || ["ventas", "costos", "gastos"]);
       setSocialRows(opt.social_reason || []);
     } catch (e: unknown) {

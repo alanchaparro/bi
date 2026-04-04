@@ -8,6 +8,7 @@ import { LoadingState } from "../../components/feedback/LoadingState"
 import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter"
 import { UnidadNegocioTagFilter } from "../../components/filters/UnidadNegocioTagFilter"
 import { ViaSegmentedOrMulti } from "../../components/filters/ViaSegmentedOrMulti"
+import { sortMesGestionDesc } from "../../shared/sortMesGestionOptions"
 
 type Row = {
   year: string
@@ -50,6 +51,8 @@ export function BrokersView(props: Props) {
   useEffect(() => {
     setDraft(props.filters)
   }, [props.filters])
+
+  const monthOptions = useMemo(() => sortMesGestionDesc(props.options.months), [props.options.months])
 
   const totals = useMemo(() => {
     return props.rows.reduce(
@@ -109,7 +112,7 @@ export function BrokersView(props: Props) {
           onChange={(v) => setFilter("vias", v)}
         />
         <MultiSelectFilter label="Año" options={props.options.years} selected={draft.years} onChange={(v) => setFilter("years", v)} />
-        <MultiSelectFilter label="Mes" options={props.options.months} selected={draft.months} onChange={(v) => setFilter("months", v)} />
+        <MultiSelectFilter label="Mes" options={monthOptions} selected={draft.months} onChange={(v) => setFilter("months", v)} />
       </div>
       <div className="flex-actions">
         <Button variant="primary" onPress={applyFilters} isDisabled={props.loading}>

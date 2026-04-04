@@ -32,6 +32,7 @@ import {
 import { formatCount, formatGsCompact, formatGsFull } from "../../shared/formatters";
 import { getApiErrorMessage } from "../../shared/apiErrors";
 import { useIsLightTheme } from "../../shared/useIsLightTheme";
+import { sortMesGestionDesc } from "../../shared/sortMesGestionOptions";
 
 type Filters = {
   uns: string[];
@@ -496,6 +497,11 @@ export function AnalisisCarteraView() {
   }, [loadSummary, loadKpiSummary]);
 
   const options = optionsData?.options || {};
+  const gestionMonthFilterOptions = useMemo(
+    () => sortMesGestionDesc(options.gestion_months),
+    [options.gestion_months],
+  );
+  const closeMonthFilterOptions = useMemo(() => sortMesGestionDesc(options.close_months), [options.close_months]);
   const hasCloseMonthsOption = useMemo(() => (options.close_months || []).length > 0, [options.close_months]);
 
   const openFloatFilters = useCallback(() => {
@@ -780,11 +786,10 @@ export function AnalisisCarteraView() {
         <>
       <div className="rendimiento-filters-panel">
       <div className="analysis-filters-grid">
-        <UnidadNegocioTagFilter className="analysis-filter-control" options={options.uns || []} selected={filters.uns} onChange={(uns) => setFilters((f) => ({ ...f, uns }))} />
         <MultiSelectFilter className="analysis-filter-control" label="Supervisor" options={options.supervisors || []} selected={filters.supervisors} onChange={(supervisors) => setFilters((f) => ({ ...f, supervisors }))} />
         <MultiSelectFilter className="analysis-filter-control" label="Año de contrato" options={options.contract_years || []} selected={filters.years} onChange={(years) => setFilters((f) => ({ ...f, years }))} />
         <ViaSegmentedOrMulti
-          className="analysis-filter-control"
+          className="analysis-filter-control rendimiento-via-cobro-segmented"
           label="Vía de cobro"
           options={options.vias || []}
           selected={filters.vias}
@@ -798,8 +803,9 @@ export function AnalisisCarteraView() {
           value={(filters.categorias[0] || "").toUpperCase()}
           onChange={(categoria) => setFilters((f) => ({ ...f, categorias: categoria ? [categoria] : [] }))}
         />
-        <MultiSelectFilter className="analysis-filter-control" label="Mes de gestión" options={options.gestion_months || []} selected={filters.gestionMonths} onChange={(gestionMonths) => setFilters((f) => ({ ...f, gestionMonths }))} />
-        <MultiSelectFilter className="analysis-filter-control" label="Mes de cierre" options={options.close_months || []} selected={filters.closeMonths} onChange={(closeMonths) => setFilters((f) => ({ ...f, closeMonths }))} />
+        <MultiSelectFilter className="analysis-filter-control" label="Mes de gestión" options={gestionMonthFilterOptions} selected={filters.gestionMonths} onChange={(gestionMonths) => setFilters((f) => ({ ...f, gestionMonths }))} />
+        <MultiSelectFilter className="analysis-filter-control" label="Mes de cierre" options={closeMonthFilterOptions} selected={filters.closeMonths} onChange={(closeMonths) => setFilters((f) => ({ ...f, closeMonths }))} />
+        <UnidadNegocioTagFilter className="analysis-filter-control" options={options.uns || []} selected={filters.uns} onChange={(uns) => setFilters((f) => ({ ...f, uns }))} />
       </div>
       <div className="rendimiento-filter-hints" role="note" aria-label="Ayuda de filtros">
         <span className="rendimiento-filter-hint">Mes de gestión usa `gestion_month`.</span>
@@ -1006,7 +1012,7 @@ export function AnalisisCarteraView() {
           <MultiSelectFilter
             className="analysis-filter-control"
             label="Mes de cierre"
-            options={options.close_months || []}
+            options={closeMonthFilterOptions}
             selected={floatClose}
             onChange={setFloatClose}
           />
@@ -1014,7 +1020,7 @@ export function AnalisisCarteraView() {
           <MultiSelectFilter
             className="analysis-filter-control"
             label="Mes de gestión"
-            options={options.gestion_months || []}
+            options={gestionMonthFilterOptions}
             selected={floatGestion}
             onChange={setFloatGestion}
           />

@@ -40,13 +40,18 @@ export function AbbrevSegmentedFilter({
     [options],
   );
 
+  const fixedCompactWidth =
+    /\b(rendimiento-via-cobro-segmented|rendimiento-categoria-segmented)\b/.test(className);
+
   return (
-    <div className={`analytics-abbrev-filter w-full min-w-0 ${className}`.trim()}>
+    <div
+      className={`analytics-abbrev-filter min-w-0 ${fixedCompactWidth ? "" : "w-full"} ${className}`.trim()}
+    >
       <Label className="input-label">{label}</Label>
       <div className="analytics-abbrev-filter__track">
         <ButtonGroup
           key={stableKey}
-          fullWidth
+          fullWidth={!fixedCompactWidth}
           size="sm"
           variant="outline"
           isDisabled={isDisabled}

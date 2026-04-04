@@ -1,6 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { Button, SearchField } from "@heroui/react";
+"use client";
+
+import React, { useId, useMemo, useState } from "react";
+import type { Key, Selection } from "@react-types/shared";
+import { Button, Dropdown, Label, SearchField } from "@heroui/react";
+import { AnalyticsDropdownMenuCheck } from "./AnalyticsDropdownMenuCheck";
 import { filterOptions } from "./filterOptions";
 
 type Props = {
@@ -32,6 +35,29 @@ function ChevronIcon({ open }: { open: boolean }) {
   );
 }
 
+function itemId(value: string) {
+  return value === "" ? "__empty__" : value;
+}
+
+function selectionFromKeys(keys: Selection, filtered: string[], previous: string[]): string[] {
+  if (keys === "all") {
+    return [...new Set([...previous, ...filtered])];
+  }
+  const picked = new Set(keys as Set<Key>);
+  const fromFiltered = filtered.filter((x) => picked.has(itemId(x)));
+  const outsideFilter = previous.filter((x) => !filtered.includes(x));
+  return [...new Set([...outsideFilter, ...fromFiltered])];
+}
+
+/** Claves controladas para el Menu: todas las seleccionadas (RAC ignora ids que no están en la colección visible). */
+function selectedKeysFromValues(selected: string[]): Selection {
+  return new Set(selected.map(itemId));
+}
+
+/**
+ * Multi-select con HeroUI Dropdown (Popover + Menu + ItemIndicator).
+ * @see https://heroui.com/docs/react/components/dropdown
+ */
 export function MultiSelectFilter({
   label,
   options,
@@ -43,98 +69,16 @@ export function MultiSelectFilter({
 }: Props) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [isClosing, setIsClosing] = useState(false);
-  const [portalStyle, setPortalStyle] = useState<React.CSSProperties>({});
-  const containerRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const searchRef = useRef<HTMLInputElement | null>(null);
-  const listboxRef = useRef<HTMLDivElement>(null);
-  /** Evita repetir foco en búsqueda / reset de índice en cada click (saltaba el scroll al inicio). */
-  const listOpenSessionRef = useRef(false);
   const filtered = useMemo(() => filterOptions(options, q), [options, q]);
-  const listboxId = `${label.replace(/\s+/g, "-").toLowerCase()}-listbox`;
-  const optionIdBase = `${listboxId}-option`;
 
-  useEffect(() => {
-    const onOutside = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(target) &&
-        listboxRef.current &&
-        !listboxRef.current.contains(target)
-      ) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onOutside);
-    return () => document.removeEventListener("mousedown", onOutside);
-  }, []);
-
-  useEffect(() => {
-    if (!open) {
-      setIsClosing(false);
-      listOpenSessionRef.current = false;
-      return;
-    }
-
-    if (!listOpenSessionRef.current) {
-      listOpenSessionRef.current = true;
-      const firstSelected = filtered.findIndex((v) => selected.includes(v));
-      setActiveIndex(firstSelected >= 0 ? firstSelected : 0);
-      const t = window.setTimeout(() => searchRef.current?.focus(), 0);
-      return () => window.clearTimeout(t);
-    }
-
-    setActiveIndex((i) => {
-      if (filtered.length === 0) return 0;
-      return Math.min(Math.max(0, i), filtered.length - 1);
-    });
-  }, [open, filtered]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const updatePosition = () => {
-      const trigger = triggerRef.current;
-      if (!trigger) return;
-      const rect = trigger.getBoundingClientRect();
-      const viewportPadding = 12;
-      const availableHeight = Math.max(220, window.innerHeight - rect.bottom - viewportPadding - 8);
-      setPortalStyle({
-        position: "fixed",
-        top: rect.bottom + 4,
-        left: rect.left,
-        width: rect.width,
-        maxHeight: Math.min(320, availableHeight),
-        zIndex: 4000,
-      });
-    };
-
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-    };
-  }, [open]);
-
-  const handleClose = () => {
-    setIsClosing(true);
-    const t = window.setTimeout(() => {
-      setOpen(false);
-      setIsClosing(false);
-    }, 180);
-    return () => window.clearTimeout(t);
-  };
-
-  const toggle = (value: string) => {
-    const has = selected.includes(value);
-    if (has) onChange(selected.filter((v) => v !== value));
-    else onChange([...selected, value]);
-  };
+  const displayText =
+    options.length === 0
+      ? emptyText
+      : selected.length === 0
+        ? placeholder
+        : selected.length === 1
+          ? selected[0]
+          : `${selected.length} seleccionados`;
 
   const allFilteredSelected =
     filtered.length > 0 && filtered.every((v) => selected.includes(v));
@@ -148,181 +92,112 @@ export function MultiSelectFilter({
     onChange([]);
   };
 
-  const moveActive = (delta: number) => {
-    if (filtered.length === 0) return;
-    const next = (activeIndex + delta + filtered.length) % filtered.length;
-    setActiveIndex(next);
+  const onSelectionChange = (keys: Selection) => {
+    onChange(selectionFromKeys(keys, filtered, selected));
   };
 
-  const activeOptionId = filtered[activeIndex] ? `${optionIdBase}-${activeIndex}` : undefined;
-
-  const onTriggerKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      setOpen(true);
-      return;
-    }
-    if (e.key === "Escape") {
-      e.preventDefault();
-      setOpen(false);
-    }
-  };
-
-  const onListboxKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
-    const fromSearchInput = e.target instanceof HTMLInputElement;
-    if (fromSearchInput && e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Escape") {
-      return;
-    }
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      moveActive(1);
-      return;
-    }
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      moveActive(-1);
-      return;
-    }
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      if (filtered[activeIndex]) toggle(filtered[activeIndex]);
-      return;
-    }
-    if (e.key === "Escape") {
-      e.preventDefault();
-      handleClose();
-    }
-  };
-
-  const displayText =
-    options.length === 0
-      ? emptyText
-      : selected.length === 0
-        ? placeholder
-        : selected.length === 1
-          ? selected[0]
-          : `${selected.length} seleccionados`;
+  const menuSelectedKeys = useMemo(() => selectedKeysFromValues(selected), [selected]);
+  const fieldLabelId = useId();
 
   return (
     <div
-      ref={containerRef}
-      aria-label={label}
       className={`multi-select-filter ${open ? "is-open" : ""} ${className}`.trim()}
     >
-      <label className="input-label">{label}</label>
-      <Button
-        ref={triggerRef}
-        variant="outline"
-        className="multi-select-trigger w-full justify-between"
-        onPress={() => setOpen((o) => !o)}
-        onKeyDown={onTriggerKeyDown}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        aria-controls={listboxId}
-        isDisabled={options.length === 0}
-      >
-        <span className="multi-select-value truncate">{displayText}</span>
-        <span className="multi-select-caret" aria-hidden><ChevronIcon open={open} /></span>
-      </Button>
-      {open && options.length > 0 && typeof document !== "undefined" &&
-        createPortal(
-          <div
-            ref={listboxRef}
-            id={listboxId}
-            role="listbox"
-            aria-multiselectable="true"
-            aria-activedescendant={activeOptionId}
-            className={`multi-select-listbox multi-select-listbox--scroll-body ${isClosing ? "multi-select-listbox-closing" : "multi-select-listbox-open"}`}
-            onKeyDown={onListboxKeyDown}
-            onMouseDown={(e) => e.stopPropagation()}
-            tabIndex={-1}
-            style={portalStyle}
-          >
-            <div className="multi-select-search multi-select-search-heroui px-1 pt-1" onMouseDown={(e) => e.stopPropagation()}>
-              <SearchField
-                value={q}
-                onChange={setQ}
-                aria-label={`Buscar en ${label}`}
-                className="w-full"
-              >
-                <SearchField.Group className="w-full">
-                  <SearchField.SearchIcon />
-                  <SearchField.Input
-                    ref={searchRef}
-                    placeholder="Buscar..."
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={onListboxKeyDown}
-                    className="multi-select-search-input input-heroui-tokens min-h-9"
-                  />
-                  <SearchField.ClearButton aria-label="Limpiar búsqueda" />
-                </SearchField.Group>
-              </SearchField>
-            </div>
-            <div
-              className="multi-select-bulk"
-              role="toolbar"
-              aria-label={`Selección masiva en ${label}`}
+      <Label id={fieldLabelId} className="input-label">
+        {label}
+      </Label>
+      <div className="multi-select-dropdown-root">
+        <Dropdown onOpenChange={setOpen}>
+          <Dropdown.Trigger>
+            <Button
+              variant="secondary"
+              className="multi-select-trigger w-full justify-between gap-2"
+              aria-labelledby={fieldLabelId}
+              isDisabled={options.length === 0}
             >
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="multi-select-bulk-btn"
-                isDisabled={filtered.length === 0 || allFilteredSelected}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                onPress={() => selectAllVisible()}
-              >
-                Seleccionar todo
-              </Button>
-              <span className="multi-select-bulk-sep" aria-hidden>
-                ·
+              <span className="multi-select-value min-w-0 truncate text-left">{displayText}</span>
+              <span className="multi-select-caret shrink-0" aria-hidden>
+                <ChevronIcon open={open} />
               </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="multi-select-bulk-btn"
-                isDisabled={selected.length === 0}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                onPress={() => deselectAll()}
-              >
-                Deseleccionar todo
-              </Button>
-            </div>
-            <div className="multi-select-options">
-              {filtered.map((v, idx) => (
-                <button
-                  key={v}
-                  id={`${optionIdBase}-${idx}`}
-                  type="button"
-                  role="option"
-                  aria-selected={selected.includes(v)}
-                  className={`multi-select-option ${idx === activeIndex ? "is-active" : ""}`.trim()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggle(v);
-                  }}
-                  onMouseEnter={() => setActiveIndex(idx)}
-                  onFocus={() => setActiveIndex(idx)}
-                  onKeyDown={onListboxKeyDown}
-                  tabIndex={idx === activeIndex ? 0 : -1}
-                  onMouseDown={(e) => e.preventDefault()}
+            </Button>
+          </Dropdown.Trigger>
+          <Dropdown.Popover
+            placement="bottom start"
+            className="multi-select-dropdown-popover"
+          >
+            {options.length === 0 ? (
+              <p className="multi-select-dropdown-empty px-3 py-3 text-sm text-[var(--color-text-muted)]">
+                {emptyText}
+              </p>
+            ) : (
+              <div className="multi-select-dropdown-popover-inner">
+                <SearchField
+                  value={q}
+                  onChange={setQ}
+                  aria-label={`Buscar en ${label}`}
+                  className="multi-select-dropdown-search w-full shrink-0"
                 >
-                  <span aria-hidden className={`multi-select-check ${selected.includes(v) ? "is-selected" : ""}`.trim()} />
-                  <span className="multi-select-option-text">{v}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          ,
-          document.body,
-        )}
+                  <SearchField.Group className="w-full">
+                    <SearchField.SearchIcon />
+                    <SearchField.Input
+                      placeholder="Buscar..."
+                      className="multi-select-search-input min-h-9 text-sm"
+                    />
+                    <SearchField.ClearButton aria-label="Limpiar búsqueda" />
+                  </SearchField.Group>
+                </SearchField>
+
+                <div
+                  className="multi-select-dropdown-toolbar"
+                  role="toolbar"
+                  aria-label={`Selección masiva en ${label}`}
+                >
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="multi-select-dropdown-toolbar-btn"
+                    isDisabled={filtered.length === 0 || allFilteredSelected}
+                    onPress={() => selectAllVisible()}
+                  >
+                    Seleccionar todo
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="multi-select-dropdown-toolbar-btn"
+                    isDisabled={selected.length === 0}
+                    onPress={() => deselectAll()}
+                  >
+                    Deseleccionar todo
+                  </Button>
+                </div>
+
+                <div className="multi-select-dropdown-list-scroll">
+                  {filtered.length === 0 ? (
+                    <p className="px-2 py-3 text-sm text-[var(--color-text-muted)]">Sin coincidencias</p>
+                  ) : (
+                    <Dropdown.Menu
+                      selectionMode="multiple"
+                      selectedKeys={menuSelectedKeys}
+                      onSelectionChange={onSelectionChange}
+                      aria-label={label}
+                    >
+                      {filtered.map((opt) => (
+                        <Dropdown.Item key={itemId(opt)} id={itemId(opt)} textValue={opt}>
+                          <AnalyticsDropdownMenuCheck selected={selected.includes(opt)} />
+                          <Label className="multi-select-dropdown-item-text">{opt}</Label>
+                        </Dropdown.Item>
+                      ))}
+                    </Dropdown.Menu>
+                  )}
+                </div>
+              </div>
+            )}
+          </Dropdown.Popover>
+        </Dropdown>
+      </div>
     </div>
   );
 }

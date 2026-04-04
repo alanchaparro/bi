@@ -16,6 +16,7 @@ import { ErrorState } from '../../components/feedback/ErrorState'
 import { LoadingState } from '../../components/feedback/LoadingState'
 import { AnalysisFiltersSkeleton } from '../../components/feedback/AnalysisFiltersSkeleton'
 import { getApiErrorMessage } from '../../shared/apiErrors'
+import { sortMesGestionDesc } from '../../shared/sortMesGestionOptions'
 import { formatCount, formatGsFull } from '../../shared/formatters'
 import {
   getRendimientoFirstPaint,
@@ -629,7 +630,7 @@ export function AnalisisRendimientoView() {
         setError(null)
         const opts = await getRendimientoOptions({})
         const nextOptions: Options = {
-          gestionMonths: opts.options.gestion_months || [],
+          gestionMonths: sortMesGestionDesc(opts.options.gestion_months || []),
           defaultGestionMonth: opts.default_gestion_month || '',
           uns: opts.options.uns || [],
           tramos: opts.options.tramos || [],
@@ -638,7 +639,7 @@ export function AnalisisRendimientoView() {
           categorias: opts.options.categorias || [],
           supervisors: opts.options.supervisors || [],
         }
-        const defaultMonth = nextOptions.defaultGestionMonth || nextOptions.gestionMonths[nextOptions.gestionMonths.length - 1] || ''
+        const defaultMonth = nextOptions.defaultGestionMonth || nextOptions.gestionMonths[0] || ''
         const nextFilters: Filters = { ...EMPTY_FILTERS, gestionMonths: defaultMonth ? [defaultMonth] : [] }
         setOptions(nextOptions)
         setFilters(nextFilters)
@@ -708,7 +709,7 @@ export function AnalisisRendimientoView() {
   const hasUnOptions = options.uns.length > 0
 
   const clearFilters = useCallback(() => {
-    const defaultMonth = options.defaultGestionMonth || options.gestionMonths?.[options.gestionMonths.length - 1] || ''
+    const defaultMonth = options.defaultGestionMonth || options.gestionMonths?.[0] || ''
     setFilters({ ...EMPTY_FILTERS, gestionMonths: defaultMonth ? [defaultMonth] : [] })
   }, [options.defaultGestionMonth, options.gestionMonths])
 
@@ -716,7 +717,7 @@ export function AnalisisRendimientoView() {
     try {
       setApplying(true)
       setError(null)
-      const defaultMonth = options.defaultGestionMonth || options.gestionMonths[options.gestionMonths.length - 1] || ''
+      const defaultMonth = options.defaultGestionMonth || options.gestionMonths[0] || ''
       const resetFilters: Filters = { ...EMPTY_FILTERS, gestionMonths: defaultMonth ? [defaultMonth] : [] }
       setFilters(resetFilters)
       setAppliedFilters(resetFilters)
@@ -970,20 +971,28 @@ export function AnalisisRendimientoView() {
         <AnalysisFiltersSkeleton filterCount={7} kpiCount={6} showTable />
       ) : (
         <div className="rendimiento-filters-panel">
+          <AbbrevSegmentedFilter
+            className="analysis-filter-control rendimiento-categoria-segmented"
+            label="Categoría"
+            options={CATEGORIA_ABBREV_OPTIONS}
+            value={(filters.categorias[0] || '').toUpperCase()}
+            onChange={(value) => setFilters((prev) => ({ ...prev, categorias: value ? [value] : [] }))}
+          />
+
+          <div className="rendimiento-filter-hints" role="note" aria-label="Ayuda de filtros">
+            <span className="rendimiento-filter-hint">Mes de gestión usa `gestion_month`.</span>
+            <span className="rendimiento-filter-hint">Vía de cobro = intención operativa.</span>
+            <span className="rendimiento-filter-hint">Vía de pago = cobro real registrado.</span>
+          </div>
+
           <div className="analysis-filters-grid">
             <MultiSelectFilter
               className="analysis-filter-control"
-              label="Mes de gestión"
-              options={options.gestionMonths}
-              selected={filters.gestionMonths}
-              onChange={(values) => setFilters((prev) => ({ ...prev, gestionMonths: values }))}
-              placeholder="Historia"
-            />
-            <UnidadNegocioTagFilter
-              className="analysis-filter-control"
-              options={options.uns}
-              selected={filters.uns}
-              onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
+              label="Supervisor"
+              options={options.supervisors}
+              selected={filters.supervisors}
+              onChange={(values) => setFilters((prev) => ({ ...prev, supervisors: values }))}
+              placeholder="Todos"
             />
             <MultiSelectFilter
               className="analysis-filter-control"
@@ -992,6 +1001,14 @@ export function AnalisisRendimientoView() {
               selected={filters.tramos}
               onChange={(values) => setFilters((prev) => ({ ...prev, tramos: values }))}
               placeholder="Todos"
+            />
+            <MultiSelectFilter
+              className="analysis-filter-control"
+              label="Mes de gestión"
+              options={options.gestionMonths}
+              selected={filters.gestionMonths}
+              onChange={(values) => setFilters((prev) => ({ ...prev, gestionMonths: values }))}
+              placeholder="Historia"
             />
             <ViaSegmentedOrMulti
               className="analysis-filter-control"
@@ -1007,27 +1024,13 @@ export function AnalisisRendimientoView() {
               selected={filters.viasPago}
               onChange={(values) => setFilters((prev) => ({ ...prev, viasPago: values }))}
             />
-            <AbbrevSegmentedFilter
+            <UnidadNegocioTagFilter
+              splitButtonRow
               className="analysis-filter-control"
-              label="Categoría"
-              options={CATEGORIA_ABBREV_OPTIONS}
-              value={(filters.categorias[0] || '').toUpperCase()}
-              onChange={(value) => setFilters((prev) => ({ ...prev, categorias: value ? [value] : [] }))}
+              options={options.uns}
+              selected={filters.uns}
+              onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
             />
-            <MultiSelectFilter
-              className="analysis-filter-control"
-              label="Supervisor"
-              options={options.supervisors}
-              selected={filters.supervisors}
-              onChange={(values) => setFilters((prev) => ({ ...prev, supervisors: values }))}
-              placeholder="Todos"
-            />
-          </div>
-
-          <div className="rendimiento-filter-hints" role="note" aria-label="Ayuda de filtros">
-            <span className="rendimiento-filter-hint">Mes de gestión usa `gestion_month`.</span>
-            <span className="rendimiento-filter-hint">Vía de cobro = intención operativa.</span>
-            <span className="rendimiento-filter-hint">Vía de pago = cobro real registrado.</span>
           </div>
 
           <div className="analysis-actions-row analysis-actions">
@@ -1301,7 +1304,7 @@ export function AnalisisRendimientoView() {
               onChange={setFloatViasCobro}
             />
             <AbbrevSegmentedFilter
-              className="analysis-filter-control"
+              className="analysis-filter-control rendimiento-categoria-segmented"
               label="Categoría"
               options={CATEGORIA_ABBREV_OPTIONS}
               value={floatCategoria}

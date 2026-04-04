@@ -20,6 +20,7 @@ import {
 import { getApiErrorMessage } from "../../shared/apiErrors";
 import { useIsLightTheme } from "../../shared/useIsLightTheme";
 import { formatCount } from "../../shared/formatters";
+import { sortMesGestionDesc } from "../../shared/sortMesGestionOptions";
 
 type Filters = {
   closeMonths: string[];
@@ -143,13 +144,7 @@ export function AnalisisRoloCarteraView() {
       setOptionsError(null);
       const data = await getPortfolioCorteOptions({});
       setOptionsData(data);
-      const latestClose = [...(data.options.close_months || [])]
-        .sort((a, b) => {
-          const [am, ay] = a.split("/").map(Number);
-          const [bm, by] = b.split("/").map(Number);
-          return ay * 100 + am - (by * 100 + bm);
-        })
-        .pop();
+      const latestClose = sortMesGestionDesc(data.options.close_months || [])[0];
       if (latestClose) {
         const nextFilters = { ...DEFAULT_FILTERS, closeMonths: [latestClose] };
         setFilters(nextFilters);
@@ -213,6 +208,7 @@ export function AnalisisRoloCarteraView() {
   const kpis = summaryData?.kpis || {};
   const rows = summaryData?.rows || [];
   const options = optionsData?.options || {};
+  const closeMonthOptions = useMemo(() => sortMesGestionDesc(options.close_months), [options.close_months]);
 
   const kpiCards = useMemo(
     () => [
@@ -269,20 +265,20 @@ export function AnalisisRoloCarteraView() {
           <MultiSelectFilter
             className="analysis-filter-control"
             label="Mes de cierre"
-            options={options.close_months || []}
+            options={closeMonthOptions}
             selected={filters.closeMonths}
             onChange={(closeMonths) => setFilters((prev) => ({ ...prev, closeMonths: closeMonths.length ? [closeMonths[closeMonths.length - 1]] : [] }))}
           />
-          <UnidadNegocioTagFilter className="analysis-filter-control" options={options.uns || []} selected={filters.uns} onChange={(uns) => setFilters((prev) => ({ ...prev, uns }))} />
           <MultiSelectFilter className="analysis-filter-control" label="Supervisor" options={options.supervisors || []} selected={filters.supervisors} onChange={(supervisors) => setFilters((prev) => ({ ...prev, supervisors }))} />
+          <MultiSelectFilter className="analysis-filter-control" label="Año de contrato" options={options.contract_years || []} selected={filters.years} onChange={(years) => setFilters((prev) => ({ ...prev, years }))} />
           <ViaSegmentedOrMulti
-            className="analysis-filter-control"
+            className="analysis-filter-control rendimiento-via-cobro-segmented"
             label="Vía de cobro"
             options={options.vias || []}
             selected={filters.vias}
             onChange={(vias) => setFilters((prev) => ({ ...prev, vias }))}
           />
-          <MultiSelectFilter className="analysis-filter-control" label="Año de contrato" options={options.contract_years || []} selected={filters.years} onChange={(years) => setFilters((prev) => ({ ...prev, years }))} />
+          <UnidadNegocioTagFilter className="analysis-filter-control" options={options.uns || []} selected={filters.uns} onChange={(uns) => setFilters((prev) => ({ ...prev, uns }))} />
         </div>
         <div className="analysis-actions-row analysis-actions">
           <Button variant="primary" onPress={() => void applyFilters()} isDisabled={loadingOptions || !filters.closeMonths.length || loadingSummary}>
@@ -351,7 +347,7 @@ export function AnalisisRoloCarteraView() {
         <MultiSelectFilter
           className="analysis-filter-control"
           label="Mes de cierre"
-          options={options.close_months || []}
+          options={closeMonthOptions}
           selected={floatingCloseMonths}
           onChange={(closeMonths) => setFloatingCloseMonths(closeMonths.length ? [closeMonths[closeMonths.length - 1]] : [])}
         />

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Card, Tabs } from '@heroui/react'
+import { Button, Card, Table, Tabs } from '@heroui/react'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
 import { UnidadNegocioTagFilter } from '../../components/filters/UnidadNegocioTagFilter'
@@ -27,6 +27,7 @@ import {
   type CobranzasCohorteSummaryResponse,
 } from '../../shared/api'
 import { getApiErrorMessage } from '../../shared/apiErrors'
+import { sortMesGestionDesc } from '../../shared/sortMesGestionOptions'
 import { formatCount, formatGsFull } from '../../shared/formatters'
 
 type Filters = {
@@ -238,7 +239,7 @@ export function AnalisisCobranzasCohorteView() {
 
         const opts = await getCobranzasCohorteOptions({})
         const nextOptions: Options = {
-          cutoffMonths: opts.options.cutoff_months || [],
+          cutoffMonths: sortMesGestionDesc(opts.options.cutoff_months || []),
           uns: opts.options.uns || [],
           vias: opts.options.vias || [],
           categorias: opts.options.categories || [],
@@ -248,7 +249,7 @@ export function AnalisisCobranzasCohorteView() {
         const fp0 = cohorteFreshnessKey(opts.meta)
         if (fp0) lastCohorteFreshnessRef.current = fp0
 
-        const cutoff = opts.default_cutoff || nextOptions.cutoffMonths[nextOptions.cutoffMonths.length - 1] || ''
+        const cutoff = opts.default_cutoff || nextOptions.cutoffMonths[0] || ''
         const nextFilters: Filters = {
           cutoffMonth: cutoff,
           uns: [],
@@ -324,7 +325,7 @@ export function AnalisisCobranzasCohorteView() {
   const clearFilters = useCallback(() => {
     setFilters({
       ...EMPTY_FILTERS,
-      cutoffMonth: options.cutoffMonths?.[options.cutoffMonths.length - 1] ?? '',
+      cutoffMonth: options.cutoffMonths?.[0] ?? '',
     })
   }, [options.cutoffMonths])
 
@@ -333,7 +334,7 @@ export function AnalisisCobranzasCohorteView() {
       setApplying(true)
       setError(null)
       const resetFilters: Filters = {
-        cutoffMonth: options.cutoffMonths[options.cutoffMonths.length - 1] || '',
+        cutoffMonth: options.cutoffMonths[0] || '',
         uns: [],
         vias: [],
         categorias: [],
@@ -402,7 +403,7 @@ export function AnalisisCobranzasCohorteView() {
           if (cancelled) return
 
           const nextOptions: Options = {
-            cutoffMonths: opts.options.cutoff_months || [],
+            cutoffMonths: sortMesGestionDesc(opts.options.cutoff_months || []),
             uns: opts.options.uns || [],
             vias: opts.options.vias || [],
             categorias: opts.options.categories || [],
@@ -413,7 +414,7 @@ export function AnalisisCobranzasCohorteView() {
           let nextAf = appliedFiltersRef.current
           if (nextAf.cutoffMonth && !nextOptions.cutoffMonths.includes(nextAf.cutoffMonth)) {
             const fallback =
-              opts.default_cutoff || nextOptions.cutoffMonths[nextOptions.cutoffMonths.length - 1] || ''
+              opts.default_cutoff || nextOptions.cutoffMonths[0] || ''
             nextAf = { ...nextAf, cutoffMonth: fallback }
             appliedFiltersRef.current = nextAf
             setFilters((f) => ({ ...f, cutoffMonth: fallback }))
@@ -700,6 +701,7 @@ export function AnalisisCobranzasCohorteView() {
                 <label className="input-label" id="cutoff-month-label">Mes de cobro</label>
                 {cutoffMonthItems.length > 0 ? (
                   <StringSelect
+                    ui="dropdown"
                     labelId="cutoff-month-label"
                     items={cutoffMonthItems}
                     selectedKey={filters.cutoffMonth}
@@ -710,13 +712,6 @@ export function AnalisisCobranzasCohorteView() {
                   <p className="text-sm text-[var(--color-text-muted)]" role="status">Sin meses de cobro disponibles.</p>
                 )}
               </div>
-
-              <UnidadNegocioTagFilter
-                className="analysis-filter-control"
-                options={options.uns}
-                selected={filters.uns}
-                onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
-              />
 
               <AbbrevSegmentedFilter
                 className="analysis-filter-control"
@@ -741,6 +736,13 @@ export function AnalisisCobranzasCohorteView() {
                 options={CATEGORIA_ABBREV_OPTIONS}
                 value={selectedCategoria}
                 onChange={(v) => setFilters((prev) => ({ ...prev, categorias: v === '' ? [] : [v] }))}
+              />
+
+              <UnidadNegocioTagFilter
+                className="analysis-filter-control"
+                options={options.uns}
+                selected={filters.uns}
+                onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
               />
             </div>
             <div className="rendimiento-filter-hints" role="note" aria-label="Ayuda de filtros">
@@ -874,46 +876,65 @@ export function AnalisisCobranzasCohorteView() {
                       ? 'Incluye tramos 0 al 7. Si el panel es estrecho, desplázate horizontalmente en la tabla.'
                       : 'Desliza la tabla horizontalmente para revisar todas las métricas.'}
                   </p>
-                  <div className="table-wrap analysis-table-wrap analysis-table-wrap-annual analysis-table-wrap--cohorte-resumen">
-                    <table className="cohorte-resumen-table">
-                      <thead>
-                        <tr>
-                          <th>{usesTramoBreakdown ? 'Tramo' : 'Año'}</th>
-                          <th className="num">Activos</th>
-                          <th className="num">Pagaron</th>
-                          <th className="num">% Pago Contratos</th>
-                          <th className="num">Debería</th>
-                          <th className="num">Cobrado</th>
-                          <th className="num">% Cobertura Monto</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {byTramoEntries.map(([key, row]) => (
-                          <tr key={key}>
-                            <td className="analysis-key-cell">{usesTramoBreakdown ? `Tramo ${key}` : key}</td>
-                            <td className="num">{formatCount(row.activos || 0)}</td>
-                            <td className="num">{formatCount(row.pagaron || 0)}</td>
-                            <td className="num">{pct(row.pct_pago_contratos || 0)}</td>
-                            <td className="num">{formatGsFull(row.deberia || 0)}</td>
-                            <td className="num">{formatGsFull(row.cobrado || 0)}</td>
-                            <td className="num">{pct(row.pct_cobertura_monto || 0)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      {hasRows ? (
-                        <tfoot className="cohorte-resumen-tfoot">
-                          <tr>
-                            <td className="analysis-key-cell">Total</td>
-                            <td className="num">{formatCount(cohorteResumenTableTotals.activos)}</td>
-                            <td className="num">{formatCount(cohorteResumenTableTotals.pagaron)}</td>
-                            <td className="num">{pct(cohorteResumenTableTotals.pctPagoContratos)}</td>
-                            <td className="num">{formatGsFull(cohorteResumenTableTotals.deberia)}</td>
-                            <td className="num">{formatGsFull(cohorteResumenTableTotals.cobrado)}</td>
-                            <td className="num">{pct(cohorteResumenTableTotals.pctCoberturaMonto)}</td>
-                          </tr>
-                        </tfoot>
-                      ) : null}
-                    </table>
+                  <div className="cohorte-resumen-basic-table w-full min-w-0">
+                    <Table>
+                      <Table.ScrollContainer>
+                        <Table.Content
+                          aria-label={
+                            usesTramoBreakdown
+                              ? 'Resumen de efectividad por tramo'
+                              : 'Resumen de efectividad por año de venta'
+                          }
+                          className="min-w-[64rem]"
+                        >
+                          <Table.Header>
+                            <Table.Column isRowHeader>{usesTramoBreakdown ? 'Tramo' : 'Año'}</Table.Column>
+                            <Table.Column className="text-end">Activos</Table.Column>
+                            <Table.Column className="text-end">Pagaron</Table.Column>
+                            <Table.Column className="text-end">% Pago Contratos</Table.Column>
+                            <Table.Column className="text-end">Debería</Table.Column>
+                            <Table.Column className="text-end">Cobrado</Table.Column>
+                            <Table.Column className="text-end">% Cobertura Monto</Table.Column>
+                          </Table.Header>
+                          <Table.Body>
+                            {byTramoEntries.map(([key, row]) => (
+                              <Table.Row key={key}>
+                                <Table.Cell>{usesTramoBreakdown ? `Tramo ${key}` : key}</Table.Cell>
+                                <Table.Cell className="text-end tabular-nums">{formatCount(row.activos || 0)}</Table.Cell>
+                                <Table.Cell className="text-end tabular-nums">{formatCount(row.pagaron || 0)}</Table.Cell>
+                                <Table.Cell className="text-end tabular-nums">{pct(row.pct_pago_contratos || 0)}</Table.Cell>
+                                <Table.Cell className="text-end tabular-nums">{formatGsFull(row.deberia || 0)}</Table.Cell>
+                                <Table.Cell className="text-end tabular-nums">{formatGsFull(row.cobrado || 0)}</Table.Cell>
+                                <Table.Cell className="text-end tabular-nums">{pct(row.pct_cobertura_monto || 0)}</Table.Cell>
+                              </Table.Row>
+                            ))}
+                            {hasRows ? (
+                              <Table.Row className="cohorte-resumen-total-row">
+                                <Table.Cell>Total</Table.Cell>
+                                <Table.Cell className="text-end tabular-nums">
+                                  {formatCount(cohorteResumenTableTotals.activos)}
+                                </Table.Cell>
+                                <Table.Cell className="text-end tabular-nums">
+                                  {formatCount(cohorteResumenTableTotals.pagaron)}
+                                </Table.Cell>
+                                <Table.Cell className="text-end tabular-nums">
+                                  {pct(cohorteResumenTableTotals.pctPagoContratos)}
+                                </Table.Cell>
+                                <Table.Cell className="text-end tabular-nums">
+                                  {formatGsFull(cohorteResumenTableTotals.deberia)}
+                                </Table.Cell>
+                                <Table.Cell className="text-end tabular-nums">
+                                  {formatGsFull(cohorteResumenTableTotals.cobrado)}
+                                </Table.Cell>
+                                <Table.Cell className="text-end tabular-nums">
+                                  {pct(cohorteResumenTableTotals.pctCoberturaMonto)}
+                                </Table.Cell>
+                              </Table.Row>
+                            ) : null}
+                          </Table.Body>
+                        </Table.Content>
+                      </Table.ScrollContainer>
+                    </Table>
                   </div>
                 </div>
               </div>
@@ -1049,6 +1070,7 @@ export function AnalisisCobranzasCohorteView() {
             <label className="input-label" id="float-cutoff-month-label">Mes de cobro</label>
             {cutoffMonthItems.length > 0 ? (
               <StringSelect
+                ui="dropdown"
                 labelId="float-cutoff-month-label"
                 items={cutoffMonthItems}
                 selectedKey={floatCutoff}

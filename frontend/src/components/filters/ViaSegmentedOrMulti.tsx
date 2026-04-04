@@ -45,11 +45,16 @@ export function ViaSegmentedOrMulti({
     [options, placeholder],
   );
 
+  const segmentedClassName =
+    label === "Vía de cobro" && canSegment
+      ? `${className ?? ""} rendimiento-via-cobro-segmented w-[150px] max-w-[150px] shrink-0`.trim()
+      : (className ?? "");
+
   if (canSegment) {
     const value = selected[0] ?? "";
     return (
       <AbbrevSegmentedFilter
-        className={className}
+        className={segmentedClassName}
         label={label}
         options={abbrevOptions}
         value={value}

@@ -14,6 +14,11 @@ export type UnidadNegocioTagFilterProps = {
   emptyText?: string;
   /** Tamaño de los botones (HeroUI Button). */
   buttonSize?: "sm" | "md" | "lg";
+  /**
+   * Si es true, el bloque etiqueta + descripción queda en `.un-filter-tag-group` y los botones en un
+   * hermano `.un-filter-un-buttons` (layout usado en panel Rendimiento).
+   */
+  splitButtonRow?: boolean;
 };
 
 /**
@@ -30,6 +35,7 @@ export function UnidadNegocioTagFilter({
   className = "",
   emptyText = "Sin opciones (no hay datos cargados)",
   buttonSize = "sm",
+  splitButtonRow = false,
 }: UnidadNegocioTagFilterProps) {
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 
@@ -56,32 +62,52 @@ export function UnidadNegocioTagFilter({
     );
   }
 
+  const description = (
+    <Description className="un-filter-un-desc text-[var(--color-text-muted)]">
+      {selectedInOrder.length > 0
+        ? `Incluidas: ${selectedInOrder.join(", ")}`
+        : "Todas las UN (ninguna pulsada: sin acotar por unidad)"}
+    </Description>
+  );
+
+  const buttons = (
+    <div role="group" aria-label={label} className="un-filter-un-buttons">
+      {options.map((un) => {
+        const isSelected = selectedSet.has(un);
+        return (
+          <Button
+            key={un}
+            type="button"
+            size={buttonSize}
+            variant={isSelected ? "primary" : "outline"}
+            aria-pressed={isSelected}
+            onPress={() => toggle(un)}
+            className="un-filter-un-btn font-medium"
+          >
+            {un}
+          </Button>
+        );
+      })}
+    </div>
+  );
+
+  if (splitButtonRow) {
+    return (
+      <>
+        <div className={outer}>
+          <Label className="input-label">{label}</Label>
+          {description}
+        </div>
+        {buttons}
+      </>
+    );
+  }
+
   return (
     <div className={outer}>
       <Label className="input-label">{label}</Label>
-      <div role="group" aria-label={label} className="un-filter-un-buttons">
-        {options.map((un) => {
-          const isSelected = selectedSet.has(un);
-          return (
-            <Button
-              key={un}
-              type="button"
-              size={buttonSize}
-              variant={isSelected ? "primary" : "outline"}
-              aria-pressed={isSelected}
-              onPress={() => toggle(un)}
-              className="un-filter-un-btn font-medium"
-            >
-              {un}
-            </Button>
-          );
-        })}
-      </div>
-      <Description className="un-filter-un-desc text-[var(--color-text-muted)]">
-        {selectedInOrder.length > 0
-          ? `Incluidas: ${selectedInOrder.join(", ")}`
-          : "Todas las UN (ninguna pulsada: sin acotar por unidad)"}
-      </Description>
+      {buttons}
+      {description}
     </div>
   );
 }

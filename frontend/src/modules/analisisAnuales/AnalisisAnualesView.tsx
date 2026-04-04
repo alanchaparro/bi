@@ -13,6 +13,7 @@ import { ErrorState } from "../../components/feedback/ErrorState";
 import { LoadingState } from "../../components/feedback/LoadingState";
 import { AnalysisFiltersSkeleton } from "../../components/feedback/AnalysisFiltersSkeleton";
 import { getApiErrorMessage } from "../../shared/apiErrors";
+import { sortMesGestionDesc } from "../../shared/sortMesGestionOptions";
 import { formatCount, formatGsFull } from "../../shared/formatters";
 import {
   getAnualesFirstPaint,
@@ -89,7 +90,7 @@ export function AnalisisAnualesView() {
         setOptions({
           uns: data.options.uns || [],
           years: data.options.years || [],
-          contractMonths: data.options.contract_months || [],
+          contractMonths: sortMesGestionDesc(data.options.contract_months || []),
         });
         const defaults: Filters = { ...EMPTY_FILTERS };
         setFilters(defaults);
@@ -248,12 +249,6 @@ export function AnalisisAnualesView() {
         <>
           <div className="rendimiento-filters-panel">
           <div className="analysis-filters-grid">
-            <UnidadNegocioTagFilter
-              className="analysis-filter-control"
-              options={options.uns}
-              selected={filters.uns}
-              onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
-            />
             <MultiSelectFilter
               className="analysis-filter-control"
               label="Año de contrato"
@@ -269,6 +264,12 @@ export function AnalisisAnualesView() {
               selected={filters.contractMonths}
               onChange={(values) => setFilters((prev) => ({ ...prev, contractMonths: values }))}
               placeholder="Todos"
+            />
+            <UnidadNegocioTagFilter
+              className="analysis-filter-control"
+              options={options.uns}
+              selected={filters.uns}
+              onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
             />
           </div>
           <div className="rendimiento-filter-hints" role="note" aria-label="Ayuda de filtros">

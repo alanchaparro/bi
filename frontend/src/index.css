@@ -742,6 +742,15 @@ body.sidebar-open .tabs-nav {
     grid-template-columns: 1fr;
   }
 
+  /* KPIs en columna única: evitar partir montos/cantidades en varias líneas */
+  .analysis-card .summary-grid .kpi-card-value {
+    white-space: nowrap;
+    overflow-x: auto;
+    overflow-wrap: normal;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .analysis-actions-row .btn,
   .analysis-actions-row .button {
     width: 100%;
@@ -770,7 +779,11 @@ body.sidebar-open .tabs-nav {
   }
 }
 
-@media (max-width: 1280px) {
+/*
+ * Tablet ancha: 2 columnas. No usar solo max-width:1280px: en ≤1024px chocaba con la regla
+ * móvil (1 columna) que va antes en el archivo y esta bloque la pisaba → KPIs en 2–3 columnas en el teléfono.
+ */
+@media (max-width: 1280px) and (min-width: 1025px) {
   .analysis-card .summary-grid {
     grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
@@ -896,10 +909,14 @@ body.sidebar-open .tabs-nav {
 
 .grid-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11.5rem), 1fr));
-  grid-auto-flow: dense;
+  grid-template-columns: 1fr;
   gap: 1rem;
   margin-bottom: 1rem;
+  align-items: start;
+}
+
+.grid-cards > * {
+  min-width: 0;
 }
 
 .grid-cards > .un-filter-tag-group {
@@ -1359,11 +1376,13 @@ body.sidebar-open .tabs-nav {
   padding-right: 0.05rem;
 }
 
-/* Analysis filters grid: auto-ubicación por ancho; UN al final a ancho completo (sin scroll) */
+/*
+ * Filtros analytics: 1 col móvil → 2 tablet → 3 desktop → 4 pantallas anchas.
+ * Evita auto-fill intercalado; UN sigue en ancho completo al final del DOM.
+ */
 .analysis-filters-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 12.25rem), 1fr));
-  grid-auto-flow: dense;
+  grid-template-columns: 1fr;
   gap: 1rem 1.1rem;
   margin-bottom: 1.15rem;
   align-items: start;
@@ -1372,15 +1391,44 @@ body.sidebar-open .tabs-nav {
   max-width: none;
 }
 
+.analysis-filters-grid > * {
+  min-width: 0;
+}
+
 .analysis-filters-grid > .un-filter-tag-group {
-  order: 99;
   grid-column: 1 / -1;
+}
+
+@media (min-width: 640px) {
+  .analysis-filters-grid,
+  .cohorte-filters-grid-3,
+  .grid-cards,
+  .analysis-skeleton-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .analysis-filters-grid,
+  .cohorte-filters-grid-3,
+  .grid-cards,
+  .analysis-skeleton-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (min-width: 1025px) {
   .analysis-filters-grid {
     gap: 0.58rem 0.66rem;
     margin-bottom: 0.72rem;
+  }
+}
+
+@media (min-width: 1400px) {
+  .analysis-filters-grid,
+  .cohorte-filters-grid-3,
+  .analysis-skeleton-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -1480,8 +1528,8 @@ body.sidebar-open .tabs-nav {
   to { opacity: 1; }
 }
 @keyframes filters-item-enter {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .analysis-filter-control .input {
@@ -1496,6 +1544,18 @@ body.sidebar-open .tabs-nav {
 
 .analysis-filter-control:focus-within {
   z-index: 120;
+}
+
+/* MultiSelect en grillas analytics: el wrapper del filtro (no estirar ~700px en el grid) */
+.multi-select-filter.analysis-filter-control {
+  width: 150px;
+  max-width: 100%;
+}
+
+/* StringSelect ui=dropdown u otros hijos: trigger bajo .analysis-filter-control sin clase multi-select-filter */
+.analysis-filter-control .multi-select-dropdown-root {
+  width: 150px;
+  max-width: 100%;
 }
 
 .analysis-active-count {
@@ -1711,54 +1771,114 @@ body.sidebar-open .tabs-nav {
 }
 
 /*
- * Cobranzas cohorte — pocas filas fijas (tramos 0–7): sin max-height para no recortar la última fila.
- * .table-wrap más abajo fuerza overflow-y: hidden; este selector más específico lo anula aquí.
+ * Cobranzas cohorte — patrón Basic HeroUI (min-w en Table.Content + ScrollContainer).
+ * La variante primary aplica overflow-clip en <table> y recorta texto al borde; se anula aquí.
  */
-.table-wrap.analysis-table-wrap--cohorte-resumen {
-  max-height: none;
-  overflow-y: visible;
-  overflow-x: auto;
-  padding-bottom: 2px;
+.cohorte-resumen-basic-table {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
-.analysis-table-wrap--cohorte-resumen .cohorte-resumen-table {
-  min-width: 64rem;
-  width: 100%;
+.cohorte-resumen-basic-table [data-slot="table"] {
+  overflow: visible !important;
+  max-width: 100%;
+}
+
+.cohorte-resumen-basic-table [data-slot="table-content"] {
+  overflow: visible !important;
   table-layout: auto;
   border-collapse: separate;
   border-spacing: 0;
 }
 
-.analysis-table-wrap--cohorte-resumen .cohorte-resumen-table th.num,
-.analysis-table-wrap--cohorte-resumen .cohorte-resumen-table td.num {
+/* Aire lateral: evita que el primer/último carácter quede pegado al borde del área de scroll */
+.cohorte-resumen-basic-table [data-slot="table-scroll-container"] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding-inline: 0.65rem;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+/* Tipografía alineada cabecera/cuerpo */
+.cohorte-resumen-basic-table .table__column,
+.cohorte-resumen-basic-table .table__cell {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.cohorte-resumen-basic-table .table__column {
+  font-weight: 600;
+  white-space: normal;
+  word-break: break-word;
+  vertical-align: bottom;
+}
+
+.cohorte-resumen-basic-table .table__cell {
   white-space: nowrap;
-  padding-inline: 0.75rem;
-  vertical-align: middle;
-  line-height: 1.4;
 }
 
-/* Montos largos (Gs. + miles con puntos): una sola línea estable */
-.analysis-table-wrap--cohorte-resumen .cohorte-resumen-table th:nth-child(5),
-.analysis-table-wrap--cohorte-resumen .cohorte-resumen-table td:nth-child(5),
-.analysis-table-wrap--cohorte-resumen .cohorte-resumen-table th:nth-child(6),
-.analysis-table-wrap--cohorte-resumen .cohorte-resumen-table td:nth-child(6) {
-  min-width: 15.5rem;
+/* Mínimos por columna (auto): montos un poco más anchos; el espacio extra se reparte sin un solo hueco enorme */
+.cohorte-resumen-basic-table [data-slot="table-content"] th:nth-child(1),
+.cohorte-resumen-basic-table [data-slot="table-content"] td:nth-child(1) {
+  min-width: 5.25rem;
 }
 
-.analysis-table-wrap--cohorte-resumen .cohorte-resumen-table tbody tr:last-child td {
+.cohorte-resumen-basic-table [data-slot="table-content"] th:nth-child(2),
+.cohorte-resumen-basic-table [data-slot="table-content"] td:nth-child(2),
+.cohorte-resumen-basic-table [data-slot="table-content"] th:nth-child(3),
+.cohorte-resumen-basic-table [data-slot="table-content"] td:nth-child(3) {
+  min-width: 5.5rem;
+}
+
+.cohorte-resumen-basic-table [data-slot="table-content"] th:nth-child(4),
+.cohorte-resumen-basic-table [data-slot="table-content"] td:nth-child(4) {
+  min-width: 7rem;
+}
+
+.cohorte-resumen-basic-table [data-slot="table-content"] th:nth-child(5),
+.cohorte-resumen-basic-table [data-slot="table-content"] td:nth-child(5),
+.cohorte-resumen-basic-table [data-slot="table-content"] th:nth-child(6),
+.cohorte-resumen-basic-table [data-slot="table-content"] td:nth-child(6) {
+  min-width: 12.5rem;
+}
+
+.cohorte-resumen-basic-table [data-slot="table-content"] th:nth-child(7),
+.cohorte-resumen-basic-table [data-slot="table-content"] td:nth-child(7) {
+  min-width: 7.5rem;
+}
+
+.cohorte-resumen-basic-table [data-slot="table-content"] th,
+.cohorte-resumen-basic-table [data-slot="table-content"] td,
+.cohorte-resumen-basic-table .table__column,
+.cohorte-resumen-basic-table .table__cell {
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.cohorte-resumen-basic-table [data-slot="table-content"]:has(.cohorte-resumen-total-row) tbody > tr:nth-last-child(2) > td {
   padding-bottom: 0.55rem;
 }
 
-.analysis-table-wrap--cohorte-resumen .cohorte-resumen-tfoot td {
+.cohorte-resumen-basic-table [data-slot="table-content"]:not(:has(.cohorte-resumen-total-row)) tbody > tr:last-child > td {
+  padding-bottom: 0.55rem;
+}
+
+.cohorte-resumen-basic-table tr.cohorte-resumen-total-row td {
   padding-top: 0.65rem;
   padding-bottom: 1rem;
-  font-weight: 750;
+  font-weight: 700;
   border-top: 2px solid color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
   background: color-mix(in srgb, var(--color-primary) 8%, var(--table-bg));
   vertical-align: middle;
 }
 
-.analysis-table-wrap--cohorte-resumen .cohorte-resumen-tfoot td.analysis-key-cell {
+.cohorte-resumen-basic-table tr.cohorte-resumen-total-row td:first-child {
   font-size: 0.82rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1833,8 +1953,7 @@ body.sidebar-open .tabs-nav {
 
 .analysis-skeleton-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 12.25rem), 1fr));
-  grid-auto-flow: dense;
+  grid-template-columns: 1fr;
   gap: 0.75rem 0.9rem;
 }
 
@@ -1995,14 +2114,6 @@ body.sidebar-open .tabs-nav {
 }
 
 @media (max-width: 1280px) {
-  .analysis-filters-grid {
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr));
-  }
-
-  .analysis-skeleton-grid {
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr));
-  }
-
   .analysis-kpis,
   .analysis-skeleton-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2010,8 +2121,6 @@ body.sidebar-open .tabs-nav {
 }
 
 @media (max-width: 900px) {
-  .analysis-filters-grid,
-  .analysis-skeleton-grid,
   .analysis-kpis,
   .analysis-skeleton-kpis {
     grid-template-columns: 1fr;
@@ -3149,10 +3258,24 @@ label.input-label {
 .multi-select-filter {
   position: relative;
   isolation: isolate;
+  /* Misma pila vertical que label + control en Mes de cobro / segmentados (evita label inline junto al trigger) */
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
 }
 
 .multi-select-filter.is-open {
   z-index: 900;
+}
+
+/* Contenedor estable: MenuTrigger/PressResponder no debe romper la columna flex del filtro */
+.multi-select-dropdown-root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
 }
 
 .multi-select-trigger {
@@ -3200,6 +3323,202 @@ label.input-label {
 
 .multi-select-chevron.is-open {
   transform: rotate(180deg);
+}
+
+/*
+ * MultiSelectFilter + HeroUI Dropdown: cuerpo del popover (.dropdown__popover).
+ * Sin esto, el panel hereda escalas raras y las reglas anidadas del theme no pegan bien al árbol portaled.
+ */
+.multi-select-dropdown-popover.dropdown__popover {
+  z-index: 9600 !important;
+  width: min(100vw - 1.5rem, 20rem) !important;
+  min-width: 260px !important;
+  max-width: min(100vw - 1.5rem, 22rem) !important;
+  max-height: min(72vh, 440px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  font-size: 12px !important;
+  line-height: 1.35 !important;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
+}
+
+/* StringSelect ui=dropdown: ancho mínimo al del trigger (RAC inyecta --trigger-width en Menu) */
+.multi-select-dropdown-popover.string-select-dropdown-popover.dropdown__popover {
+  width: max(min(100vw - 1.5rem, 22rem), var(--trigger-width, 0px)) !important;
+  min-width: max(260px, var(--trigger-width, 200px)) !important;
+}
+
+.string-select-dropdown-root {
+  position: relative;
+  isolation: isolate;
+}
+
+.string-select-dropdown-root.is-open {
+  z-index: 900;
+}
+
+.string-select-dropdown-menu-scroll {
+  min-height: 0;
+  max-height: min(52vh, 320px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 0.35rem 0.45rem 0.45rem;
+}
+
+.string-select-dropdown-menu-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.string-select-dropdown-menu-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text-muted) 48%, transparent);
+}
+
+.string-select-dropdown-menu-scroll .menu {
+  overflow: visible !important;
+  max-height: none !important;
+}
+
+.multi-select-dropdown-popover-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-height: 0;
+  flex: 1;
+  padding: 0.75rem;
+  overflow: hidden;
+}
+
+.multi-select-dropdown-search {
+  flex-shrink: 0;
+}
+
+.multi-select-dropdown-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+  flex-shrink: 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+}
+
+.multi-select-dropdown-toolbar-btn {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  min-height: 2rem !important;
+  padding-left: 0.55rem !important;
+  padding-right: 0.55rem !important;
+  white-space: nowrap;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent) !important;
+  background: color-mix(in srgb, var(--color-surface) 90%, transparent) !important;
+}
+
+.multi-select-dropdown-section-header {
+  padding: 0.1rem 0.3rem 0.35rem !important;
+  margin: 0 !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted) !important;
+}
+
+.multi-select-dropdown-list-scroll {
+  min-height: 100px;
+  max-height: min(48vh, 300px);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding-right: 2px;
+}
+
+.multi-select-dropdown-list-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.multi-select-dropdown-list-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-border) 68%, transparent);
+}
+
+.multi-select-dropdown-list-scroll .menu {
+  overflow: visible !important;
+  max-height: none !important;
+}
+
+.multi-select-dropdown-popover [data-slot="dropdown-menu"] {
+  padding: 0 !important;
+}
+
+.multi-select-dropdown-popover [data-slot="menu-item"] {
+  /* Flujo horizontal estable: check en columna fija + label; sin depender del slot absoluto del theme */
+  gap: 0.5rem !important;
+  justify-content: flex-start !important;
+  padding-left: 0.45rem !important;
+  padding-right: 0.55rem !important;
+  font-size: 12px !important;
+  line-height: 1.28 !important;
+  min-height: 2rem !important;
+  font-weight: 400 !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+  /* Sin scale al press y transiciones mínimas para que no “salte” al seleccionar */
+  transition: background-color 0.12s ease !important;
+}
+
+.multi-select-dropdown-popover [data-slot="menu-item"] [data-slot="label"],
+.multi-select-dropdown-item-text {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: inherit !important;
+  font-weight: 400 !important;
+  color: var(--color-text);
+}
+
+.multi-select-dropdown-popover .multi-select-item-check-cell {
+  flex: 0 0 1rem;
+  width: 1rem;
+  height: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  pointer-events: none;
+  color: var(--color-text-muted);
+}
+
+.multi-select-dropdown-popover .multi-select-item-check-cell[data-selected] {
+  color: var(--color-text);
+}
+
+.multi-select-dropdown-popover .multi-select-item-check-svg {
+  width: 0.7rem;
+  height: 0.7rem;
+  flex-shrink: 0;
+  transition: none !important;
+}
+
+/* Evita el “salto” por scale(0.98) del theme al hacer clic */
+.multi-select-dropdown-popover .menu-item:active,
+.multi-select-dropdown-popover .menu-item[data-pressed="true"] {
+  transform: none;
+}
+
+:root[data-theme="light"] .multi-select-dropdown-popover.dropdown__popover {
+  border-color: var(--color-border);
 }
 
 .multi-select-listbox {
@@ -4853,8 +5172,7 @@ body.is-dragging-floating-filter {
 
 .analysis-skeleton-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 12.25rem), 1fr));
-  grid-auto-flow: dense;
+  grid-template-columns: 1fr;
   gap: 0.75rem 1rem;
   margin-bottom: 1rem;
 }
@@ -4913,7 +5231,6 @@ body.is-dragging-floating-filter {
 }
 
 @media (max-width: 1024px) {
-  .analysis-skeleton-grid,
   .analysis-skeleton-summary {
     grid-template-columns: 1fr;
   }
@@ -5398,39 +5715,109 @@ body.is-dragging-floating-filter {
   gap: 0.75rem;
 }
 
+/* Panel de filtros: una columna lógica (rejilla de filtros → ayudas → acciones → chips), sin mezclar filas con auto-fill */
 .rendimiento-filters-panel {
   padding: 1.15rem 1.2rem 1.1rem;
   border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
   border-radius: var(--radius-lg);
   background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-elevated) 98%, transparent) 0%, color-mix(in srgb, var(--color-surface) 100%, transparent) 100%);
   box-shadow: 0 10px 22px rgba(2, 6, 23, 0.08);
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
 }
 
-/* Resumen de Cartera: filtros con auto-columnas; UN al final a ancho completo */
-.rendimiento-filters-panel.cartera-filters-grid-3 {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11.25rem), 1fr));
-  grid-auto-flow: dense;
-  gap: 0.85rem 1rem;
-  align-items: start;
+.rendimiento-filters-panel > * {
+  min-width: 0;
 }
 
-.rendimiento-filters-panel.cartera-filters-grid-3 > .un-filter-tag-group {
-  order: 99;
-  grid-column: 1 / -1;
+/* Rendimiento: rejilla de filtros en fila con wrap (preview), alineada al inicio */
+.rendimiento-filters-panel .analysis-filters-grid {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-start;
+  width: 100%;
+  gap: 0.65rem 0.75rem;
 }
 
-/* Cobranzas cohorte: misma lógica de rejilla adaptable */
+/* UN al final del flex-wrap: ocupa fila completa */
+.rendimiento-filters-panel .analysis-filters-grid > .un-filter-tag-group {
+  flex: 1 1 100%;
+  width: 100%;
+  min-width: min(100%, 20rem);
+}
+
+/* Multi-select en panel Rendimiento: etiqueta y trigger en fila con wrap (no columna global) */
+.rendimiento-filters-panel .multi-select-filter {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.35rem 0.5rem;
+}
+
+.rendimiento-filters-panel .multi-select-filter > .input-label {
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+
+.rendimiento-filters-panel .multi-select-dropdown-root {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+/*
+ * Rendimiento: densidad compacta en segmentados (panel y rejilla).
+ */
+.rendimiento-filters-panel .analytics-abbrev-filter .analytics-abbrev-filter__track {
+  padding: 0.15rem;
+}
+
+.rendimiento-filters-panel .analytics-abbrev-filter .analytics-abbrev-filter__group[data-slot="button-group"] {
+  gap: 0.2rem;
+}
+
+.rendimiento-filters-panel .analytics-abbrev-filter .analytics-abbrev-filter__btn {
+  min-height: 1.8rem;
+  padding: 0.22rem 0.2rem;
+}
+
+.rendimiento-filters-panel .analytics-abbrev-filter .analytics-abbrev-filter__abbrev {
+  font-size: 0.8125rem;
+}
+
+.rendimiento-filters-panel .analytics-abbrev-filter .analytics-abbrev-filter__caption {
+  font-size: 0.5625rem;
+}
+
+/* Vía de cobro (segmentado): ancho fijo compacto; anula w-full del AbbrevSegmentedFilter. */
+.rendimiento-filters-panel .analytics-abbrev-filter.rendimiento-via-cobro-segmented {
+  width: 150px;
+  max-width: 150px;
+  flex: 0 0 150px;
+}
+
+/* Categoría (segmentado): ancho fijo compacto; anula w-full del AbbrevSegmentedFilter. */
+.analytics-abbrev-filter.rendimiento-categoria-segmented {
+  width: 150px;
+  max-width: 150px;
+  flex: 0 0 150px;
+}
+
+/* Cobranzas cohorte: mismas columnas responsive que .analysis-filters-grid (ver media queries arriba) */
 .cohorte-filters-grid-3 {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11.25rem), 1fr));
-  grid-auto-flow: dense;
+  grid-template-columns: 1fr;
   gap: 0.85rem 1rem;
   align-items: start;
+}
+
+.cohorte-filters-grid-3 > * {
+  min-width: 0;
 }
 
 .cohorte-filters-grid-3 > .un-filter-tag-group {
-  order: 99;
   grid-column: 1 / -1;
 }
 
@@ -5440,20 +5827,47 @@ body.is-dragging-floating-filter {
 
 .rendimiento-filter-hints {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.15rem 0 0;
 }
 
 .rendimiento-filter-hint {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 0.65rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-surface-elevated) 98%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-border) 86%, transparent);
+  display: block;
+  margin: 0;
+  min-height: 0;
+  padding: 0.28rem 0 0.28rem 0.7rem;
+  border-radius: 0;
+  border: none;
+  border-left: 3px solid color-mix(in srgb, var(--color-primary) 42%, var(--color-border));
+  background: transparent;
   color: var(--color-text-muted);
-  font-size: 0.76rem;
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+@media (min-width: 1024px) {
+  .rendimiento-filter-hints {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding-top: 0.05rem;
+  }
+
+  .rendimiento-filter-hint {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--color-border) 86%, transparent);
+    border-left: 1px solid color-mix(in srgb, var(--color-border) 86%, transparent);
+    background: color-mix(in srgb, var(--color-surface-elevated) 96%, transparent);
+    font-size: 0.72rem;
+  }
 }
 
 .analytics-meta-badges {
@@ -5635,7 +6049,7 @@ body.is-dragging-floating-filter {
   transition: opacity calc(0.25s * var(--motion-scale)) ease;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 1024px) {
   .cohorte-kpi-summary-grid {
     grid-template-columns: 1fr;
   }
@@ -5851,14 +6265,18 @@ body.is-dragging-floating-filter {
   .rendimiento-filters-panel {
     padding: 0.85rem;
   }
+}
 
-  .rendimiento-filters-panel.cartera-filters-grid-3,
-  .cohorte-filters-grid-3 {
-    grid-template-columns: 1fr;
+@media (max-width: 639px) {
+  .rendimiento-filters-panel .analysis-actions-row.analysis-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  .rendimiento-filter-hints {
-    flex-direction: column;
+  .rendimiento-filters-panel .analysis-actions-row .analysis-active-count {
+    margin-left: 0;
+    text-align: center;
+    width: 100%;
   }
 }
 
