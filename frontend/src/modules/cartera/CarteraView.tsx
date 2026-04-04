@@ -231,7 +231,15 @@ export function CarteraView() {
   const showEmpty = !loading && !error && (!kpis || totalCartera === 0);
 
   return (
-    <section className="analysis-panel-card rendimiento-panel" style={{background: 'var(--bg-marketing-black)', border: '1px solid var(--border-standard-white)', borderRadius: '8px'}}>
+    <section
+      className="analysis-panel-card rendimiento-panel"
+      style={{
+        background: "var(--bg-marketing-black)",
+        border: "1px solid var(--border-standard-white)",
+        borderRadius: "8px",
+        padding: "16px",
+      }}
+    >
       <AnalyticsPageHeader
         kicker="CARTERA"
         pill="Analytics v2"
@@ -239,7 +247,17 @@ export function CarteraView() {
         subtitle="Resumen por corte operativo (agregados v2). Filtros por mes de gestión, UN, vía, supervisor, categoría (VIGENTE/MOROSO) y tramo — alineado a reportes de cartera. Para detalle por contrato usá «Análisis de cartera»."
       />
 
-      <div className="rendimiento-filters-panel" style={{background: 'var(--bg-panel-dark)', padding: '16px', border: '1px solid var(--border-subtle-white), borderRadius: '8px'}}>
+      <div className="analysis-filters-grid">
+      <div
+        className="rendimiento-filters-panel"
+        style={{
+          background: "var(--bg-panel-dark)",
+          padding: "16px",
+          border: "1px solid var(--border-subtle-white)",
+          borderRadius: "8px",
+          marginTop: "16px",
+        }}
+      >
         <div className="analysis-filters-grid">
           <MultiSelectFilter
             className="analysis-filter-control"
@@ -309,11 +327,15 @@ export function CarteraView() {
           />
         </div>
       </div>
-      <div className="analysis-actions-row analysis-actions">
+      <div
+        className="analysis-actions-row analysis-actions"
+        style={{ marginTop: "16px", background: "var(--bg-surface-level3)", border: "1px solid var(--border-subtle-white)", borderRadius: "8px" }}
+      >
         <Button
           variant="primary"
           onPress={() => void applyFilters(draftFilters)}
           isDisabled={loading}
+          style={{ background: "var(--brand-emerald)", borderRadius: "6px" }}
         >
           {loading ? "Aplicando…" : "Aplicar filtros"}
         </Button>
@@ -321,6 +343,7 @@ export function CarteraView() {
           variant="outline"
           onPress={() => void resetFilters()}
           isDisabled={loading}
+          style={{ border: "1px solid var(--border-subtle-white)" }}
         >
           Restablecer
         </Button>
@@ -334,16 +357,6 @@ export function CarteraView() {
         <EmptyState
           message="Sin datos para los filtros seleccionados."
           suggestion="Probá ajustar supervisor, UN, vía, categoría, tramo o mes de gestión. Para filas por contrato, abrí Análisis de cartera."
-          style={{
-            background: 'var(--bg-surface-level3)',
-            border: '1px solid var(--border-subtle-white)',
-            borderRadius: '8px',
-          }}
-        />
-      )}
-        <EmptyState
-          message="Sin datos para los filtros seleccionados."
-          suggestion="Probá ajustar supervisor, UN, vía, categoría, tramo o mes de gestión. Para filas por contrato, abrí Análisis de cartera."
         />
       )}
 
@@ -351,7 +364,12 @@ export function CarteraView() {
         <>
           <p
             className="table-scroll-hint mt-4"
-            style={{color: 'var(--text-secondary-linear)', fontSize: '14px'}}
+            style={{
+              color: "var(--text-secondary-linear)",
+              fontSize: "14px",
+              marginTop: "8px",
+              marginBottom: "16px",
+            }}
           >
             {showPivotByMonth && monthColumns.length > 1
               ? "Contratos por unidad de negocio y mes de gestión (una columna por mes seleccionado). Desplazá la tabla horizontalmente si hay muchos meses."
@@ -363,7 +381,16 @@ export function CarteraView() {
             <table>
               <thead>
                 <tr>
-                  <th>UN</th>
+                  <th
+                    style={{
+                      color: "var(--text-primary-linear)",
+                      borderBottom: "1px solid var(--border-subtle-white)",
+                      fontSize: "13px",
+                      fontWeight: "510",
+                    }}
+                  >
+                    UN
+                  </th>
                   {showPivotByMonth ? (
                     monthColumns.map((m) => (
                       <th key={m} className="text-end align-bottom">
@@ -378,10 +405,10 @@ export function CarteraView() {
                   ) : (
                     <th
                       style={{
-                        color: 'var(--text-primary-linear)',
-                        borderBottom: '1px solid var(--border-subtle-white)',
-                        fontSize: '13px',
-                        fontWeight: '510',
+                        color: "var(--text-primary-linear)",
+                        borderBottom: "1px solid var(--border-subtle-white)",
+                        fontSize: "13px",
+                        fontWeight: "510",
                       }}
                     >
                       Contratos
@@ -389,45 +416,60 @@ export function CarteraView() {
                   )}
                 </tr>
               </thead>
-              <tbody style={{backgroundColor: 'transparent'}}>
+              <tbody>
                 {byUnRows.slice(0, 60).map((row) => (
                   <tr key={row.un}>
-                    <td style={{padding: '8px', color: 'var(--text-secondary-linear)'}}>{row.un}</td>
-                    <td style={{padding: '8px', color: 'var(--text-secondary-linear)'}}>{row.un}</td>
-                    {showPivotByMonth
-                      ? monthColumns.map((m) => (
-                          <td
-                            key={`${row.un}-${m}`}
-                            className="text-end tabular-nums"
-                            style={{
-                              textAlign: 'right',
-                              background: 'var(--card-bg)',
-                              borderBottom: '1px solid var(--border-subtle-white)',
-                            }}
-                          >
-                            {formatCount(Number(byUnByGestion[m]?.[row.un] ?? 0))}
-                          </td>
-                        ))
-                      : (
-                          <td
-                            className="text-end tabular-nums"
-                            style={{
-                              textAlign: 'right',
-                              background: 'var(--card-bg)',
-                              borderBottom: '1px solid var(--border-subtle-white)',
-                            }}
-                          >
-                            {formatCount(row.count)}
-                          </td>
-                        )}
+                    <td
+                      style={{
+                        padding: "8px",
+                        color: "var(--text-secondary-linear)",
+                      }}
+                    >
+                      {row.un}
                     </td>
-                    </tr>
+                    {showPivotByMonth ? (
+                      monthColumns.map((m) => (
+                        <td
+                          key={`${row.un}-${m}`}
+                          className="text-end tabular-nums"
+                          style={{
+                            textAlign: "right",
+                            background: "var(--card-bg)",
+                            borderBottom:
+                              "1px solid var(--border-subtle-white)",
+                            color: "var(--text-secondary-linear)",
+                          }}
+                        >
+                          {formatCount(Number(byUnByGestion[m]?.[row.un] ?? 0))}
+                        </td>
+                      ))
+                    ) : (
+                      <td
+                        className="text-end tabular-nums"
+                        style={{
+                          textAlign: "right",
+                          background: "var(--card-bg)",
+                          borderBottom: "1px solid var(--border-subtle-white)",
+                          color: "var(--text-secondary-linear)",
+                        }}
+                      >
+                        {formatCount(row.count)}
+                      </td>
+                    )}
+                  </tr>
                 ))}
               </tbody>
             </table>
             {byUnRows.length > 60 && (
-              <p className="text-muted-sm" style={{color: 'var(--text-quaternary-linear)'}}>
-                Mostrando 60 de {byUnRows.length.toLocaleString('es-PY')} UN con contratos.
+              <p
+                className="text-muted-sm"
+                style={{
+                  color: "var(--text-quaternary-linear)",
+                  marginTop: "16px",
+                }}
+              >
+                Mostrando 60 de {byUnRows.length.toLocaleString("es-PY")} UN con
+                contratos.
               </p>
             )}
           </div>
