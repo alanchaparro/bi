@@ -41,13 +41,80 @@ Fuente única de referencia para paleta, tipografía, espaciado, bordes y sombra
 
 ---
 
-## Tipografía
+### Tipografía (EPEM Analytics - Linear Edition)
 
-### Fuentes
-- **Sans:** `var(--font-sans)` → Inter, system-ui, sans-serif (cuerpo y UI).
+#### Fuentes
+- **Sans:** `var(--font-sans)` → Inter Variable, system-ui, sans-serif (cuerpo y UI).
 - **Mono:** Para montos, porcentajes y códigos; usar `font-mono` y `tabular-nums`.
+- **OpenType:** `"cv01", "ss03"` para Inter Variable en analytics (geometric alternates).
 
-### Escala (variables en globals.css)
+#### Escala (variables en globals.css)
+
+| Token | Dark (Linear) | Light | Uso |
+|-------|---------------|-------|-----|
+| `--color-primary` | #10b981 | #16a34a | Botones primarios EPEM (verde emerald) |
+| `--accent-color` | #00c573 | #159336 | Links, estado activo, acentos |
+| `--color-text` | #f7f8f8 | #0f172a | Texto principal (casi blanco) |
+| `--color-text-muted` | #8a8f98 | #334155 | Metadata, placeholder |
+| `--color-bg` | #08090a | #ffffff | Fondo de página (dark) |
+| `--card-bg` | rgba(255,255,255,0.02) | rgba(255,255,255,.92) | Cards y paneles |
+| `--glass-border` | rgba(255,255,255,0.08) | rgba(15,23,42,.22) | Bordes sutiles |
+| `--color-state-warn` | #f59e0b | #d97706 | Advertencia, desfasado |
+| `--color-error` | #23252a | #dc2626 | Error, vencido, peligro |
+| `--color-state-info` | rgba(255,255,255,0.05) | #38bdf8 | Info, sincronizando |
+| `--color-success` | #10b981 | #22c55e | OK, cobrado, completado |
+| `--color-secondary-text` | #d0d6e0 | #475569 | Body text, descripción |
+| `--color-tertiary-text` | #62666d | #64748b | Timestamps, disabled |
+| `--color-border-subtle` | rgba(255,255,255,0.05) | rgba(15,23,42,.12) | Bordes ultra sutiles |
+| `--color-border-standard` | rgba(255,255,255,0.08) | rgba(15,23,42,.32) | Bordes estándar |
+| `--color-panel-bg` | #0f1011 | #f3f4f5 | Sidebar, panels |
+| `--color-surface-level3` | #191a1b | #f5f6f7 | Superficies elevadas |
+
+#### Linear Tokens Extraídos (adaptable a EPEM)
+
+| Token Linear | Valor Linear | Uso recomendado | Adaptación EPEM |
+|--------------|--------------|-----------------|-----------------|
+| `--bg-marketing-black` | #08090a | Hero backgrounds | `--color-bg` |
+| `--bg-panel-dark` | #0f1011 | Sidebar, panels | `--color-panel-bg` |
+| `--bg-surface-level3` | #191a1b | Elevated surfaces | `--color-surface-level3` |
+| `--text-primary` | #f7f8f8 | Headings | `--color-text` |
+| `--text-secondary` | #d0d6e0 | Body text | `--color-secondary-text` |
+| `--text-tertiary` | #8a8f98 | Placeholders | `--color-tertiary-text` |
+| `--text-quaternary` | #62666d | Disabled | `--color-quaternary-text` |
+| `--brand-indigo` | #10b981 | CTA buttons | `--color-primary` (verde EPEM) |
+| `--accent-violet` | #00c573 | Links, active | `--accent-color` |
+| `--accent-hover` | #00e5a4 | Hover states | `--color-accent-hover` |
+| `--border-subtle` | rgba(255,255,255,0.05) | Ultra-subtle borders | `--color-border-subtle` |
+| `--border-standard` | rgba(255,255,255,0.08) | Standard borders | `--color-border-standard` |
+
+#### Notas de adaptación para EPEM
+
+- **Color de acento:** Usar `#10b981` (verde emerald) en lugar de `#5e6ad2` (indigo de Linear). Esto respeta el canónico EPEM de cobranzas.
+- **Bordes:** Mantener transparencia `rgba(255,255,255,0.05)` a `rgba(255,255,255,0.08)` para evitar ruido visual.
+- **Fondos:** Usar `rgba(255,255,255,0.02)` a `rgba(255,255,255,0.05)` para botones y superficies elevadas (translúcido, nunca sólido).
+- **Tipografía:** Implementar OpenType `"cv01", "ss03"` para Inter Variable en analytics (geometric alternates para look más limpio).
+- **Peso de fuente:** Usar weight 510 para énfasis (between regular 400 and medium 500), no 700 (bold).
+
+### Escala de tipografía (Linear)
+
+| Size | Weight | Line Height | Letter Spacing | Uso |
+|------|--------|-------------|----------------|------|
+| 72px | 510 | 1.00 | -1.584px | Display XL (hero) |
+| 64px | 510 | 1.00 | -1.408px | Display Large |
+| 48px | 510 | 1.00 | -1.056px | Display |
+| 32px | 400 | 1.13 | -0.704px | Heading 1 |
+| 24px | 400 | 1.33 | -0.288px | Heading 2 |
+| 20px | 590 | 1.33 | -0.24px | Heading 3 |
+| 18px | 400 | 1.60 | -0.165px | Body Large |
+| 16px | 400 | 1.50 | normal | Body |
+| 14px | 510 | 1.50 | -0.182px | Caption |
+| 13px | 400-510 | 1.50 | -0.13px | Meta |
+| 12px | 400-590 | 1.40 | normal | Label |
+
+---
+
+## Paleta de colores
+
 | Token | Valor | Uso |
 |-------|--------|-----|
 | `--text-base` | 1rem (16px) | Cuerpo, inputs, tablas |
