@@ -1,5 +1,12 @@
 import type { EerrV2SummaryRow } from "@/shared/api";
 
+/** Orden A–Z por etiqueta de cuenta (subcuentas al desplegar un mayor). */
+function sortByCuentaLabelAsc<T extends { cuenta: string }>(lines: T[]): T[] {
+  return [...lines].sort((a, b) =>
+    a.cuenta.localeCompare(b.cuenta, "es", { sensitivity: "base", numeric: true }),
+  );
+}
+
 export type MayorNetLine = {
   mayor: string;
   net: number;
@@ -32,6 +39,26 @@ export function aggregateMayorNetByBlock(
 
 export type CuentaNetLine = { cuenta: string; net: number };
 
+/** Costos / gastos: saldo por cuenta dentro de un mayor (débito − crédito). */
+export function aggregateCuentaNetByMayorBlock(
+  rows: EerrV2SummaryRow[],
+  block: "costos" | "gastos",
+  mayorKey: string,
+): CuentaNetLine[] {
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    if (String(r.eerr_block || "").toLowerCase() !== block) continue;
+    const m = String(r.mayor || "").trim() || "(sin mayor)";
+    if (m !== mayorKey) continue;
+    const c = String(r.cuenta || "").trim() || "(sin cuenta)";
+    const net = rowNetForBlock(r);
+    map.set(c, (map.get(c) ?? 0) + net);
+  }
+  return sortByCuentaLabelAsc(
+    [...map.entries()].map(([cuenta, net]) => ({ cuenta, net })),
+  );
+}
+
 /** Ventas: saldo por cuenta dentro de un mayor (débito − haber). */
 export function aggregateCuentaNetByMayorVentas(
   rows: EerrV2SummaryRow[],
@@ -46,9 +73,9 @@ export function aggregateCuentaNetByMayorVentas(
     const net = Number(r.debit_total) - Number(r.credit_total);
     map.set(c, (map.get(c) ?? 0) + net);
   }
-  return [...map.entries()]
-    .map(([cuenta, net]) => ({ cuenta, net }))
-    .sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
+  return sortByCuentaLabelAsc(
+    [...map.entries()].map(([cuenta, net]) => ({ cuenta, net })),
+  );
 }
 
 export type EerrDetalleCuentaNode = { cuenta: string; saldo: number };
@@ -83,8 +110,7 @@ export function buildEerrDetalleTree(rows: EerrV2SummaryRow[]): EerrDetalleEmpre
         cuentas.push({ cuenta, saldo });
         mayorSaldo += saldo;
       }
-      cuentas.sort((a, b) => Math.abs(b.saldo) - Math.abs(a.saldo));
-      mayores.push({ mayor, saldo: mayorSaldo, cuentas });
+      mayores.push({ mayor, saldo: mayorSaldo, cuentas: sortByCuentaLabelAsc(cuentas) });
       empSaldo += mayorSaldo;
     }
     mayores.sort((a, b) => Math.abs(b.saldo) - Math.abs(a.saldo));

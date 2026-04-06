@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Button } from "@heroui/react";
+import { Button, Tabs } from "@heroui/react";
 import { AnalyticsMetaBadges } from "../../components/analytics/AnalyticsMetaBadges";
 import { AnalyticsPageHeader } from "../../components/analytics/AnalyticsPageHeader";
 import { AnalysisSelectionSummary } from "../../components/analytics/AnalysisSelectionSummary";
@@ -25,8 +25,10 @@ import { ErrorState } from "../../components/feedback/ErrorState";
 import { LoadingState } from "../../components/feedback/LoadingState";
 import {
   getPortfolioCorteOptions,
+  getPortfolioRoloOtrosAjustes,
   getPortfolioRoloSummary,
   type PortfolioCorteOptionsResponse,
+  type PortfolioRoloOtrosAjustesResponse,
   type PortfolioRoloSummaryResponse,
 } from "../../shared/api";
 import { getApiErrorMessage } from "../../shared/apiErrors";
@@ -49,6 +51,8 @@ const DEFAULT_FILTERS: Filters = {
   vias: [],
   years: [],
 };
+
+type RoloMainTab = "resumen" | "otros_ajustes";
 
 function RoloContributionChart({
   rows,
@@ -153,10 +157,14 @@ export function AnalisisRoloCarteraView() {
   const [floatingYears, setFloatingYears] = useState<string[]>([]);
   const [optionsData, setOptionsData] = useState<PortfolioCorteOptionsResponse | null>(null);
   const [summaryData, setSummaryData] = useState<PortfolioRoloSummaryResponse | null>(null);
+  const [otrosData, setOtrosData] = useState<PortfolioRoloOtrosAjustesResponse | null>(null);
+  const [roloTab, setRoloTab] = useState<RoloMainTab>("resumen");
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [loadingSummary, setLoadingSummary] = useState(false);
+  const [loadingOtros, setLoadingOtros] = useState(false);
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [otrosError, setOtrosError] = useState<string | null>(null);
 
   const toPayload = useCallback(
     (source: Filters) => ({
@@ -212,6 +220,25 @@ export function AnalisisRoloCarteraView() {
     if (!appliedFilters.closeMonths.length) return;
     void loadSummary(appliedFilters);
   }, [appliedFilters, loadSummary]);
+
+  const loadOtrosDetail = useCallback(async () => {
+    if (!appliedFilters.closeMonths.length) return;
+    try {
+      setLoadingOtros(true);
+      setOtrosError(null);
+      const data = await getPortfolioRoloOtrosAjustes(toPayload(appliedFilters));
+      setOtrosData(data);
+    } catch (error) {
+      setOtrosError(getApiErrorMessage(error));
+    } finally {
+      setLoadingOtros(false);
+    }
+  }, [appliedFilters, toPayload]);
+
+  useEffect(() => {
+    if (roloTab !== "otros_ajustes") return;
+    void loadOtrosDetail();
+  }, [roloTab, loadOtrosDetail]);
 
   const applyMergedFilters = useCallback(
     async (next: Filters) => {
@@ -401,6 +428,8 @@ export function AnalisisRoloCarteraView() {
   );
 
   const hasRows = rows.length > 0;
+  const otrosKpis = otrosData?.kpis ?? {};
+  const otrosRows = otrosData?.rows ?? [];
   const activeFilterCount = useMemo(
     () =>
       filters.closeMonths.length +
@@ -455,6 +484,12 @@ export function AnalisisRoloCarteraView() {
                     label: "Culminados vigentes",
                     formula: "vigentes del cierre anterior que culminaron en el cierre analizado",
                     note: "Salen de la cartera vigente base del rolo.",
+                  },
+                  {
+                    label: "Otros ajustes (detalle)",
+                    formula:
+                      "residual = Δ vigente − (venta nueva + recuperado − culminado − caído); KPI = suma de residual",
+                    note: "Ver solapa «Otros ajustes»: solo contratos con residual distinto de cero.",
                   },
                 ]}
               />
@@ -567,33 +602,184 @@ export function AnalisisRoloCarteraView() {
                 { label: "Via de cobro", value: appliedFilters.vias.join(", ") || "Todas" },
               ]}
             />
-            {!hasRows ? (
-              <EmptyState
-                message="No hay datos para el rolo con la seleccion actual."
-                suggestion="Prueba con otro mes de cierre o amplia el alcance de los filtros."
-                className="analysis-empty"
-              />
-            ) : (
+            {appliedFilters.closeMonths.length ? (
               <>
-                <p className="table-scroll-hint">
-                  Mostrando {rows.length.toLocaleString("es-PY")} unidad{rows.length === 1 ? "" : "es"} de negocio para explicar el movimiento neto del rolo.
-                </p>
-                <div className="charts-grid">
-                  <article className="card chart-card analysis-card-pad">
-                    <div className="chart-card-header">
-                      <h3 className="analysis-chart-title">Neto del rolo por unidad de negocio</h3>
-                    </div>
-                    <RoloContributionChart rows={rows} isLight={isLightTheme} />
-                  </article>
-                  <article className="card chart-card analysis-card-pad">
-                    <div className="chart-card-header">
-                      <h3 className="analysis-chart-title">Composicion del movimiento</h3>
-                    </div>
-                    <RoloCompositionChart kpis={kpis} isLight={isLightTheme} />
-                  </article>
-                </div>
+                <Tabs
+                  selectedKey={roloTab}
+                  onSelectionChange={(key) => key != null && setRoloTab(String(key) as RoloMainTab)}
+                  className="rolo-cartera-view-tabs mt-3 mb-2"
+                  aria-label="Vistas rolo de cartera"
+                >
+                  <Tabs.ListContainer>
+                    <Tabs.List>
+                      <Tabs.Tab id="resumen">Resumen</Tabs.Tab>
+                      <Tabs.Tab id="otros_ajustes">Otros ajustes</Tabs.Tab>
+                    </Tabs.List>
+                  </Tabs.ListContainer>
+                </Tabs>
+
+                {roloTab === "resumen" ? (
+                  !hasRows ? (
+                    <EmptyState
+                      message="No hay datos para el rolo con la seleccion actual."
+                      suggestion="Prueba con otro mes de cierre o amplia el alcance de los filtros."
+                      className="analysis-empty"
+                    />
+                  ) : (
+                    <>
+                      <p className="table-scroll-hint">
+                        Mostrando {rows.length.toLocaleString("es-PY")} unidad{rows.length === 1 ? "" : "es"} de
+                        negocio para explicar el movimiento neto del rolo.
+                      </p>
+                      <div className="charts-grid">
+                        <article className="card chart-card analysis-card-pad">
+                          <div className="chart-card-header">
+                            <h3 className="analysis-chart-title">Neto del rolo por unidad de negocio</h3>
+                          </div>
+                          <RoloContributionChart rows={rows} isLight={isLightTheme} />
+                        </article>
+                        <article className="card chart-card analysis-card-pad">
+                          <div className="chart-card-header">
+                            <h3 className="analysis-chart-title">Composicion del movimiento</h3>
+                          </div>
+                          <RoloCompositionChart kpis={kpis} isLight={isLightTheme} />
+                        </article>
+                      </div>
+                    </>
+                  )
+                ) : null}
+
+                {roloTab === "otros_ajustes" ? (
+                  <div className="analysis-table-section">
+                    <p className="m-0 mb-3 text-sm leading-snug text-[var(--color-text-muted)]">
+                      Contratos en los que el cambio de vigente entre el cierre anterior y el analizado no se explica
+                      solo con venta nueva, recuperación a vigente, culminación o caída a moroso. La suma de la columna
+                      «Residual» coincide con el KPI «Otros ajustes» del resumen.
+                    </p>
+                    {loadingOtros ? (
+                      <LoadingState message="Cargando contratos con residual..." className="summary-loading-note" />
+                    ) : null}
+                    {otrosError ? (
+                      <ErrorState
+                        message={otrosError}
+                        onRetry={() => void loadOtrosDetail()}
+                        retryLabel="Reintentar"
+                      />
+                    ) : null}
+                    {!loadingOtros && !otrosError ? (
+                      <>
+                        <p className="table-scroll-hint">
+                          {Number(otrosKpis.contratos_con_residual || 0).toLocaleString("es-PY")} contrato
+                          {Number(otrosKpis.contratos_con_residual || 0) === 1 ? "" : "s"} con residual ≠ 0 · Total
+                          residual: <SignedCount value={Number(otrosKpis.otros_ajustes || 0)} />
+                        </p>
+                        {otrosRows.length === 0 ? (
+                          <EmptyState
+                            message="No hay contratos con residual distinto de cero."
+                            suggestion="El puente del rolo cuadra solo con las cuatro palancas para esta selección."
+                            className="analysis-empty"
+                          />
+                        ) : (
+                          <div className="analysis-table-wrap w-full min-w-0 overflow-x-auto">
+                            <table className="w-full min-w-[920px] border-collapse text-sm">
+                              <thead>
+                                <tr>
+                                  <th className="analysis-key-cell border-b border-[var(--color-border)] py-2 pr-3 text-left font-semibold">
+                                    Contrato
+                                  </th>
+                                  <th className="border-b border-[var(--color-border)] py-2 pr-3 text-left font-semibold">
+                                    UN
+                                  </th>
+                                  <th className="border-b border-[var(--color-border)] py-2 pr-3 text-left font-semibold">
+                                    Supervisor
+                                  </th>
+                                  <th className="border-b border-[var(--color-border)] py-2 pr-3 text-left font-semibold">
+                                    Vía
+                                  </th>
+                                  <th className="num border-b border-[var(--color-border)] py-2 pr-2 text-right font-semibold">
+                                    Δ vig.
+                                  </th>
+                                  <th className="num border-b border-[var(--color-border)] py-2 pr-2 text-right font-semibold">
+                                    Vta.
+                                  </th>
+                                  <th className="num border-b border-[var(--color-border)] py-2 pr-2 text-right font-semibold">
+                                    Rec.
+                                  </th>
+                                  <th className="num border-b border-[var(--color-border)] py-2 pr-2 text-right font-semibold">
+                                    Culm.
+                                  </th>
+                                  <th className="num border-b border-[var(--color-border)] py-2 pr-2 text-right font-semibold">
+                                    Caído
+                                  </th>
+                                  <th className="num border-b border-[var(--color-border)] py-2 pr-2 text-right font-semibold">
+                                    Residual
+                                  </th>
+                                  <th className="border-b border-[var(--color-border)] py-2 pr-2 text-left font-semibold">
+                                    Mes venta
+                                  </th>
+                                  <th className="border-b border-[var(--color-border)] py-2 pr-2 text-left font-semibold">
+                                    Mes culm.
+                                  </th>
+                                  <th className="border-b border-[var(--color-border)] py-2 pr-2 text-center font-semibold">
+                                    Ant.
+                                  </th>
+                                  <th className="border-b border-[var(--color-border)] py-2 text-center font-semibold">
+                                    Act.
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {otrosRows.map((r) => (
+                                  <tr key={r.contract_id}>
+                                    <td className="analysis-key-cell border-b border-[var(--color-border)] py-1.5 pr-3 font-mono text-xs">
+                                      {r.contract_id}
+                                    </td>
+                                    <td className="border-b border-[var(--color-border)] py-1.5 pr-3">{r.un}</td>
+                                    <td className="border-b border-[var(--color-border)] py-1.5 pr-3">{r.supervisor}</td>
+                                    <td className="border-b border-[var(--color-border)] py-1.5 pr-3">{r.via_cobro}</td>
+                                    <td className="num border-b border-[var(--color-border)] py-1.5 pr-2 text-right">
+                                      {r.delta_vigente > 0 ? "+" : ""}
+                                      {r.delta_vigente}
+                                    </td>
+                                    <td className="num border-b border-[var(--color-border)] py-1.5 pr-2 text-right">
+                                      {r.venta_nueva}
+                                    </td>
+                                    <td className="num border-b border-[var(--color-border)] py-1.5 pr-2 text-right">
+                                      {r.recuperado}
+                                    </td>
+                                    <td className="num border-b border-[var(--color-border)] py-1.5 pr-2 text-right">
+                                      {r.culminado}
+                                    </td>
+                                    <td className="num border-b border-[var(--color-border)] py-1.5 pr-2 text-right">
+                                      {r.caido}
+                                    </td>
+                                    <td className="num border-b border-[var(--color-border)] py-1.5 pr-2 text-right">
+                                      <SignedCount value={r.residual} />
+                                    </td>
+                                    <td className="border-b border-[var(--color-border)] py-1.5 pr-2 text-xs">
+                                      {r.sale_month || "—"}
+                                    </td>
+                                    <td className="border-b border-[var(--color-border)] py-1.5 pr-2 text-xs">
+                                      {r.culm_month || "—"}
+                                    </td>
+                                    <td className="border-b border-[var(--color-border)] py-1.5 pr-2 text-center text-xs">
+                                      {r.en_cierre_anterior ? "Sí" : "No"}
+                                    </td>
+                                    <td className="border-b border-[var(--color-border)] py-1.5 text-center text-xs">
+                                      {r.en_cierre_actual ? "Sí" : "No"}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
               </>
-            )}
+            ) : null}
           </>
         ) : null}
       </section>

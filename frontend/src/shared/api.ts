@@ -826,6 +826,36 @@ export type PortfolioRoloSummaryResponse = {
   meta?: AnalyticsMeta;
 };
 
+/** Detalle de contratos que explican el KPI «Otros ajustes» del rolo (residual del puente). */
+export type PortfolioRoloOtrosAjustesResponse = {
+  kpis?: {
+    resolved_close_month?: string | null;
+    previous_close_month?: string | null;
+    resolved_gestion_month?: string | null;
+    otros_ajustes?: number;
+    contratos_con_residual?: number;
+  };
+  rows?: Array<{
+    contract_id: string;
+    un: string;
+    supervisor: string;
+    via_cobro: string;
+    delta_vigente: number;
+    venta_nueva: number;
+    recuperado: number;
+    culminado: number;
+    caido: number;
+    residual: number;
+    prev_vigente: boolean;
+    curr_vigente: boolean;
+    sale_month?: string | null;
+    culm_month?: string | null;
+    en_cierre_anterior: boolean;
+    en_cierre_actual: boolean;
+  }>;
+  meta?: AnalyticsMeta;
+};
+
 export type CobranzasCohorteOptionsResponse = {
   options: {
     cutoff_months?: string[];
@@ -1486,6 +1516,20 @@ export async function getPortfolioRoloSummary(payload: {
   close_month?: string[];
 }): Promise<PortfolioRoloSummaryResponse> {
   return cachedAnalyticsPost<PortfolioRoloSummaryResponse>("/analytics/portfolio-rolo-v2/summary", payload, "summary");
+}
+
+export async function getPortfolioRoloOtrosAjustes(payload: {
+  supervisor?: string[];
+  un?: string[];
+  via_cobro?: string[];
+  anio?: string[];
+  close_month?: string[];
+}): Promise<PortfolioRoloOtrosAjustesResponse> {
+  return cachedAnalyticsPost<PortfolioRoloOtrosAjustesResponse>(
+    "/analytics/portfolio-rolo-v2/otros-ajustes",
+    payload,
+    "summary",
+  );
 }
 
 export async function getCobranzasCohorteOptions(payload: {

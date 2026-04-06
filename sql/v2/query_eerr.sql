@@ -3,6 +3,7 @@
 --
 -- UNION ALL de ingresos (ventas), costos y gastos. Mantener alineado con:
 --   `query_eerr_ventas.sql`, `query_eerr_costos.sql`, `query_eerr_gastos.sql`.
+-- Exclusión GESE: mayor o cuenta que contenga "gese" → `sql/common/eerr_exclude_mayor_cuenta_gese.sql`.
 -- Columna `eerr_block`: ventas | costos | gastos (AGENTS.md regla 10).
 -- Filtros equivalentes al legado: IF(status=1 AND type=N,1,0)=1 por bloque (aquí: AND at.status = 1 AND at.`type` = N).
 --
@@ -28,6 +29,7 @@ WHERE
     AND sr.id <= 3
     AND at.status = 1
     AND at.`type` = 1
+-- @include sql/common/eerr_exclude_mayor_cuenta_gese.sql
 GROUP BY
     MONTH(ae.date),
     YEAR(ae.date),
@@ -62,6 +64,7 @@ WHERE
     AND sr.id <= 3
     AND at.status = 1
     AND at.`type` = 2
+-- @include sql/common/eerr_exclude_mayor_cuenta_gese.sql
 GROUP BY
     MONTH(ae.date),
     YEAR(ae.date),
@@ -96,6 +99,7 @@ WHERE
     AND sr.id <= 3
     AND at.status = 1
     AND at.`type` = 3
+-- @include sql/common/eerr_exclude_mayor_cuenta_gese.sql
 GROUP BY
     MONTH(ae.date),
     YEAR(ae.date),

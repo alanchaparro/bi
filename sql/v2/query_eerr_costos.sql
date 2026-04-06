@@ -11,6 +11,7 @@
 --   - `social_reasons.id <= 3` — ver nota de alcance en `query_eerr_ventas.sql`
 --   - `accounting_types.status = 1` y `accounting_types.type = 2` — equivalente a
 --     `IF(accounting_types.status = 1 AND accounting_types.type = 2, 1, 0) = 1` del origen.
+--   - Exclusión GESE: ver comentario en `query_eerr_ventas.sql` (mismas condiciones `NOT LIKE '%gese%'`).
 --
 -- Nota: `SUM(debit)` / `SUM(credit)` por grupo; el signo operativo de “costo” en UI/API puede requerir
 -- convención por naturaleza de cuenta (p. ej. débito neto en costos).
@@ -36,6 +37,8 @@ WHERE
     AND sr.id <= 3
     AND at.status = 1
     AND at.`type` = 2
+    AND LOWER(IFNULL(at.name, '')) NOT LIKE '%gese%'
+    AND LOWER(IFNULL(ap.name, '')) NOT LIKE '%gese%'
 GROUP BY
     MONTH(ae.date),
     YEAR(ae.date),

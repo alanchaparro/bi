@@ -11,6 +11,9 @@
 --   - `accounting_types.status = 1` y `accounting_types.type = 1` — equivalente a
 --     `IF(accounting_types.status = 1 AND accounting_types.type = 1, 1, 0) = 1` del origen.
 --     El significado exacto de `type` depende del catálogo legacy (`accounting_types` / `type-group-accounting` en `docs/base.md`).
+--   - Exclusión GESE: si el nombre del mayor (`accounting_types.name`) o de la cuenta (`accounting_plans.name`)
+--     contiene la subcadena `gese` (sin distinguir mayúsculas), la fila no entra al EERR. Misma lógica que
+--     `sql/common/eerr_exclude_mayor_cuenta_gese.sql` en `query_eerr.sql`.
 --
 -- Nota: se exponen `SUM(debit)` y `SUM(credit)` por grupo. Para armar “ingreso” neto en UI/API puede
 -- hacer falta convención por naturaleza de cuenta (p. ej. crédito neto en ingresos); ajustar cuando se cierre el modelo EERR.
@@ -36,6 +39,8 @@ WHERE
     AND sr.id <= 3
     AND at.status = 1
     AND at.`type` = 1
+    AND LOWER(IFNULL(at.name, '')) NOT LIKE '%gese%'
+    AND LOWER(IFNULL(ap.name, '')) NOT LIKE '%gese%'
 GROUP BY
     MONTH(ae.date),
     YEAR(ae.date),

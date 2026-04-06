@@ -148,6 +148,8 @@ Contabilidad (MySQL): movimientos de detalle de asientos agrupados por mes/año,
 
 Filtros de alcance en el SQL: `YEAR(date) >= 2020`, `social_reasons.id <= 3`. No reutilizan `sql/common/enterprise_scope.sql` (criterio distinto al de contratos/cobranzas).
 
+**Exclusión GESE (ventas, costos y gastos):** se excluyen filas donde `LOWER(IFNULL(accounting_types.name,''))` o `LOWER(IFNULL(accounting_plans.name,''))` contenga la subcadena `gese`. En el sync unificado el fragmento está en `sql/common/eerr_exclude_mayor_cuenta_gese.sql` (vía `-- @include` en `query_eerr.sql`).
+
 ### 3.7 EERR — costos (`query_eerr_costos.sql`)
 
 Mismo grafo de tablas que §3.6. Extracto de **costos** para el margen (`ingresos − costos` en `AGENTS.md` regla 10): `accounting_types.status = 1` y `type = 2`, con `YEAR(accounting_entries.date) >= 2020` y `social_reasons.id <= 3`. Salida: mismos alias que `query_eerr_ventas.sql` (`Mes`, `Año`, `Empresa`, `Mayor`, `Cuenta`, `debit`, `credit`, etc.).
@@ -162,7 +164,7 @@ Mismo grafo que §3.6. Extracto de **gastos** para el EBITDA (`margen − gastos
 
 Mismo grafo de tablas que §3.6. Tres bloques `UNION ALL` con discriminador `eerr_block` (`ventas`, `costos`, `gastos`). Salida adicional respecto a los extractos por separado: **`eerr_block`** (primera columna). Destino de carga: tabla Postgres **`eerr_fact`** vía sync batch dominio `eerr`.
 
-Los `WHERE` por bloque son equivalentes al legado `IF(accounting_types.status = 1 AND accounting_types.type = N, 1, 0) = 1` con umbral de año alineado en los tres bloques: **`YEAR(accounting_entries.date) >= 2020`**.
+Los `WHERE` por bloque son equivalentes al legado `IF(accounting_types.status = 1 AND accounting_types.type = N, 1, 0) = 1` con umbral de año alineado en los tres bloques: **`YEAR(accounting_entries.date) >= 2020`**. En cada bloque se aplica además la exclusión GESE descrita en §3.6 (`-- @include sql/common/eerr_exclude_mayor_cuenta_gese.sql`).
 
 **Modelo de dimensiones (estado actual vs cobranzas/cartera):** no hay tablas `dim_*` dedicadas para EERR. El hecho **`eerr_fact`** lleva **desnormalizado** `empresa`, `mayor`, `cuenta`, `social_reason_id`, `accounting_plan_id` en el grano del sync (una fila por clave de negocio mes + razón social + plan + bloque). Es el mismo patrón “fact como vista analítica” que otros dominios antes de introducir agregados.
 

@@ -73,6 +73,14 @@ class PortfolioRoloSummaryOut(BaseModel):
     meta: dict[str, str | bool | None]
 
 
+class PortfolioRoloOtrosAjustesOut(BaseModel):
+    """Contratos cuyo aporte al puente vigente no cuadra solo con venta/recupero/culminación/caída."""
+
+    kpis: dict[str, float | int | str | None]
+    rows: list[dict[str, str | float | int | bool | None]]
+    meta: dict[str, str | bool | None]
+
+
 class CobranzasCohorteIn(BaseModel):
     cutoff_month: str | None = None
     un: list[str] = Field(default_factory=list)

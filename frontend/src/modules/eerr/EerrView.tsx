@@ -37,6 +37,7 @@ import {
 } from "@/modules/eerr/eerrGestionRange";
 import { sortMesGestionDesc } from "@/shared/sortMesGestionOptions";
 import {
+  aggregateCuentaNetByMayorBlock,
   aggregateCuentaNetByMayorVentas,
   aggregateMayorNetByBlock,
   buildEerrDetalleTree,
@@ -98,7 +99,24 @@ function KpiHeroCard({
   );
 }
 
-function MayorBreakdownList({ lines }: { lines: MayorNetLine[] }) {
+/** % del total de ventas (operativo); magnitud con abs para costos/gastos. */
+function formatPctDeVentas(amount: number, totalVentas: number): string {
+  const v = Number(totalVentas);
+  if (!Number.isFinite(v) || v === 0) return "—";
+  const a = Number(amount);
+  if (!Number.isFinite(a)) return "—";
+  return formatPercent((100 * Math.abs(a)) / v);
+}
+
+function CostoGastoMayorBreakdownList({
+  lines,
+  rows,
+  totalVentas,
+}: {
+  lines: MayorNetLine[];
+  rows: EerrV2SummaryRow[];
+  totalVentas: number;
+}) {
   if (!lines.length) {
     return (
       <p className="text-xs text-[var(--color-text-muted)] leading-snug">
@@ -107,19 +125,76 @@ function MayorBreakdownList({ lines }: { lines: MayorNetLine[] }) {
     );
   }
   return (
-    <ul className="space-y-1.5 text-xs max-h-52 overflow-y-auto pr-0.5">
+    <ul className="space-y-1 text-xs max-h-64 overflow-y-auto pr-0.5">
       {lines.map((l) => (
-        <li
-          key={`${l.eerr_block}-${l.mayor}`}
-          className="flex justify-between gap-3 items-baseline border-b border-[var(--color-border-subtle)] border-opacity-60 pb-1 last:border-0 last:pb-0"
-        >
-          <span className="truncate min-w-0 text-[var(--color-text-muted)]" title={l.mayor}>
-            {l.mayor}
-          </span>
-          <span className="font-mono tabular-nums shrink-0 text-right">{formatGsFull(l.net)}</span>
-        </li>
+        <CostoGastoMayorRow key={`${l.eerr_block}-${l.mayor}`} line={l} rows={rows} totalVentas={totalVentas} />
       ))}
     </ul>
+  );
+}
+
+function CostoGastoMayorRow({
+  line,
+  rows,
+  totalVentas,
+}: {
+  line: MayorNetLine;
+  rows: EerrV2SummaryRow[];
+  totalVentas: number;
+}) {
+  const [cuentasOpen, setCuentasOpen] = useState(false);
+  const block = line.eerr_block === "gastos" ? "gastos" : "costos";
+  const cuentas = useMemo(
+    () => aggregateCuentaNetByMayorBlock(rows, block, line.mayor),
+    [rows, block, line.mayor],
+  );
+  return (
+    <li className="border-b border-[var(--color-border-subtle)] border-opacity-60 pb-1.5 last:border-0 last:pb-0">
+      <div className="flex items-baseline gap-1.5 min-w-0">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          isIconOnly
+          className="shrink-0 h-7 w-7 min-w-7"
+          aria-expanded={cuentasOpen}
+          aria-label={cuentasOpen ? "Ocultar cuentas del mayor" : "Ver cuentas del mayor"}
+          onPress={() => setCuentasOpen((v) => !v)}
+        >
+          <span className="text-sm font-semibold leading-none">{cuentasOpen ? "−" : "+"}</span>
+        </Button>
+        <span className="truncate min-w-0 flex-1 text-[var(--color-text-muted)]" title={line.mayor}>
+          {line.mayor}
+        </span>
+        <span className="flex flex-col items-end gap-0.5 shrink-0 text-right sm:flex-row sm:items-baseline sm:gap-2">
+          <span className="font-mono tabular-nums">{formatGsFull(line.net)}</span>
+          <span className="font-mono tabular-nums text-[11px] text-[var(--color-text-muted)] whitespace-nowrap">
+            {formatPctDeVentas(line.net, totalVentas)} ventas
+          </span>
+        </span>
+      </div>
+      {cuentasOpen ? (
+        <ul className="mt-2 ml-8 space-y-1 border-l border-[var(--color-border-subtle)] pl-2 max-h-40 overflow-y-auto">
+          {cuentas.length ? (
+            cuentas.map((c) => (
+              <li key={`${line.mayor}||${c.cuenta}`} className="flex justify-between gap-2 text-[11px] items-baseline">
+                <span className="truncate text-[var(--color-text-muted)] min-w-0" title={c.cuenta}>
+                  {c.cuenta}
+                </span>
+                <span className="flex flex-col items-end gap-0.5 shrink-0 sm:flex-row sm:items-baseline sm:gap-2">
+                  <span className="font-mono tabular-nums">{formatGsFull(c.net)}</span>
+                  <span className="font-mono tabular-nums text-[var(--color-text-muted)] whitespace-nowrap">
+                    {formatPctDeVentas(c.net, totalVentas)}
+                  </span>
+                </span>
+              </li>
+            ))
+          ) : (
+            <li className="text-[11px] text-[var(--color-text-muted)]">Sin cuentas en el detalle.</li>
+          )}
+        </ul>
+      ) : null}
+    </li>
   );
 }
 
@@ -349,11 +424,14 @@ function KpiMayorExpandCard({
   value,
   chip,
   expandSummary,
+  pctDelTotalVentas,
 }: {
   title: string;
   value: string;
   chip?: string;
   expandSummary: React.ReactNode;
+  /** Texto bajo el monto (p. ej. "% del total de ventas operativas"). */
+  pctDelTotalVentas?: string;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -370,7 +448,14 @@ function KpiMayorExpandCard({
       </Card.Header>
       <Card.Content className="pt-0">
         <div className="flex flex-row items-center gap-2 min-w-0">
-          <div className="eerr-kpi-value flex-1 min-w-0">{value}</div>
+          <div className="eerr-kpi-value flex-1 min-w-0">
+            {value}
+            {pctDelTotalVentas ? (
+              <div className="text-sm font-semibold tabular-nums text-[var(--color-text-muted)] mt-1 leading-snug">
+                {pctDelTotalVentas}
+              </div>
+            ) : null}
+          </div>
           <Button
             type="button"
             variant="outline"
@@ -487,6 +572,15 @@ function EerrCompareColumn({
 
   const { pctMargen, pctEbitda } = usePctDerived(summary?.kpis);
   const kpis = summary?.kpis;
+  const totalVentasOperativo = Number(kpis?.ingresos_operativo) || 0;
+  const costosPctDelVentas =
+    totalVentasOperativo > 0 && kpis
+      ? `${formatPctDeVentas(Number(kpis.costos_operativo), totalVentasOperativo)} del total de ventas`
+      : undefined;
+  const gastosPctDelVentas =
+    totalVentasOperativo > 0 && kpis
+      ? `${formatPctDeVentas(Number(kpis.gastos_operativo), totalVentasOperativo)} del total de ventas`
+      : undefined;
   const monthlySeries = useMemo(() => monthlySeriesFromSummary(summary), [summary]);
 
   const yearTriggerSummary = useMemo(() => {
@@ -703,12 +797,18 @@ function EerrCompareColumn({
                 title="Costos (operativo)"
                 value={formatGsFull(kpis.costos_operativo)}
                 chip="Costos"
+                pctDelTotalVentas={costosPctDelVentas}
                 expandSummary={
                   <>
                     <p className="text-[11px] text-[var(--color-text-muted)] mb-2 leading-snug">
-                      Neto por mayor (débito − crédito).
+                      Neto por mayor (débito − crédito). Cada ítem muestra <strong>% del total de ventas</strong>{" "}
+                      (operativo); <strong>+</strong> despliega subcuentas.
                     </p>
-                    <MayorBreakdownList lines={costosMayor} />
+                    <CostoGastoMayorBreakdownList
+                      lines={costosMayor}
+                      rows={summary?.rows ?? []}
+                      totalVentas={totalVentasOperativo}
+                    />
                   </>
                 }
               />
@@ -724,7 +824,11 @@ function EerrCompareColumn({
                     <p className="text-xs font-semibold mb-1">Ventas</p>
                     <VentasMayorBreakdownList rows={summary?.rows ?? []} />
                     <p className="text-xs font-semibold mt-3 mb-1">Costos</p>
-                    <MayorBreakdownList lines={costosMayor} />
+                    <CostoGastoMayorBreakdownList
+                      lines={costosMayor}
+                      rows={summary?.rows ?? []}
+                      totalVentas={totalVentasOperativo}
+                    />
                   </>
                 }
               />
@@ -744,12 +848,18 @@ function EerrCompareColumn({
                 title="Gastos (operativo)"
                 value={formatGsFull(kpis.gastos_operativo)}
                 chip="Gastos"
+                pctDelTotalVentas={gastosPctDelVentas}
                 expandSummary={
                   <>
                     <p className="text-[11px] text-[var(--color-text-muted)] mb-2 leading-snug">
-                      Neto por mayor (débito − crédito).
+                      Neto por mayor (débito − crédito). % respecto a <strong>ventas operativas</strong>;{" "}
+                      <strong>+</strong> subcuentas.
                     </p>
-                    <MayorBreakdownList lines={gastosMayor} />
+                    <CostoGastoMayorBreakdownList
+                      lines={gastosMayor}
+                      rows={summary?.rows ?? []}
+                      totalVentas={totalVentasOperativo}
+                    />
                   </>
                 }
               />
@@ -763,7 +873,11 @@ function EerrCompareColumn({
                       El total coincide con el resumen; el desglose muestra <strong>gastos</strong> por mayor (componente
                       restado al margen).
                     </p>
-                    <MayorBreakdownList lines={gastosMayor} />
+                    <CostoGastoMayorBreakdownList
+                      lines={gastosMayor}
+                      rows={summary?.rows ?? []}
+                      totalVentas={totalVentasOperativo}
+                    />
                   </>
                 }
               />

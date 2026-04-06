@@ -2310,7 +2310,8 @@ class AnalyticsService:
         }
 
     @staticmethod
-    def fetch_portfolio_rolo_summary_v2(db: Session, filters: AnalyticsFilters) -> dict:
+    def _portfolio_rolo_load_prev_curr_maps(db: Session, filters: AnalyticsFilters) -> dict:
+        """Carga filas de cartera_fact para cierre anterior y cierre analizado. `_valid_pair` False si no hay par comparable."""
         close_month_filter = sorted(
             {
                 str(v).strip()
@@ -2328,37 +2329,24 @@ class AnalyticsService:
             or ''
         )
         close_serial = _month_serial(resolved_close_month)
+        year_filter = {str(v).strip() for v in (filters.anio or []) if str(v).strip()}
+        out: dict = {
+            '_valid_pair': False,
+            'resolved_close_month': str(resolved_close_month or '').strip() or None,
+            'previous_close_month': None,
+            'resolved_gestion_month': None,
+            'prev_rows': {},
+            'curr_rows': {},
+            'year_filter': year_filter,
+        }
         if close_serial <= 1:
-            return {
-                'kpis': {
-                    'resolved_close_month': resolved_close_month or None,
-                    'previous_close_month': None,
-                    'resolved_gestion_month': None,
-                    'vigente_inicial': 0,
-                    'vigente_final': 0,
-                    'ventas_nuevas': 0,
-                    'recuperados_a_vigente': 0,
-                    'culminados_vigentes': 0,
-                    'caidos_a_moroso': 0,
-                    'neto_rolo': 0,
-                    'esperado_final': 0,
-                    'otros_ajustes': 0,
-                },
-                'charts': {'by_un_neto': {}},
-                'rows': [],
-                'meta': {
-                    'source': 'api-v1',
-                    'source_table': 'cartera_fact',
-                    'generated_at': datetime.utcnow().isoformat(),
-                },
-            }
+            return out
 
         previous_close_month = _month_from_serial(close_serial - 1)
         resolved_gestion_month = _month_from_serial(close_serial + 1)
         un_filter = _normalize_str_set(filters.un)
         supervisor_filter = _normalize_str_set(filters.supervisor)
         via_filter = _normalize_str_set(filters.via_cobro)
-        year_filter = {str(v).strip() for v in (filters.anio or []) if str(v).strip()}
 
         q = db.query(
             CarteraFact.contract_id,
@@ -2402,6 +2390,49 @@ class AnalyticsService:
                 prev_rows[contract_id] = item
             elif item['close_month'] == resolved_close_month:
                 curr_rows[contract_id] = item
+
+        out['_valid_pair'] = True
+        out['resolved_close_month'] = str(resolved_close_month).strip()
+        out['previous_close_month'] = previous_close_month
+        out['resolved_gestion_month'] = resolved_gestion_month
+        out['prev_rows'] = prev_rows
+        out['curr_rows'] = curr_rows
+        return out
+
+    @staticmethod
+    def fetch_portfolio_rolo_summary_v2(db: Session, filters: AnalyticsFilters) -> dict:
+        ctx = AnalyticsService._portfolio_rolo_load_prev_curr_maps(db, filters)
+        if not ctx['_valid_pair']:
+            return {
+                'kpis': {
+                    'resolved_close_month': ctx.get('resolved_close_month'),
+                    'previous_close_month': None,
+                    'resolved_gestion_month': None,
+                    'vigente_inicial': 0,
+                    'vigente_final': 0,
+                    'ventas_nuevas': 0,
+                    'recuperados_a_vigente': 0,
+                    'culminados_vigentes': 0,
+                    'caidos_a_moroso': 0,
+                    'neto_rolo': 0,
+                    'esperado_final': 0,
+                    'otros_ajustes': 0,
+                },
+                'charts': {'by_un_neto': {}},
+                'rows': [],
+                'meta': {
+                    'source': 'api-v1',
+                    'source_table': 'cartera_fact',
+                    'generated_at': datetime.utcnow().isoformat(),
+                },
+            }
+
+        resolved_close_month = str(ctx['resolved_close_month'] or '').strip()
+        previous_close_month = str(ctx['previous_close_month'] or '').strip()
+        resolved_gestion_month = str(ctx['resolved_gestion_month'] or '').strip()
+        prev_rows: dict[str, dict] = ctx['prev_rows']
+        curr_rows: dict[str, dict] = ctx['curr_rows']
+        year_filter = ctx['year_filter']
 
         def _is_vigente(row: dict | None) -> bool:
             if not row:
@@ -2523,6 +2554,120 @@ class AnalyticsService:
                 'source_table': 'cartera_fact',
                 'generated_at': datetime.utcnow().isoformat(),
                 'signature': f'portfolio-rolo-v2|{_filters_to_query(filters)}|{resolved_close_month}',
+            },
+        }
+
+    @staticmethod
+    def fetch_portfolio_rolo_otros_ajustes_v2(db: Session, filters: AnalyticsFilters) -> dict:
+        """Contratos con residual distinto de cero en el puente: delta_vigente - (V+R-C-D)."""
+        ctx = AnalyticsService._portfolio_rolo_load_prev_curr_maps(db, filters)
+        empty_meta = {
+            'source': 'api-v1',
+            'source_table': 'cartera_fact',
+            'generated_at': datetime.utcnow().isoformat(),
+        }
+        if not ctx['_valid_pair']:
+            return {
+                'kpis': {
+                    'resolved_close_month': ctx.get('resolved_close_month'),
+                    'previous_close_month': None,
+                    'resolved_gestion_month': None,
+                    'otros_ajustes': 0,
+                    'contratos_con_residual': 0,
+                },
+                'rows': [],
+                'meta': empty_meta,
+            }
+
+        resolved_close_month = str(ctx['resolved_close_month'] or '').strip()
+        previous_close_month = str(ctx['previous_close_month'] or '').strip()
+        resolved_gestion_month = str(ctx['resolved_gestion_month'] or '').strip()
+        prev_rows: dict[str, dict] = ctx['prev_rows']
+        curr_rows: dict[str, dict] = ctx['curr_rows']
+        year_filter = ctx['year_filter']
+
+        def _is_vigente(row: dict | None) -> bool:
+            if not row:
+                return False
+            category = str(row.get('category') or '').strip().upper()
+            if category in {'VIGENTE', 'MOROSO'}:
+                return category == 'VIGENTE'
+            return int(row.get('tramo') or 0) <= 3
+
+        def _is_moroso(row: dict | None) -> bool:
+            return bool(row) and not _is_vigente(row)
+
+        def _sale_year(row: dict | None) -> str:
+            sale_month = str((row or {}).get('sale_month') or '').strip()
+            serial = _month_serial(sale_month)
+            if serial <= 0:
+                return ''
+            return sale_month[-4:]
+
+        detail_rows: list[dict[str, str | int | bool | None]] = []
+        sum_residual = 0
+        contract_ids = sorted(set(prev_rows.keys()) | set(curr_rows.keys()))
+        for contract_id in contract_ids:
+            prev_row = prev_rows.get(contract_id)
+            curr_row = curr_rows.get(contract_id)
+            reference = curr_row or prev_row
+            if not reference:
+                continue
+            if year_filter and _sale_year(reference) not in year_filter:
+                continue
+
+            prev_vig = _is_vigente(prev_row)
+            prev_mor = _is_moroso(prev_row)
+            curr_vig = _is_vigente(curr_row)
+            curr_mor = _is_moroso(curr_row)
+            sale_month = str(reference.get('sale_month') or '').strip()
+            culm_month = str(reference.get('culm_month') or '').strip()
+
+            vn = 1 if sale_month == resolved_close_month else 0
+            rec = 1 if prev_mor and curr_vig else 0
+            cul = 1 if prev_vig and culm_month == resolved_close_month else 0
+            cai = 1 if prev_vig and curr_mor else 0
+            delta_vig = (1 if curr_vig else 0) - (1 if prev_vig else 0)
+            flow = vn + rec - cul - cai
+            residual = delta_vig - flow
+            sum_residual += int(residual)
+            if residual == 0:
+                continue
+            detail_rows.append(
+                {
+                    'contract_id': contract_id,
+                    'un': str(reference.get('un') or 'S/D'),
+                    'supervisor': str(reference.get('supervisor') or 'S/D'),
+                    'via_cobro': str(reference.get('via_cobro') or 'S/D'),
+                    'delta_vigente': int(delta_vig),
+                    'venta_nueva': int(vn),
+                    'recuperado': int(rec),
+                    'culminado': int(cul),
+                    'caido': int(cai),
+                    'residual': int(residual),
+                    'prev_vigente': bool(prev_vig),
+                    'curr_vigente': bool(curr_vig),
+                    'sale_month': sale_month or None,
+                    'culm_month': culm_month or None,
+                    'en_cierre_anterior': bool(prev_row),
+                    'en_cierre_actual': bool(curr_row),
+                }
+            )
+
+        detail_rows.sort(key=lambda r: (-abs(int(r['residual'])), str(r.get('contract_id') or '')))
+
+        return {
+            'kpis': {
+                'resolved_close_month': resolved_close_month,
+                'previous_close_month': previous_close_month,
+                'resolved_gestion_month': resolved_gestion_month,
+                'otros_ajustes': int(sum_residual),
+                'contratos_con_residual': len(detail_rows),
+            },
+            'rows': detail_rows,
+            'meta': {
+                **empty_meta,
+                'signature': f'portfolio-rolo-v2-otros|{_filters_to_query(filters)}|{resolved_close_month}',
             },
         }
 
