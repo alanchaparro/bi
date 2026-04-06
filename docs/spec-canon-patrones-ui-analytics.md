@@ -165,6 +165,16 @@ Reglas:
 - spacing consistente
 - no dejar filtros flotando sin contención
 
+### Layout de filtros por sección (macro / micro / panel lateral)
+La **lista canónica** de qué filtros existen por sección y en qué fila (macro, micro, FAB) vive en `frontend/src/config/analyticsFilterLayouts.ts` (`ANALYTICS_FILTER_LAYOUTS`).
+
+**Nueva sección de tablero analytics:** debe seguir el **mismo patrón de implementación** que Cartera, Análisis de cartera, Rendimiento, Cohorte, etc.:
+- Añadir entrada en `ANALYTICS_FILTER_LAYOUTS` con `macro`, `micro` y `floating` (ids de `AnalyticsFilterId` alineados a lo que la vista y la API soporten).
+- Vista: `DashboardFiltersLayout` (props `sectionId` + `slots`), `FloatingQuickFilters` envolviendo `DashboardFloatingFiltersLayout` con el mismo `sectionId`, y `buildEffectiveFilterLayout(sectionId, omit, doc)` para respetar overrides de Configuración.
+- No introducir un layout de filtros “ad hoc” (lista suelta, otro FAB distinto o sin registro) salvo excepción acordada y documentada en `power_avance.md`.
+
+Detalle ejecutivo y orden de lectura: `power.md` § C y C.1.
+
 ## Canon de jerarquía de pantalla
 Orden esperado en una vista analítica:
 1. título y contexto
@@ -198,6 +208,7 @@ Se considera bug visual:
 ## Checklist rápido para dev
 - [ ] Si un filtro single-choice tiene `<= 3` opciones fijas, usa segmented control
 - [ ] Si un filtro tiene muchas opciones o depende de datos, usa select/multi-select
+- [ ] Nueva sección analytics: registrada en `analyticsFilterLayouts.ts` y mismos componentes de layout/FAB que el resto (`power.md` C.1)
 - [ ] La vista se entiende a `100%` zoom en `1366x768`
 - [ ] Hay una sola acción primaria por bloque
 - [ ] Metadata no compite visualmente con acciones

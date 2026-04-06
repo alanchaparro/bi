@@ -1,6 +1,11 @@
 /**
  * Verdad única del orden y presencia de filtros por sección del dashboard analytics.
- * Alineado a `power.md` § C (fila macro → UN / vía / categoría / tramo; fila micro → tiempo / supervisor / periodo).
+ * Alineado a `power.md` § C y **C.1** (fila macro → UN / vía / categoría / tramo; fila micro → tiempo / supervisor / periodo).
+ *
+ * **Nueva sección de tablero:** añadir aquí un `sectionId` con `macro`, `micro` y `floating`
+ * como el resto; en la vista usar `DashboardFiltersLayout`, `FloatingQuickFilters` +
+ * `DashboardFloatingFiltersLayout`, y `buildEffectiveFilterLayout`. Espejo backend en
+ * `dashboard_filter_layouts.py` si la API normaliza layouts.
  *
  * Para quitar un filtro en una vista concreta sin editar este archivo, usá `omit` en
  * `DashboardFiltersLayout`. Para cambiar el canon de una sección, editá solo este módulo.

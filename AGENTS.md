@@ -7,7 +7,7 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
 ## Canonico transversal de desacople
 - El desacople entre frontend **nuevo** y **legacy** se rige por `desacople.md`.
 - Si el cambio toca navegacion, routing, layout o UI de modulos analiticos, validar obligatoriamente contra `desacople.md`.
-- El canon ejecutivo de tableros analytics se rige por `power.md`.
+- El canon ejecutivo de tableros analytics se rige por `power.md` (incluye obligación de nuevas secciones con el mismo patrón de layout de filtros que las existentes; ver § C.1).
 - Si el cambio toca jerarquia de pantalla, header, KPIs, filtros o composicion general de tableros analytics, validar obligatoriamente contra `power.md`.
 - El seguimiento operativo del rollout ejecutivo por modulo se registra en `power_avance.md`.
 - El canon visual operativo por patrones de UI analytics se rige por `docs/spec-canon-patrones-ui-analytics.md`.
@@ -190,6 +190,7 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
    - confirmacion de que `.env`/llaves no forman parte del commit
 7. Si el cambio toca Docker/compose/bootstrap/scripts: validar `INICIAR.bat`/`iniciar.sh`, `INICIAR_LAN.bat`/`iniciar_lan.sh`, `DETENER.bat`/`detener.sh`, `REINICIAR.bat`/`reiniciar.sh` y `REINICIAR_LAN.bat`/`reiniciar_lan.sh`.
 8. Si el cambio toca frontend de analytics, validar fronteras de `desacople.md` (sin marcadores legacy en flujo nuevo).
+8.1. Si el cambio **añade una nueva sección** de tablero analytics (vista/ruta nueva comparable a Cartera, Análisis, Rendimiento, Cohorte): registrar la sección en `frontend/src/config/analyticsFilterLayouts.ts` (`macro` / `micro` / `floating` como las demás), usar `DashboardFiltersLayout` + `FloatingQuickFilters` / `DashboardFloatingFiltersLayout` + `buildEffectiveFilterLayout`, y mantener alineado el espejo en backend de normalización de layouts si aplica (`dashboard_filter_layouts.py`). Criterio canónico: `power.md` § C.1 y `docs/spec-canon-patrones-ui-analytics.md` (layout por sección).
 9. Validar `optimo.md` como canónico de pendientes: registrar impacto en hardware/UX, evidencia antes/despues y estado consistente con `bugs.md`/`bugs_visual.md`.
 10. Si el cambio requiere validación funcional o de regresión, registrar la corrida en `qa.md` con evidencia y enlazar cualquier hallazgo a su canónico correspondiente.
 11. Si el cambio altera copy, métricas visibles o flujos de decision con datos para perfiles no técnicos: revisar coherencia con `pendientes.md` (ítems abiertos/cerrados) y con la voz de negocio de `AGENTS.md`.
@@ -213,3 +214,4 @@ Actualizar inmediatamente si cambia:
 13. Catálogo de códigos legacy: si el monolito PHP cambia mapeos id→etiqueta, actualizar el **Apéndice A** dentro de `docs/base.md` (y §10–§11 si cambia semántica de columnas en extractos v2).
 14. Política de adopción HeroUI o reglas operativas en `docs/heroui/README.md` / `docs/heroui/PLAN-MIGRACION.md` (incluidas excepciones temporales o decisiones de fase, p. ej. tablas).
 15. Definición del **Estado de resultado (EERR)**: estructura de la tabla dinámica, clasificación ingresos/costos/gastos y fórmulas **margen** y **EBITDA** (regla **10** de negocio).
+16. Política de **nuevas secciones** de tablero analytics: registro en `analyticsFilterLayouts.ts`, mismos componentes de layout/FAB y espejo backend de normalización (`power.md` § C.1, spec patrones UI analytics).

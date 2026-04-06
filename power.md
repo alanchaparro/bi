@@ -36,6 +36,13 @@ La **lista maestra** de qué filtros entran en cada sección y en qué orden (ma
 
 Los administradores pueden **persistir overrides** (orden, filas macro/micro, anchos y clases de rejilla) desde **Configuración → Layouts de filtros**; se guardan en API (`/brokers/config/dashboard-filter-layouts`) y aplican a todos los usuarios. El código del repo sigue siendo el valor por defecto cuando no hay override.
 
+### C.1 Nueva sección de tablero analytics (obligatorio)
+Toda **nueva vista o ruta** que sea un tablero analítico del mismo tipo que Cartera, Análisis, Rendimiento, Cohorte, etc. debe incorporarse **igual que las existentes** respecto a filtros:
+1. **Registro en código**: añadir un `sectionId` en `frontend/src/config/analyticsFilterLayouts.ts` con las mismas tres capas que el resto: `macro`, `micro` y `floating` (pool de ids de `AnalyticsFilterId` que la vista realmente soporte).
+2. **Render en pantalla**: usar `DashboardFiltersLayout` para macro/micro, `FloatingQuickFilters` + `DashboardFloatingFiltersLayout` para el panel lateral, y `buildEffectiveFilterLayout(sectionId, …)` leyendo `useFilterLayoutConfig()` (mismo patrón que las vistas actuales).
+3. **Backend de normalización**: si la API persiste layouts, el pool de esa sección debe estar reflejado en el espejo de `DEFAULT_LAYOUTS` del servicio de normalización (hoy `dashboard_filter_layouts.py`), para no romper PUT/GET.
+4. **Excepciones**: solo con acuerdo explícito y nota en `power_avance.md` (p. ej. módulos fuera del alcance tipo EERR que sigan otro contrato).
+
 Los filtros no deben ser una lista plana, sino una jerarquia de decision:
 1. **Fila Macro**:
    - UN -> Via de Cobro -> Categoria -> Tramo.
@@ -88,6 +95,7 @@ Las excepciones deben justificarse por escrito en `power_avance.md`.
 Antes de mergear una nueva vista o cambio:
 - [ ] Tiene header con kicker y subtitulo.
 - [ ] Existen las tarjetas de resumen ejecutivo arriba.
+- [ ] Si es una **nueva sección** de tablero analytics: cumple **C.1** (registro en `analyticsFilterLayouts.ts`, `DashboardFiltersLayout` + FAB como el resto, espejo backend si aplica).
 - [ ] Los filtros estan organizados en Macro -> Micro -> Acciones.
 - [ ] El boton "Aplicar" es el elemento visualmente mas fuerte de los filtros.
 - [ ] Se usan los tokens visuales definidos.
