@@ -82,10 +82,9 @@ function readSectionDraft(
   const def = defaultSectionLayout(section);
   if (!raw) return def;
   return {
-    macro:
-      raw.macro && raw.macro.length > 0 ? [...raw.macro] : def.macro,
-    micro:
-      raw.micro && raw.micro.length > 0 ? [...raw.micro] : def.micro,
+    // Arrays vacíos son válidos (p. ej. todo en FAB); no volver al canon al vaciar macro/micro.
+    macro: Array.isArray(raw.macro) ? [...raw.macro] : def.macro,
+    micro: Array.isArray(raw.micro) ? [...raw.micro] : def.micro,
     floating:
       raw.floating !== undefined && Array.isArray(raw.floating)
         ? [...raw.floating]

@@ -3,6 +3,7 @@ import {
   buildEffectiveFilterLayout,
   resolveDashboardFilterRowGridClass,
   resolveDashboardFiltersLayout,
+  snapshotFloatingFilterValues,
   type AnalyticsFilterId,
   type DashboardFilterLayoutsDocument,
 } from "./analyticsFilterLayouts";
@@ -134,5 +135,14 @@ describe("buildEffectiveFilterLayout", () => {
     const e = buildEffectiveFilterLayout("analisisCarteraRendimiento", [], doc);
     expect(e.slotStyles.via_cobro?.min_width_px).toBe(200);
     expect(e.slotStyles.via_cobro?.control_scale).toBe("comfortable");
+  });
+});
+
+describe("snapshotFloatingFilterValues", () => {
+  it("ordena ids y valores de forma estable", () => {
+    const s = snapshotFloatingFilterValues(["un", "via_cobro"], (id) =>
+      id === "un" ? ["b", "a"] : ["z"],
+    );
+    expect(s).toBe("un:a\u0001b|via_cobro:z");
   });
 });

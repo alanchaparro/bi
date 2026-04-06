@@ -10,6 +10,7 @@ import { useFilterLayoutConfig } from "@/components/filters/FilterLayoutConfigCo
 import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
 import {
   buildEffectiveFilterLayout,
+  snapshotFloatingFilterValues,
   type AnalyticsFilterId,
 } from "@/config/analyticsFilterLayouts";
 import { ActiveFilterChips, type FilterChip } from "../../components/filters/ActiveFilterChips";
@@ -215,6 +216,48 @@ export function AnalisisAnualesView() {
     floatUns,
     floatYears,
   ]);
+
+  const pickFloatDraft = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case "un":
+          return floatUns;
+        case "contract_year":
+          return floatYears;
+        case "contract_month_combo":
+          return floatContractMonths;
+        default:
+          return [];
+      }
+    },
+    [floatUns, floatYears, floatContractMonths],
+  );
+
+  const pickFloatApplied = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case "un":
+          return appliedFilters.uns;
+        case "contract_year":
+          return appliedFilters.years;
+        case "contract_month_combo":
+          return appliedFilters.contractMonths;
+        default:
+          return [];
+      }
+    },
+    [appliedFilters],
+  );
+
+  const floatDraftActivityKey = useMemo(
+    () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatDraft),
+    [floatLayoutEff.floating, pickFloatDraft],
+  );
+
+  const floatAppliedActivityKey = useMemo(
+    () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatApplied),
+    [floatLayoutEff.floating, pickFloatApplied],
+  );
 
   const clearFilters = useCallback(() => {
     setFilters(EMPTY_FILTERS);
@@ -493,6 +536,8 @@ export function AnalisisAnualesView() {
           onOpen={openFloatFilters}
           onCollapse={() => setFloatOpen(false)}
           onApply={() => void applyFloatFilters()}
+          floatDraftActivityKey={floatDraftActivityKey}
+          floatAppliedActivityKey={floatAppliedActivityKey}
           applyDisabled={applying || loadingOptions || loadingSummary}
           applying={applying || loadingSummary}
         >

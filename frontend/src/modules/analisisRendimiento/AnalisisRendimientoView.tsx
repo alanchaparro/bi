@@ -14,6 +14,7 @@ import {
 import { useFilterLayoutConfig } from '@/components/filters/FilterLayoutConfigContext'
 import {
   buildEffectiveFilterLayout,
+  snapshotFloatingFilterValues,
   type AnalyticsFilterId,
 } from '@/config/analyticsFilterLayouts'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
@@ -844,6 +845,72 @@ export function AnalisisRendimientoView() {
     floatViasPago,
   ])
 
+  const pickFloatDraft = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case 'gestion_month':
+          return floatGestion
+        case 'un':
+          return floatUns
+        case 'via_cobro':
+          return floatViasCobro
+        case 'via_pago':
+          return floatViasPago
+        case 'categoria':
+          return floatCategorias
+        case 'tramo':
+          return floatTramos
+        case 'supervisor':
+          return floatSupervisors
+        default:
+          return []
+      }
+    },
+    [
+      floatGestion,
+      floatUns,
+      floatViasCobro,
+      floatViasPago,
+      floatCategorias,
+      floatTramos,
+      floatSupervisors,
+    ],
+  )
+
+  const pickFloatApplied = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case 'gestion_month':
+          return appliedFilters.gestionMonths
+        case 'un':
+          return appliedFilters.uns
+        case 'via_cobro':
+          return appliedFilters.viasCobro
+        case 'via_pago':
+          return appliedFilters.viasPago
+        case 'categoria':
+          return appliedFilters.categorias
+        case 'tramo':
+          return appliedFilters.tramos
+        case 'supervisor':
+          return appliedFilters.supervisors
+        default:
+          return []
+      }
+    },
+    [appliedFilters],
+  )
+
+  const floatDraftActivityKey = useMemo(
+    () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatDraft),
+    [floatLayoutEff.floating, pickFloatDraft],
+  )
+
+  const floatAppliedActivityKey = useMemo(
+    () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatApplied),
+    [floatLayoutEff.floating, pickFloatApplied],
+  )
+
   const clearFilters = useCallback(() => {
     const defaultMonth = options.defaultGestionMonth || options.gestionMonths?.[0] || ''
     setFilters({ ...EMPTY_FILTERS, gestionMonths: defaultMonth ? [defaultMonth] : [] })
@@ -1439,6 +1506,8 @@ export function AnalisisRendimientoView() {
           onOpen={openFloatFilters}
           onCollapse={() => setFloatOpen(false)}
           onApply={() => void applyFloatFilters()}
+          floatDraftActivityKey={floatDraftActivityKey}
+          floatAppliedActivityKey={floatAppliedActivityKey}
           applyDisabled={
             applying ||
             loadingSummary ||

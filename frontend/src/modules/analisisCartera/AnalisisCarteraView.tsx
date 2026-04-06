@@ -17,6 +17,7 @@ import {
 import { useFilterLayoutConfig } from "@/components/filters/FilterLayoutConfigContext";
 import {
   buildEffectiveFilterLayout,
+  snapshotFloatingFilterValues,
   type AnalyticsFilterId,
 } from "@/config/analyticsFilterLayouts";
 import { pushAppToast, type AppToastType } from "../../shared/pushAppToast";
@@ -674,6 +675,77 @@ export function AnalisisCarteraView() {
     floatYears,
   ]);
 
+  const pickFloatDraft = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case "gestion_month":
+          return floatGestion;
+        case "close_month":
+          return floatClose;
+        case "un":
+          return floatUns;
+        case "via_cobro":
+          return floatVias;
+        case "categoria":
+          return floatCategorias;
+        case "tramo":
+          return floatTramos;
+        case "contract_year":
+          return floatYears;
+        case "supervisor":
+          return floatSupervisors;
+        default:
+          return [];
+      }
+    },
+    [
+      floatGestion,
+      floatClose,
+      floatUns,
+      floatVias,
+      floatCategorias,
+      floatTramos,
+      floatYears,
+      floatSupervisors,
+    ],
+  );
+
+  const pickFloatApplied = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case "gestion_month":
+          return appliedFilters.gestionMonths;
+        case "close_month":
+          return appliedFilters.closeMonths;
+        case "un":
+          return appliedFilters.uns;
+        case "via_cobro":
+          return appliedFilters.vias;
+        case "categoria":
+          return appliedFilters.categorias;
+        case "tramo":
+          return appliedFilters.tramos;
+        case "contract_year":
+          return appliedFilters.years;
+        case "supervisor":
+          return appliedFilters.supervisors;
+        default:
+          return [];
+      }
+    },
+    [appliedFilters],
+  );
+
+  const floatDraftActivityKey = useMemo(
+    () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatDraft),
+    [floatLayoutEff.floating, pickFloatDraft],
+  );
+
+  const floatAppliedActivityKey = useMemo(
+    () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatApplied),
+    [floatLayoutEff.floating, pickFloatApplied],
+  );
+
   const expectedGestionMonths = useMemo(() => {
     if (appliedFilters.gestionMonths.length) {
       return enumerateMonths(appliedFilters.gestionMonths);
@@ -1189,6 +1261,8 @@ export function AnalisisCarteraView() {
           onOpen={openFloatFilters}
           onCollapse={() => setFloatOpen(false)}
           onApply={() => void applyFloatFilters()}
+          floatDraftActivityKey={floatDraftActivityKey}
+          floatAppliedActivityKey={floatAppliedActivityKey}
           applyDisabled={
             loadingOptions ||
             isApplyingFilters ||

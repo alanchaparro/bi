@@ -18,6 +18,7 @@ import { useFilterLayoutConfig } from "@/components/filters/FilterLayoutConfigCo
 import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
 import {
   buildEffectiveFilterLayout,
+  snapshotFloatingFilterValues,
   type AnalyticsFilterId,
 } from "@/config/analyticsFilterLayouts";
 import {
@@ -343,6 +344,72 @@ export function CarteraView() {
     floatYears,
   ]);
 
+  const pickFloatDraft = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case "gestion_month":
+          return floatMonths;
+        case "un":
+          return floatUns;
+        case "via_cobro":
+          return floatVias;
+        case "categoria":
+          return floatCategorias;
+        case "tramo":
+          return floatTramos;
+        case "contract_year":
+          return floatYears;
+        case "supervisor":
+          return floatSupervisors;
+        default:
+          return [];
+      }
+    },
+    [
+      floatMonths,
+      floatUns,
+      floatVias,
+      floatCategorias,
+      floatTramos,
+      floatYears,
+      floatSupervisors,
+    ],
+  );
+
+  const pickFloatApplied = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case "gestion_month":
+          return filters.months;
+        case "un":
+          return filters.uns;
+        case "via_cobro":
+          return filters.vias;
+        case "categoria":
+          return filters.categorias;
+        case "tramo":
+          return filters.tramos;
+        case "contract_year":
+          return filters.years;
+        case "supervisor":
+          return filters.supervisors;
+        default:
+          return [];
+      }
+    },
+    [filters],
+  );
+
+  const floatDraftActivityKey = useMemo(
+    () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatDraft),
+    [floatLayoutEff.floating, pickFloatDraft],
+  );
+
+  const floatAppliedActivityKey = useMemo(
+    () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatApplied),
+    [floatLayoutEff.floating, pickFloatApplied],
+  );
+
   const kpis = summary?.kpis;
   const totalCartera = Number(kpis?.total_cartera ?? 0);
 
@@ -556,6 +623,8 @@ export function CarteraView() {
           onOpen={openFloatFilters}
           onCollapse={() => setFloatOpen(false)}
           onApply={() => void applyFloatFilters()}
+          floatDraftActivityKey={floatDraftActivityKey}
+          floatAppliedActivityKey={floatAppliedActivityKey}
           applyDisabled={
             loading ||
             (floatLayoutEff.floating.includes("gestion_month") &&

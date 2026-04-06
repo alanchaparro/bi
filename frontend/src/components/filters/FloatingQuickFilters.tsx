@@ -1,25 +1,35 @@
-"use client"
+"use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react"
-import { createPortal } from "react-dom"
-import { Button } from "@heroui/react"
-import { DomButton } from "@/components/ui/DomButton"
+import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Button } from "@heroui/react";
+
+const DEFAULT_AUTO_APPLY_MS = 4000;
 
 export type FloatingQuickFiltersProps = {
-  /** Panel de campos abierto (además del FAB). */
-  isOpen: boolean
-  /** Al pulsar el FAB colapsado: preparar borradores y abrir. */
-  onOpen: () => void
-  onCollapse: () => void
-  onApply: () => void | Promise<void>
-  applyDisabled?: boolean
-  applying?: boolean
-  title?: string
-  children: React.ReactNode
-}
+  /** Panel lateral abierto. */
+  isOpen: boolean;
+  /** Al pulsar el disparador: preparar borradores y abrir. */
+  onOpen: () => void;
+  onCollapse: () => void;
+  onApply: () => void | Promise<void>;
+  applyDisabled?: boolean;
+  applying?: boolean;
+  title?: string;
+  children: React.ReactNode;
+  /**
+   * Firma del borrador en el panel (cambia al editar). Si se envían ambas claves
+   * con `floatAppliedActivityKey`, tras `autoApplyIdleMs` sin cambios se llama `onApply`
+   * si el borrador difiere de lo aplicado.
+   */
+  floatDraftActivityKey?: string;
+  floatAppliedActivityKey?: string;
+  /** Inactividad antes de autodisparar (ms). Por defecto 4000 si hay claves de actividad. */
+  autoApplyIdleMs?: number;
+};
 
 /**
- * Pestaña flotante arrastrable (mismo patrón que Rolo de cartera) para filtros rápidos en pantallas de analytics.
+ * Filtros rápidos en un panel lateral derecho (sidebar), con backdrop y cierre por Escape.
  */
 export function FloatingQuickFilters({
   isOpen,
@@ -30,93 +40,117 @@ export function FloatingQuickFilters({
   applying = false,
   title = "Filtros rápidos",
   children,
+  floatDraftActivityKey,
+  floatAppliedActivityKey,
+  autoApplyIdleMs,
 }: FloatingQuickFiltersProps) {
-  const [mounted, setMounted] = useState(false)
-  const [position, setPosition] = useState<{ left: number; top: number } | null>(null)
-  const wrapRef = useRef<HTMLDivElement | null>(null)
+  const [mounted, setMounted] = useState(false);
+  const onApplyRef = useRef(onApply);
+  onApplyRef.current = onApply;
+  const flagsRef = useRef({ applyDisabled, applying });
+  flagsRef.current = { applyDisabled, applying };
 
   useEffect(() => {
-    setMounted(true)
-  }, [])
+    setMounted(true);
+  }, []);
 
-  const startDrag = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-    const wrap = wrapRef.current
-    if (!wrap) return
-    const rect = wrap.getBoundingClientRect()
-    const offsetX = event.clientX - rect.left
-    const offsetY = event.clientY - rect.top
-    document.body.classList.add("is-dragging-floating-filter")
+  useEffect(() => {
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [isOpen]);
 
-    const onPointerMove = (moveEvent: PointerEvent) => {
-      const currentWrap = wrapRef.current
-      if (!currentWrap) return
-      const currentRect = currentWrap.getBoundingClientRect()
-      const maxLeft = Math.max(0, window.innerWidth - currentRect.width)
-      const maxTop = Math.max(0, window.innerHeight - currentRect.height)
-      const nextLeft = Math.min(maxLeft, Math.max(0, moveEvent.clientX - offsetX))
-      const nextTop = Math.min(maxTop, Math.max(0, moveEvent.clientY - offsetY))
-      setPosition({ left: nextLeft, top: nextTop })
-    }
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCollapse();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isOpen, onCollapse]);
 
-    const onPointerUp = () => {
-      window.removeEventListener("pointermove", onPointerMove)
-      document.body.classList.remove("is-dragging-floating-filter")
-    }
+  const idleMs =
+    floatDraftActivityKey !== undefined && floatAppliedActivityKey !== undefined
+      ? (autoApplyIdleMs ?? DEFAULT_AUTO_APPLY_MS)
+      : 0;
 
-    window.addEventListener("pointermove", onPointerMove)
-    window.addEventListener("pointerup", onPointerUp, { once: true })
-    window.addEventListener("pointercancel", onPointerUp, { once: true })
-  }, [])
+  useEffect(() => {
+    if (!isOpen || idleMs <= 0) return;
+    if (floatDraftActivityKey === floatAppliedActivityKey) return;
+    const id = window.setTimeout(() => {
+      const { applyDisabled: d, applying: a } = flagsRef.current;
+      if (d || a) return;
+      void onApplyRef.current();
+    }, idleMs);
+    return () => window.clearTimeout(id);
+  }, [
+    isOpen,
+    idleMs,
+    floatDraftActivityKey,
+    floatAppliedActivityKey,
+  ]);
 
-  if (!mounted) return null
+  if (!mounted) return null;
 
   return createPortal(
-    <div
-      ref={wrapRef}
-      className={`analytics-floating-filter-wrap ${isOpen ? "is-open" : ""}`}
-      style={
-        position
-          ? {
-              left: `${position.left}px`,
-              top: `${position.top}px`,
-              right: "auto",
-              bottom: "auto",
-              transform: "none",
-            }
-          : undefined
-      }
-    >
-      <DomButton
-        type="button"
-        variant="ghost"
-        isIconOnly
-        className="analytics-floating-drag-btn"
-        onPointerDown={startDrag}
-        aria-label="Mover filtros rápidos"
-        title="Mover filtros rápidos"
-      >
-        ::
-      </DomButton>
+    <>
       {isOpen ? (
-        <div className="card analytics-floating-filter-card">
-          <div className="analytics-floating-filter-title">{title}</div>
-          <div className="analytics-floating-filter-grid">{children}</div>
-          <div className="analytics-floating-filter-actions">
-            <Button size="sm" variant="primary" onPress={() => void onApply()} isDisabled={applyDisabled || applying}>
-              Aplicar
+        <div
+          className="analytics-filter-sidebar-backdrop"
+          onClick={onCollapse}
+          aria-hidden
+        />
+      ) : null}
+
+      {isOpen ? (
+        <aside
+          className="analytics-filter-sidebar-panel card"
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+        >
+          <div className="analytics-filter-sidebar-header">
+            <h2 className="analytics-filter-sidebar-title">{title}</h2>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="analytics-filter-sidebar-close"
+              onPress={onCollapse}
+              aria-label="Cerrar panel de filtros"
+            >
+              Cerrar
+            </Button>
+          </div>
+          <div className="analytics-filter-sidebar-body analytics-floating-filter-grid">
+            {children}
+          </div>
+          <div className="analytics-filter-sidebar-footer analytics-floating-filter-actions">
+            <Button
+              size="sm"
+              variant="primary"
+              onPress={() => void onApply()}
+              isDisabled={applyDisabled || applying}
+            >
+              {applying ? "Aplicando…" : "Aplicar"}
             </Button>
             <Button size="sm" variant="ghost" onPress={onCollapse}>
               Contraer
             </Button>
           </div>
-        </div>
+        </aside>
       ) : (
-        <Button className="analytics-floating-filter-fab analytics-floating-filter-fab-vertical" variant="primary" onPress={onOpen}>
+        <Button
+          className="analytics-filter-sidebar-trigger analytics-floating-filter-fab analytics-floating-filter-fab-vertical"
+          variant="primary"
+          onPress={onOpen}
+        >
           Filtros
         </Button>
       )}
-    </div>,
+    </>,
     document.body,
-  )
+  );
 }

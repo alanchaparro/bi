@@ -16,6 +16,7 @@ import {
 import { useFilterLayoutConfig } from '@/components/filters/FilterLayoutConfigContext'
 import {
   buildEffectiveFilterLayout,
+  snapshotFloatingFilterValues,
   type AnalyticsFilterId,
 } from '@/config/analyticsFilterLayouts'
 import { VIA_DEBITO_COBRADOR_ABBREV_OPTIONS } from '../../components/filters/analyticsAbbrev'
@@ -438,6 +439,56 @@ export function AnalisisCobranzasCohorteView() {
     floatUns,
     floatVias,
   ])
+
+  const pickFloatDraft = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case 'cobro_cutoff_month':
+          return floatCutoff ? [floatCutoff] : []
+        case 'un':
+          return floatUns
+        case 'via_cobro':
+          return floatVias
+        case 'categoria':
+          return floatCategorias
+        case 'supervisor':
+          return floatSupervisors
+        default:
+          return []
+      }
+    },
+    [floatCutoff, floatUns, floatVias, floatCategorias, floatSupervisors],
+  )
+
+  const pickFloatApplied = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case 'cobro_cutoff_month':
+          return appliedFilters.cutoffMonth ? [appliedFilters.cutoffMonth] : []
+        case 'un':
+          return appliedFilters.uns
+        case 'via_cobro':
+          return appliedFilters.vias
+        case 'categoria':
+          return appliedFilters.categorias
+        case 'supervisor':
+          return appliedFilters.supervisors
+        default:
+          return []
+      }
+    },
+    [appliedFilters],
+  )
+
+  const floatDraftActivityKey = useMemo(
+    () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatDraft),
+    [floatLayoutEff.floating, pickFloatDraft],
+  )
+
+  const floatAppliedActivityKey = useMemo(
+    () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatApplied),
+    [floatLayoutEff.floating, pickFloatApplied],
+  )
 
   const clearFilters = useCallback(() => {
     setFilters({
@@ -1207,6 +1258,8 @@ export function AnalisisCobranzasCohorteView() {
           onOpen={openFloatFilters}
           onCollapse={() => setFloatOpen(false)}
           onApply={() => void applyFloatFilters()}
+          floatDraftActivityKey={floatDraftActivityKey}
+          floatAppliedActivityKey={floatAppliedActivityKey}
           applyDisabled={
             applying ||
             loadingSummary ||

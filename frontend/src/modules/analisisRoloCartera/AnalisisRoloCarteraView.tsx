@@ -17,6 +17,7 @@ import { useFilterLayoutConfig } from "@/components/filters/FilterLayoutConfigCo
 import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
 import {
   buildEffectiveFilterLayout,
+  snapshotFloatingFilterValues,
   type AnalyticsFilterId,
 } from "@/config/analyticsFilterLayouts";
 import { EmptyState } from "../../components/feedback/EmptyState";
@@ -343,6 +344,62 @@ export function AnalisisRoloCarteraView() {
     floatingYears,
   ]);
 
+  const pickFloatDraft = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case "close_month":
+          return floatingCloseMonths;
+        case "un":
+          return floatingUns;
+        case "via_cobro":
+          return floatingVias;
+        case "contract_year":
+          return floatingYears;
+        case "supervisor":
+          return floatingSupervisors;
+        default:
+          return [];
+      }
+    },
+    [
+      floatingCloseMonths,
+      floatingUns,
+      floatingVias,
+      floatingYears,
+      floatingSupervisors,
+    ],
+  );
+
+  const pickFloatApplied = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case "close_month":
+          return appliedFilters.closeMonths;
+        case "un":
+          return appliedFilters.uns;
+        case "via_cobro":
+          return appliedFilters.vias;
+        case "contract_year":
+          return appliedFilters.years;
+        case "supervisor":
+          return appliedFilters.supervisors;
+        default:
+          return [];
+      }
+    },
+    [appliedFilters],
+  );
+
+  const floatDraftActivityKey = useMemo(
+    () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatDraft),
+    [floatLayoutEff.floating, pickFloatDraft],
+  );
+
+  const floatAppliedActivityKey = useMemo(
+    () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatApplied),
+    [floatLayoutEff.floating, pickFloatApplied],
+  );
+
   const hasRows = rows.length > 0;
   const activeFilterCount = useMemo(
     () =>
@@ -547,6 +604,8 @@ export function AnalisisRoloCarteraView() {
           onOpen={openFloatingFilters}
           onCollapse={() => setIsFloatingFiltersOpen(false)}
           onApply={() => void applyFloatingFilters()}
+          floatDraftActivityKey={floatDraftActivityKey}
+          floatAppliedActivityKey={floatAppliedActivityKey}
           applyDisabled={
             loadingSummary ||
             (floatLayoutEff.floating.includes("close_month") && !floatingCloseMonths.length)

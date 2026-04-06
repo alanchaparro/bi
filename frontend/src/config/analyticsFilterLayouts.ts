@@ -298,3 +298,23 @@ export function buildEffectiveFilterLayout(
 
   return { macro, micro, floating, slotStyles, gridClassByTierFromServer };
 }
+
+/**
+ * Firma estable del estado de filtros que están en el panel lateral (FAB),
+ * para comparar borrador vs aplicado y autodisparar "Aplicar" tras inactividad.
+ */
+export function snapshotFloatingFilterValues(
+  floatingIds: readonly string[],
+  pick: (id: string) => readonly string[],
+): string {
+  const sortedIds = [...floatingIds].sort();
+  return sortedIds
+    .map((id) => {
+      const vals = [...pick(id)]
+        .map((s) => String(s).trim())
+        .filter(Boolean)
+        .sort();
+      return `${id}:${vals.join("\u0001")}`;
+    })
+    .join("|");
+}
