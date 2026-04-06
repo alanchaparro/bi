@@ -1,6 +1,10 @@
 from app.core.security import ROLE_PERMISSIONS, hash_password
 from app.core.config import settings
 from app.repositories import brokers_config
+from app.services.dashboard_filter_layouts import (
+    PREF_KEY as DASHBOARD_FILTER_LAYOUTS_PREF_KEY,
+    normalize_dashboard_filter_layouts_payload,
+)
 import mysql.connector
 import time
 
@@ -145,3 +149,21 @@ class BrokersConfigService:
 
         pwd_hash = hash_password(password) if (password is not None and str(password).strip()) else None
         return brokers_config.update_auth_user(db, row, normalized_role, is_active, pwd_hash, actor)
+
+    @staticmethod
+    def get_dashboard_filter_layouts(db):
+        raw = brokers_config.get_user_preferences(db, '__system__', DASHBOARD_FILTER_LAYOUTS_PREF_KEY)
+        return normalize_dashboard_filter_layouts_payload(raw if isinstance(raw, dict) else {})
+
+    @staticmethod
+    def save_dashboard_filter_layouts(db, payload: dict, actor: str):
+        normalized = normalize_dashboard_filter_layouts_payload(payload)
+        brokers_config.save_user_preferences(db, '__system__', DASHBOARD_FILTER_LAYOUTS_PREF_KEY, normalized)
+        brokers_config.add_audit(
+            db,
+            'dashboard_filter_layouts_v1',
+            'upsert',
+            actor,
+            {'sections': list((normalized.get('sections') or {}).keys())},
+        )
+        return normalized

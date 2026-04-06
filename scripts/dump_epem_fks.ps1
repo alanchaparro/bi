@@ -1,14 +1,14 @@
 #requires -Version 5.1
 <#
 .SYNOPSIS
-  Lee MYSQL_* desde .env (raíz del repo), ejecuta el cliente mysql en Docker y genera anexos en docs/archive/.
+  Lee MYSQL_* desde .env (raíz del repo), ejecuta el cliente mysql en Docker y genera anexos en archive-md-no-canonico/docs/archive/.
 
 .DESCRIPTION
   - No escribe contraseñas en los archivos generados ni en la salida.
   - Pasa la clave a MySQL solo vía archivo temporal + docker --env-file (evita expansion de ! en PowerShell).
   - Salidas:
-    - docs/archive/epem_mysql_verified_YYYY-MM-DD.md  (resumen + FKs de tablas núcleo v2)
-    - docs/archive/epem_mysql_all_fks_YYYY-MM-DD.tsv (volcado completo TAB, sin secretos)
+    - archive-md-no-canonico/docs/archive/epem_mysql_verified_YYYY-MM-DD.md  (resumen + FKs de tablas núcleo v2)
+    - archive-md-no-canonico/docs/archive/epem_mysql_all_fks_YYYY-MM-DD.tsv (volcado completo TAB, sin secretos)
 
 .PARAMETER EnvFile
   Ruta al .env (por defecto: .env en la raíz del repositorio).
@@ -122,7 +122,7 @@ if ($mysqlDatabase -notmatch '^[a-zA-Z0-9_]+$') {
   throw "MYSQL_DATABASE debe ser identificador seguro (solo letras, numeros y _): $mysqlDatabase"
 }
 
-$archiveDir = Join-Path $RepoRoot "docs\archive"
+$archiveDir = Join-Path $RepoRoot "archive-md-no-canonico\docs\archive"
 if (-not (Test-Path -LiteralPath $archiveDir)) {
   New-Item -ItemType Directory -Path $archiveDir | Out-Null
 }

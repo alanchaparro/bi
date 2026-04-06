@@ -2,13 +2,23 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button, Checkbox, Label, Skeleton, Tabs } from "@heroui/react";
 import { DomButton } from "@/components/ui/DomButton";
 import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter";
-import { UnidadNegocioTagFilter } from "../../components/filters/UnidadNegocioTagFilter";
+import {
+  ConfigurableCategoriaFilter,
+  ConfigurableUnFilter,
+  ConfigurableViaFilter,
+} from "../../components/filters/ConfigurableAnalyticsFilters";
 import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
 import { ActiveFilterChips, type FilterChip } from "../../components/filters/ActiveFilterChips";
-import { AbbrevSegmentedFilter } from "../../components/filters/AbbrevSegmentedFilter";
-import { CATEGORIA_ABBREV_OPTIONS } from "../../components/filters/analyticsAbbrev";
 import { SegmentedControl } from "../../components/filters/SegmentedControl";
-import { ViaSegmentedOrMulti } from "../../components/filters/ViaSegmentedOrMulti";
+import {
+  DashboardFiltersLayout,
+  DashboardFloatingFiltersLayout,
+} from "@/components/filters/DashboardFiltersLayout";
+import { useFilterLayoutConfig } from "@/components/filters/FilterLayoutConfigContext";
+import {
+  buildEffectiveFilterLayout,
+  type AnalyticsFilterId,
+} from "@/config/analyticsFilterLayouts";
 import { pushAppToast, type AppToastType } from "../../shared/pushAppToast";
 import { LoadingState } from "../../components/feedback/LoadingState";
 import { AnalysisFiltersSkeleton } from "../../components/feedback/AnalysisFiltersSkeleton";
@@ -317,6 +327,11 @@ export function AnalisisCarteraView() {
   const [floatClose, setFloatClose] = useState<string[]>([]);
   const [floatGestion, setFloatGestion] = useState<string[]>([]);
   const [floatUns, setFloatUns] = useState<string[]>([]);
+  const [floatSupervisors, setFloatSupervisors] = useState<string[]>([]);
+  const [floatYears, setFloatYears] = useState<string[]>([]);
+  const [floatVias, setFloatVias] = useState<string[]>([]);
+  const [floatTramos, setFloatTramos] = useState<string[]>([]);
+  const [floatCategorias, setFloatCategorias] = useState<string[]>([]);
   const isLightTheme = useIsLightTheme();
   const chartPalette = isLightTheme ? CHART_COLORS_LIGHT : CHART_COLORS;
   const isInitialOptionsLoading = loadingOptions && !optionsData && !optionsError;
@@ -504,20 +519,160 @@ export function AnalisisCarteraView() {
   const closeMonthFilterOptions = useMemo(() => sortMesGestionDesc(options.close_months), [options.close_months]);
   const hasCloseMonthsOption = useMemo(() => (options.close_months || []).length > 0, [options.close_months]);
 
+  const { doc: filterLayoutDoc } = useFilterLayoutConfig();
+  const floatLayoutEff = useMemo(
+    () => buildEffectiveFilterLayout("analisisCartera", [], filterLayoutDoc),
+    [filterLayoutDoc],
+  );
+  const floatSlots = useMemo<Partial<Record<AnalyticsFilterId, React.ReactNode>>>(
+    () => ({
+      gestion_month: (
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Mes de gestión"
+          options={gestionMonthFilterOptions}
+          selected={floatGestion}
+          onChange={setFloatGestion}
+        />
+      ),
+      close_month: (
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Mes de cierre"
+          options={closeMonthFilterOptions}
+          selected={floatClose}
+          onChange={setFloatClose}
+        />
+      ),
+      un: (
+        <ConfigurableUnFilter
+          sectionId="analisisCartera"
+          className="analysis-filter-control"
+          label="UN"
+          options={options.uns || []}
+          selected={floatUns}
+          onChange={setFloatUns}
+        />
+      ),
+      via_cobro: (
+        <ConfigurableViaFilter
+          sectionId="analisisCartera"
+          viaId="via_cobro"
+          className="analysis-filter-control rendimiento-via-cobro-segmented"
+          label="Vía de cobro"
+          options={options.vias || []}
+          selected={floatVias}
+          onChange={setFloatVias}
+        />
+      ),
+      categoria: (
+        <ConfigurableCategoriaFilter
+          sectionId="analisisCartera"
+          className="analysis-filter-control"
+          categoryOptions={Array.isArray(options.categories) ? options.categories : []}
+          selected={floatCategorias}
+          onChange={setFloatCategorias}
+        />
+      ),
+      tramo: (
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Tramo"
+          options={options.tramos || []}
+          selected={floatTramos}
+          onChange={setFloatTramos}
+        />
+      ),
+      contract_year: (
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Año de contrato"
+          options={options.contract_years || []}
+          selected={floatYears}
+          onChange={setFloatYears}
+        />
+      ),
+      supervisor: (
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Supervisor"
+          options={options.supervisors || []}
+          selected={floatSupervisors}
+          onChange={setFloatSupervisors}
+        />
+      ),
+    }),
+    [
+      gestionMonthFilterOptions,
+      closeMonthFilterOptions,
+      floatGestion,
+      floatClose,
+      floatUns,
+      floatVias,
+      floatCategorias,
+      floatTramos,
+      floatYears,
+      floatSupervisors,
+      options.uns,
+      options.vias,
+      options.categories,
+      options.tramos,
+      options.contract_years,
+      options.supervisors,
+    ],
+  );
+  const showFloatingFilters = useMemo(
+    () => floatLayoutEff.floating.some((id) => floatSlots[id] != null),
+    [floatLayoutEff.floating, floatSlots],
+  );
+
   const openFloatFilters = useCallback(() => {
     setFloatClose(filters.closeMonths);
     setFloatGestion(filters.gestionMonths);
     setFloatUns(filters.uns);
+    setFloatSupervisors(filters.supervisors);
+    setFloatYears(filters.years);
+    setFloatVias(filters.vias);
+    setFloatTramos(filters.tramos);
+    setFloatCategorias(filters.categorias);
     setFloatOpen(true);
-  }, [filters.closeMonths, filters.gestionMonths, filters.uns]);
+  }, [
+    filters.categorias,
+    filters.closeMonths,
+    filters.gestionMonths,
+    filters.supervisors,
+    filters.tramos,
+    filters.uns,
+    filters.vias,
+    filters.years,
+  ]);
 
   const applyFloatFilters = useCallback(async () => {
-    const next = hasCloseMonthsOption
-      ? { ...filters, closeMonths: floatClose, uns: floatUns }
-      : { ...filters, gestionMonths: floatGestion, uns: floatUns };
+    const fl = floatLayoutEff.floating;
+    const next: Filters = { ...filters };
+    if (fl.includes("gestion_month")) next.gestionMonths = floatGestion;
+    if (fl.includes("close_month")) next.closeMonths = floatClose;
+    if (fl.includes("un")) next.uns = floatUns;
+    if (fl.includes("via_cobro")) next.vias = floatVias;
+    if (fl.includes("categoria")) next.categorias = floatCategorias;
+    if (fl.includes("tramo")) next.tramos = floatTramos;
+    if (fl.includes("contract_year")) next.years = floatYears;
+    if (fl.includes("supervisor")) next.supervisors = floatSupervisors;
     await applyFiltersFrom(next);
     setFloatOpen(false);
-  }, [applyFiltersFrom, filters, floatClose, floatGestion, floatUns, hasCloseMonthsOption]);
+  }, [
+    applyFiltersFrom,
+    filters,
+    floatLayoutEff.floating,
+    floatCategorias,
+    floatClose,
+    floatGestion,
+    floatSupervisors,
+    floatTramos,
+    floatUns,
+    floatVias,
+    floatYears,
+  ]);
 
   const expectedGestionMonths = useMemo(() => {
     if (appliedFilters.gestionMonths.length) {
@@ -785,28 +940,56 @@ export function AnalisisCarteraView() {
       ) : (
         <>
       <div className="rendimiento-filters-panel">
-      <div className="analysis-filters-grid">
-        <MultiSelectFilter className="analysis-filter-control" label="Supervisor" options={options.supervisors || []} selected={filters.supervisors} onChange={(supervisors) => setFilters((f) => ({ ...f, supervisors }))} />
-        <MultiSelectFilter className="analysis-filter-control" label="Año de contrato" options={options.contract_years || []} selected={filters.years} onChange={(years) => setFilters((f) => ({ ...f, years }))} />
-        <ViaSegmentedOrMulti
-          className="analysis-filter-control rendimiento-via-cobro-segmented"
-          label="Vía de cobro"
-          options={options.vias || []}
-          selected={filters.vias}
-          onChange={(vias) => setFilters((f) => ({ ...f, vias }))}
-        />
-        <MultiSelectFilter className="analysis-filter-control" label="Tramo" options={options.tramos || []} selected={filters.tramos} onChange={(tramos) => setFilters((f) => ({ ...f, tramos }))} />
-        <AbbrevSegmentedFilter
-          className="analysis-filter-control"
-          label="Categoría"
-          options={CATEGORIA_ABBREV_OPTIONS}
-          value={(filters.categorias[0] || "").toUpperCase()}
-          onChange={(categoria) => setFilters((f) => ({ ...f, categorias: categoria ? [categoria] : [] }))}
-        />
-        <MultiSelectFilter className="analysis-filter-control" label="Mes de gestión" options={gestionMonthFilterOptions} selected={filters.gestionMonths} onChange={(gestionMonths) => setFilters((f) => ({ ...f, gestionMonths }))} />
-        <MultiSelectFilter className="analysis-filter-control" label="Mes de cierre" options={closeMonthFilterOptions} selected={filters.closeMonths} onChange={(closeMonths) => setFilters((f) => ({ ...f, closeMonths }))} />
-        <UnidadNegocioTagFilter className="analysis-filter-control" options={options.uns || []} selected={filters.uns} onChange={(uns) => setFilters((f) => ({ ...f, uns }))} />
-      </div>
+      <DashboardFiltersLayout
+        sectionId="analisisCartera"
+        slots={{
+          un: (
+            <ConfigurableUnFilter
+              sectionId="analisisCartera"
+              className="analysis-filter-control"
+              label="UN"
+              options={options.uns || []}
+              selected={filters.uns}
+              onChange={(uns) => setFilters((f) => ({ ...f, uns }))}
+            />
+          ),
+          via_cobro: (
+            <ConfigurableViaFilter
+              sectionId="analisisCartera"
+              viaId="via_cobro"
+              className="analysis-filter-control rendimiento-via-cobro-segmented"
+              label="Vía de cobro"
+              options={options.vias || []}
+              selected={filters.vias}
+              onChange={(vias) => setFilters((f) => ({ ...f, vias }))}
+            />
+          ),
+          categoria: (
+            <ConfigurableCategoriaFilter
+              sectionId="analisisCartera"
+              className="analysis-filter-control"
+              categoryOptions={Array.isArray(options.categories) ? options.categories : []}
+              selected={filters.categorias}
+              onChange={(categorias) => setFilters((f) => ({ ...f, categorias }))}
+            />
+          ),
+          tramo: (
+            <MultiSelectFilter className="analysis-filter-control" label="Tramo" options={options.tramos || []} selected={filters.tramos} onChange={(tramos) => setFilters((f) => ({ ...f, tramos }))} />
+          ),
+          gestion_month: (
+            <MultiSelectFilter className="analysis-filter-control" label="Mes de gestión" options={gestionMonthFilterOptions} selected={filters.gestionMonths} onChange={(gestionMonths) => setFilters((f) => ({ ...f, gestionMonths }))} />
+          ),
+          close_month: (
+            <MultiSelectFilter className="analysis-filter-control" label="Mes de cierre" options={closeMonthFilterOptions} selected={filters.closeMonths} onChange={(closeMonths) => setFilters((f) => ({ ...f, closeMonths }))} />
+          ),
+          contract_year: (
+            <MultiSelectFilter className="analysis-filter-control" label="Año de contrato" options={options.contract_years || []} selected={filters.years} onChange={(years) => setFilters((f) => ({ ...f, years }))} />
+          ),
+          supervisor: (
+            <MultiSelectFilter className="analysis-filter-control" label="Supervisor" options={options.supervisors || []} selected={filters.supervisors} onChange={(supervisors) => setFilters((f) => ({ ...f, supervisors }))} />
+          ),
+        }}
+      />
       <div className="rendimiento-filter-hints" role="note" aria-label="Ayuda de filtros">
         <span className="rendimiento-filter-hint">Mes de gestión usa `gestion_month`.</span>
         <span className="rendimiento-filter-hint">Mes de cierre no equivale a gestión.</span>
@@ -1000,33 +1183,30 @@ export function AnalisisCarteraView() {
         </>
       )}
 
-      <FloatingQuickFilters
-        isOpen={floatOpen}
-        onOpen={openFloatFilters}
-        onCollapse={() => setFloatOpen(false)}
-        onApply={() => void applyFloatFilters()}
-        applyDisabled={loadingOptions || isApplyingFilters || (hasCloseMonthsOption ? !floatClose.length : !floatGestion.length)}
-        applying={isApplyingFilters}
-      >
-        {hasCloseMonthsOption ? (
-          <MultiSelectFilter
-            className="analysis-filter-control"
-            label="Mes de cierre"
-            options={closeMonthFilterOptions}
-            selected={floatClose}
-            onChange={setFloatClose}
+      {showFloatingFilters ? (
+        <FloatingQuickFilters
+          isOpen={floatOpen}
+          onOpen={openFloatFilters}
+          onCollapse={() => setFloatOpen(false)}
+          onApply={() => void applyFloatFilters()}
+          applyDisabled={
+            loadingOptions ||
+            isApplyingFilters ||
+            (floatLayoutEff.floating.includes("close_month") &&
+              hasCloseMonthsOption &&
+              !floatClose.length) ||
+            (floatLayoutEff.floating.includes("gestion_month") &&
+              (!hasCloseMonthsOption || !floatLayoutEff.floating.includes("close_month")) &&
+              !floatGestion.length)
+          }
+          applying={isApplyingFilters}
+        >
+          <DashboardFloatingFiltersLayout
+            sectionId="analisisCartera"
+            slots={floatSlots}
           />
-        ) : (
-          <MultiSelectFilter
-            className="analysis-filter-control"
-            label="Mes de gestión"
-            options={gestionMonthFilterOptions}
-            selected={floatGestion}
-            onChange={setFloatGestion}
-          />
-        )}
-        <UnidadNegocioTagFilter className="analysis-filter-control" options={options.uns || []} selected={floatUns} onChange={setFloatUns} />
-      </FloatingQuickFilters>
+        </FloatingQuickFilters>
+      ) : null}
     </section>
   );
 }

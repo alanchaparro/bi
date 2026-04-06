@@ -1,11 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Checkbox, Label } from '@heroui/react'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
-import { UnidadNegocioTagFilter } from '../../components/filters/UnidadNegocioTagFilter'
+import {
+  ConfigurableCategoriaFilter,
+  ConfigurableUnFilter,
+  ConfigurableViaFilter,
+} from '../../components/filters/ConfigurableAnalyticsFilters'
 import { FloatingQuickFilters } from '../../components/filters/FloatingQuickFilters'
-import { AbbrevSegmentedFilter } from '../../components/filters/AbbrevSegmentedFilter'
-import { CATEGORIA_ABBREV_OPTIONS } from '../../components/filters/analyticsAbbrev'
-import { ViaSegmentedOrMulti } from '../../components/filters/ViaSegmentedOrMulti'
+import {
+  DashboardFiltersLayout,
+  DashboardFloatingFiltersLayout,
+} from '@/components/filters/DashboardFiltersLayout'
+import { useFilterLayoutConfig } from '@/components/filters/FilterLayoutConfigContext'
+import {
+  buildEffectiveFilterLayout,
+  type AnalyticsFilterId,
+} from '@/config/analyticsFilterLayouts'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
 import { AnalyticsMetaBadges } from '../../components/analytics/AnalyticsMetaBadges'
@@ -585,8 +595,11 @@ export function AnalisisRendimientoView() {
   const [floatOpen, setFloatOpen] = useState(false)
   const [floatGestion, setFloatGestion] = useState<string[]>([])
   const [floatUns, setFloatUns] = useState<string[]>([])
-  const [floatCategoria, setFloatCategoria] = useState<string>('')
+  const [floatCategorias, setFloatCategorias] = useState<string[]>([])
   const [floatViasCobro, setFloatViasCobro] = useState<string[]>([])
+  const [floatViasPago, setFloatViasPago] = useState<string[]>([])
+  const [floatTramos, setFloatTramos] = useState<string[]>([])
+  const [floatSupervisors, setFloatSupervisors] = useState<string[]>([])
 
   useEffect(() => {
     try {
@@ -686,27 +699,150 @@ export function AnalisisRendimientoView() {
 
   const onApply = useCallback(() => void commitAndLoad(filters), [commitAndLoad, filters])
 
+  const { doc: filterLayoutDoc } = useFilterLayoutConfig()
+  const floatLayoutEff = useMemo(
+    () => buildEffectiveFilterLayout('analisisCarteraRendimiento', [], filterLayoutDoc),
+    [filterLayoutDoc],
+  )
+  const floatSlots = useMemo<Partial<Record<AnalyticsFilterId, React.ReactNode>>>(
+    () => ({
+      gestion_month: (
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Mes de gestión"
+          options={options.gestionMonths}
+          selected={floatGestion}
+          onChange={setFloatGestion}
+          placeholder="Historia"
+        />
+      ),
+      un: (
+        <ConfigurableUnFilter
+          sectionId="analisisCarteraRendimiento"
+          className="analysis-filter-control"
+          label="UN"
+          options={options.uns}
+          selected={floatUns}
+          onChange={setFloatUns}
+        />
+      ),
+      via_cobro: (
+        <ConfigurableViaFilter
+          sectionId="analisisCarteraRendimiento"
+          viaId="via_cobro"
+          className="analysis-filter-control"
+          label="Vía de cobro"
+          options={options.viasCobro}
+          selected={floatViasCobro}
+          onChange={setFloatViasCobro}
+        />
+      ),
+      via_pago: (
+        <ConfigurableViaFilter
+          sectionId="analisisCarteraRendimiento"
+          viaId="via_pago"
+          className="analysis-filter-control"
+          label="Vía de pago"
+          options={options.viasPago}
+          selected={floatViasPago}
+          onChange={setFloatViasPago}
+        />
+      ),
+      categoria: (
+        <ConfigurableCategoriaFilter
+          sectionId="analisisCarteraRendimiento"
+          className="analysis-filter-control"
+          categoryOptions={options.categorias}
+          selected={floatCategorias}
+          onChange={setFloatCategorias}
+        />
+      ),
+      tramo: (
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Tramo"
+          options={options.tramos}
+          selected={floatTramos}
+          onChange={setFloatTramos}
+          placeholder="Todos"
+        />
+      ),
+      supervisor: (
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Supervisor"
+          options={options.supervisors}
+          selected={floatSupervisors}
+          onChange={setFloatSupervisors}
+          placeholder="Todos"
+        />
+      ),
+    }),
+    [
+      options.gestionMonths,
+      options.uns,
+      options.viasCobro,
+      options.viasPago,
+      options.categorias,
+      options.tramos,
+      options.supervisors,
+      floatGestion,
+      floatUns,
+      floatViasCobro,
+      floatViasPago,
+      floatCategorias,
+      floatTramos,
+      floatSupervisors,
+    ],
+  )
+  const showFloatingFilters = useMemo(
+    () => floatLayoutEff.floating.some((id) => floatSlots[id] != null),
+    [floatLayoutEff.floating, floatSlots],
+  )
+
   const openFloatFilters = useCallback(() => {
     setFloatGestion(filters.gestionMonths)
     setFloatUns(filters.uns)
-    setFloatCategoria((filters.categorias[0] || '').toUpperCase())
+    setFloatCategorias(filters.categorias)
     setFloatViasCobro(filters.viasCobro)
+    setFloatViasPago(filters.viasPago)
+    setFloatTramos(filters.tramos)
+    setFloatSupervisors(filters.supervisors)
     setFloatOpen(true)
-  }, [filters.categorias, filters.gestionMonths, filters.uns, filters.viasCobro])
+  }, [
+    filters.categorias,
+    filters.gestionMonths,
+    filters.supervisors,
+    filters.tramos,
+    filters.uns,
+    filters.viasCobro,
+    filters.viasPago,
+  ])
 
   const applyFloatFilters = useCallback(async () => {
-    const next: Filters = {
-      ...filters,
-      gestionMonths: floatGestion,
-      uns: floatUns,
-      categorias: floatCategoria ? [floatCategoria] : [],
-      viasCobro: floatViasCobro,
-    }
+    const fl = floatLayoutEff.floating
+    const next: Filters = { ...filters }
+    if (fl.includes('gestion_month')) next.gestionMonths = floatGestion
+    if (fl.includes('un')) next.uns = floatUns
+    if (fl.includes('via_cobro')) next.viasCobro = floatViasCobro
+    if (fl.includes('via_pago')) next.viasPago = floatViasPago
+    if (fl.includes('categoria')) next.categorias = floatCategorias
+    if (fl.includes('tramo')) next.tramos = floatTramos
+    if (fl.includes('supervisor')) next.supervisors = floatSupervisors
     await commitAndLoad(next)
     setFloatOpen(false)
-  }, [commitAndLoad, filters, floatCategoria, floatGestion, floatUns, floatViasCobro])
-
-  const hasUnOptions = options.uns.length > 0
+  }, [
+    commitAndLoad,
+    filters,
+    floatLayoutEff.floating,
+    floatCategorias,
+    floatGestion,
+    floatSupervisors,
+    floatTramos,
+    floatUns,
+    floatViasCobro,
+    floatViasPago,
+  ])
 
   const clearFilters = useCallback(() => {
     const defaultMonth = options.defaultGestionMonth || options.gestionMonths?.[0] || ''
@@ -971,66 +1107,87 @@ export function AnalisisRendimientoView() {
         <AnalysisFiltersSkeleton filterCount={7} kpiCount={6} showTable />
       ) : (
         <div className="rendimiento-filters-panel">
-          <AbbrevSegmentedFilter
-            className="analysis-filter-control rendimiento-categoria-segmented"
-            label="Categoría"
-            options={CATEGORIA_ABBREV_OPTIONS}
-            value={(filters.categorias[0] || '').toUpperCase()}
-            onChange={(value) => setFilters((prev) => ({ ...prev, categorias: value ? [value] : [] }))}
+          <DashboardFiltersLayout
+            sectionId="analisisCarteraRendimiento"
+            slots={{
+              un: (
+                <ConfigurableUnFilter
+                  sectionId="analisisCarteraRendimiento"
+                  className="analysis-filter-control"
+                  label="UN"
+                  options={options.uns}
+                  selected={filters.uns}
+                  onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
+                />
+              ),
+              via_cobro: (
+                <ConfigurableViaFilter
+                  sectionId="analisisCarteraRendimiento"
+                  viaId="via_cobro"
+                  className="analysis-filter-control"
+                  label="Vía de cobro"
+                  options={options.viasCobro}
+                  selected={filters.viasCobro}
+                  onChange={(values) => setFilters((prev) => ({ ...prev, viasCobro: values }))}
+                />
+              ),
+              via_pago: (
+                <ConfigurableViaFilter
+                  sectionId="analisisCarteraRendimiento"
+                  viaId="via_pago"
+                  className="analysis-filter-control"
+                  label="Vía de pago"
+                  options={options.viasPago}
+                  selected={filters.viasPago}
+                  onChange={(values) => setFilters((prev) => ({ ...prev, viasPago: values }))}
+                />
+              ),
+              categoria: (
+                <ConfigurableCategoriaFilter
+                  sectionId="analisisCarteraRendimiento"
+                  className="analysis-filter-control"
+                  categoryOptions={options.categorias}
+                  selected={filters.categorias}
+                  onChange={(categorias) => setFilters((prev) => ({ ...prev, categorias }))}
+                />
+              ),
+              tramo: (
+                <MultiSelectFilter
+                  className="analysis-filter-control"
+                  label="Tramo"
+                  options={options.tramos}
+                  selected={filters.tramos}
+                  onChange={(values) => setFilters((prev) => ({ ...prev, tramos: values }))}
+                  placeholder="Todos"
+                />
+              ),
+              gestion_month: (
+                <MultiSelectFilter
+                  className="analysis-filter-control"
+                  label="Mes de gestión"
+                  options={options.gestionMonths}
+                  selected={filters.gestionMonths}
+                  onChange={(values) => setFilters((prev) => ({ ...prev, gestionMonths: values }))}
+                  placeholder="Historia"
+                />
+              ),
+              supervisor: (
+                <MultiSelectFilter
+                  className="analysis-filter-control"
+                  label="Supervisor"
+                  options={options.supervisors}
+                  selected={filters.supervisors}
+                  onChange={(values) => setFilters((prev) => ({ ...prev, supervisors: values }))}
+                  placeholder="Todos"
+                />
+              ),
+            }}
           />
 
           <div className="rendimiento-filter-hints" role="note" aria-label="Ayuda de filtros">
             <span className="rendimiento-filter-hint">Mes de gestión usa `gestion_month`.</span>
             <span className="rendimiento-filter-hint">Vía de cobro = intención operativa.</span>
             <span className="rendimiento-filter-hint">Vía de pago = cobro real registrado.</span>
-          </div>
-
-          <div className="analysis-filters-grid">
-            <MultiSelectFilter
-              className="analysis-filter-control"
-              label="Supervisor"
-              options={options.supervisors}
-              selected={filters.supervisors}
-              onChange={(values) => setFilters((prev) => ({ ...prev, supervisors: values }))}
-              placeholder="Todos"
-            />
-            <MultiSelectFilter
-              className="analysis-filter-control"
-              label="Tramo"
-              options={options.tramos}
-              selected={filters.tramos}
-              onChange={(values) => setFilters((prev) => ({ ...prev, tramos: values }))}
-              placeholder="Todos"
-            />
-            <MultiSelectFilter
-              className="analysis-filter-control"
-              label="Mes de gestión"
-              options={options.gestionMonths}
-              selected={filters.gestionMonths}
-              onChange={(values) => setFilters((prev) => ({ ...prev, gestionMonths: values }))}
-              placeholder="Historia"
-            />
-            <ViaSegmentedOrMulti
-              className="analysis-filter-control"
-              label="Vía de cobro"
-              options={options.viasCobro}
-              selected={filters.viasCobro}
-              onChange={(values) => setFilters((prev) => ({ ...prev, viasCobro: values }))}
-            />
-            <ViaSegmentedOrMulti
-              className="analysis-filter-control"
-              label="Vía de pago"
-              options={options.viasPago}
-              selected={filters.viasPago}
-              onChange={(values) => setFilters((prev) => ({ ...prev, viasPago: values }))}
-            />
-            <UnidadNegocioTagFilter
-              splitButtonRow
-              className="analysis-filter-control"
-              options={options.uns}
-              selected={filters.uns}
-              onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
-            />
           </div>
 
           <div className="analysis-actions-row analysis-actions">
@@ -1276,43 +1433,26 @@ export function AnalisisRendimientoView() {
         </div>
       ) : null}
 
-      <FloatingQuickFilters
-        isOpen={floatOpen}
-        onOpen={openFloatFilters}
-        onCollapse={() => setFloatOpen(false)}
-        onApply={() => void applyFloatFilters()}
-        applyDisabled={applying || loadingSummary || loadingOptions || !floatGestion.length}
-        applying={applying || loadingSummary}
-      >
-        <MultiSelectFilter
-          className="analysis-filter-control"
-          label="Mes de gestión"
-          options={options.gestionMonths}
-          selected={floatGestion}
-          onChange={setFloatGestion}
-          placeholder="Historia"
-        />
-        {hasUnOptions ? (
-          <UnidadNegocioTagFilter className="analysis-filter-control" options={options.uns} selected={floatUns} onChange={setFloatUns} />
-        ) : (
-          <>
-            <ViaSegmentedOrMulti
-              className="analysis-filter-control"
-              label="Vía de cobro"
-              options={options.viasCobro}
-              selected={floatViasCobro}
-              onChange={setFloatViasCobro}
-            />
-            <AbbrevSegmentedFilter
-              className="analysis-filter-control rendimiento-categoria-segmented"
-              label="Categoría"
-              options={CATEGORIA_ABBREV_OPTIONS}
-              value={floatCategoria}
-              onChange={(value) => setFloatCategoria(value)}
-            />
-          </>
-        )}
-      </FloatingQuickFilters>
+      {showFloatingFilters ? (
+        <FloatingQuickFilters
+          isOpen={floatOpen}
+          onOpen={openFloatFilters}
+          onCollapse={() => setFloatOpen(false)}
+          onApply={() => void applyFloatFilters()}
+          applyDisabled={
+            applying ||
+            loadingSummary ||
+            loadingOptions ||
+            (floatLayoutEff.floating.includes('gestion_month') && !floatGestion.length)
+          }
+          applying={applying || loadingSummary}
+        >
+          <DashboardFloatingFiltersLayout
+            sectionId="analisisCarteraRendimiento"
+            slots={floatSlots}
+          />
+        </FloatingQuickFilters>
+      ) : null}
     </section>
   )
 }

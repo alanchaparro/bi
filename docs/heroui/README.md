@@ -18,7 +18,7 @@ Cuando haya conflicto entre documentos:
 2. `desacople.md`
 3. `docs/spec-canon-patrones-ui-analytics.md`
 4. **Este `README.md`** + `PLAN-MIGRACION.md`
-5. `docs/frontend-visual-standard.md` y demás specs visuales enlazadas desde el canon analytics
+5. Material de apoyo en `archive-md-no-canonico/docs/` (p. ej. `frontend-visual-standard.md`) cuando el spec analytics remite a specs complementarias
 
 Si una regla del **spec analytics** dice explícitamente “usar patrón X” (p. ej. segmented nativo), prevalece hasta que el **plan de migración** marque esa pieza como migrada y el spec se actualice.
 

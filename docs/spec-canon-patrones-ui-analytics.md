@@ -11,8 +11,8 @@ Cuando haya dudas, usar este orden:
 2. `desacople.md`
 3. este archivo
 4. `docs/heroui/README.md` y `docs/heroui/PLAN-MIGRACION.md` (elección de primitivos `@heroui/react`, fases de migración y excepciones documentadas frente a HTML/CSS ad hoc)
-5. `docs/frontend-visual-standard.md`
-6. `docs/spec-visual-appbar-sidebar-buttons.md`
+5. `archive-md-no-canonico/docs/frontend-visual-standard.md` (material de apoyo archivado; ver `archive-md-no-canonico/README.md`)
+6. `archive-md-no-canonico/docs/spec-visual-appbar-sidebar-buttons.md` (idem)
 7. tokens compartidos en `frontend/src/app/globals.css` y `frontend/src/index.css`
 
 ## Principios rectores

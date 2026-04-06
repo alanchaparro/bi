@@ -19,6 +19,7 @@ secrets/
 analytics_meta.json
 docs/evidence/*.db
 docs/archive/**/evidence-old/*.db
+archive-md-no-canonico/docs/archive/**/evidence-old/*.db
 
 # Caches and local runtime artifacts
 .cache/

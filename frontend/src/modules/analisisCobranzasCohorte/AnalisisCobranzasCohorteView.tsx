@@ -2,11 +2,23 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Card, Table, Tabs } from '@heroui/react'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
-import { UnidadNegocioTagFilter } from '../../components/filters/UnidadNegocioTagFilter'
+import {
+  ConfigurableCategoriaFilter,
+  ConfigurableUnFilter,
+  ConfigurableViaFilter,
+} from '../../components/filters/ConfigurableAnalyticsFilters'
 import { STRING_SELECT_TRIGGER_ANALYTICS, StringSelect } from '../../components/filters/StringSelect'
 import { FloatingQuickFilters } from '../../components/filters/FloatingQuickFilters'
-import { AbbrevSegmentedFilter } from '../../components/filters/AbbrevSegmentedFilter'
-import { CATEGORIA_ABBREV_OPTIONS, VIA_DEBITO_COBRADOR_ABBREV_OPTIONS } from '../../components/filters/analyticsAbbrev'
+import {
+  DashboardFiltersLayout,
+  DashboardFloatingFiltersLayout,
+} from '@/components/filters/DashboardFiltersLayout'
+import { useFilterLayoutConfig } from '@/components/filters/FilterLayoutConfigContext'
+import {
+  buildEffectiveFilterLayout,
+  type AnalyticsFilterId,
+} from '@/config/analyticsFilterLayouts'
+import { VIA_DEBITO_COBRADOR_ABBREV_OPTIONS } from '../../components/filters/analyticsAbbrev'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
 import { AnalyticsMetaBadges } from '../../components/analytics/AnalyticsMetaBadges'
 import { AnalysisSelectionSummary } from '../../components/analytics/AnalysisSelectionSummary'
@@ -187,8 +199,9 @@ export function AnalisisCobranzasCohorteView() {
   const [floatOpen, setFloatOpen] = useState(false)
   const [floatCutoff, setFloatCutoff] = useState('')
   const [floatUns, setFloatUns] = useState<string[]>([])
-  const [floatVia, setFloatVia] = useState('')
-  const [floatCategoria, setFloatCategoria] = useState('')
+  const [floatVias, setFloatVias] = useState<string[]>([])
+  const [floatCategorias, setFloatCategorias] = useState<string[]>([])
+  const [floatSupervisors, setFloatSupervisors] = useState<string[]>([])
   const [cohorteTab, setCohorteTab] = useState<CohorteMainTab>('principal')
   const [orphanDetail, setOrphanDetail] = useState<CobranzasCohorteOrphanDetailResponse | null>(null)
   const [loadingOrphan, setLoadingOrphan] = useState(false)
@@ -298,29 +311,133 @@ export function AnalisisCobranzasCohorteView() {
   const openFloatFilters = useCallback(() => {
     setFloatCutoff(filters.cutoffMonth)
     setFloatUns(filters.uns)
-    setFloatVia((filters.vias[0] || '').toUpperCase())
-    setFloatCategoria((filters.categorias[0] || '').toUpperCase())
+    setFloatVias(filters.vias)
+    setFloatCategorias(filters.categorias)
+    setFloatSupervisors(filters.supervisors)
     setFloatOpen(true)
-  }, [filters.categorias, filters.cutoffMonth, filters.uns, filters.vias])
-
-  const hasUnOptions = options.uns.length > 0
+  }, [
+    filters.categorias,
+    filters.cutoffMonth,
+    filters.supervisors,
+    filters.uns,
+    filters.vias,
+  ])
 
   const cutoffMonthItems = useMemo(
     () => options.cutoffMonths.map((m) => ({ id: m, label: m })),
     [options.cutoffMonths],
   )
 
+  const { doc: filterLayoutDoc } = useFilterLayoutConfig()
+  const floatLayoutEff = useMemo(
+    () => buildEffectiveFilterLayout('analisisCobranzaCohorte', [], filterLayoutDoc),
+    [filterLayoutDoc],
+  )
+  const floatSlots = useMemo<Partial<Record<AnalyticsFilterId, React.ReactNode>>>(
+    () => ({
+      cobro_cutoff_month: (
+        <div className="analysis-filter-control">
+          <label className="input-label" id="float-cutoff-month-label">
+            Mes de cobro
+          </label>
+          {cutoffMonthItems.length > 0 ? (
+            <StringSelect
+              ui="dropdown"
+              labelId="float-cutoff-month-label"
+              items={cutoffMonthItems}
+              selectedKey={floatCutoff}
+              onSelectionChange={setFloatCutoff}
+              triggerClassName={STRING_SELECT_TRIGGER_ANALYTICS}
+            />
+          ) : (
+            <p className="text-sm text-[var(--color-text-muted)]" role="status">
+              Sin meses de cobro.
+            </p>
+          )}
+        </div>
+      ),
+      un: (
+        <ConfigurableUnFilter
+          sectionId="analisisCobranzaCohorte"
+          className="analysis-filter-control"
+          label="UN"
+          options={options.uns}
+          selected={floatUns}
+          onChange={setFloatUns}
+        />
+      ),
+      via_cobro: (
+        <ConfigurableViaFilter
+          sectionId="analisisCobranzaCohorte"
+          viaId="via_cobro"
+          className="analysis-filter-control"
+          label="Vía de cobro"
+          options={options.vias}
+          selected={floatVias}
+          onChange={setFloatVias}
+          fixedAbbrevOptions={VIA_DEBITO_COBRADOR_ABBREV_OPTIONS}
+        />
+      ),
+      categoria: (
+        <ConfigurableCategoriaFilter
+          sectionId="analisisCobranzaCohorte"
+          className="analysis-filter-control"
+          categoryOptions={options.categorias}
+          selected={floatCategorias}
+          onChange={setFloatCategorias}
+        />
+      ),
+      supervisor: (
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Supervisor"
+          options={options.supervisors}
+          selected={floatSupervisors}
+          onChange={setFloatSupervisors}
+          placeholder="Todos"
+        />
+      ),
+    }),
+    [
+      cutoffMonthItems,
+      floatCutoff,
+      options.uns,
+      options.vias,
+      options.categorias,
+      options.supervisors,
+      floatUns,
+      floatVias,
+      floatCategorias,
+      floatSupervisors,
+    ],
+  )
+  const showFloatingFilters = useMemo(
+    () => floatLayoutEff.floating.some((id) => floatSlots[id] != null),
+    [floatLayoutEff.floating, floatSlots],
+  )
+
   const applyFloatFilters = useCallback(async () => {
+    const fl = floatLayoutEff.floating
     const next: Filters = {
       ...filters,
-      cutoffMonth: floatCutoff,
-      uns: hasUnOptions ? floatUns : filters.uns,
-      vias: hasUnOptions ? filters.vias : floatVia === '' ? [] : [floatVia],
-      categorias: hasUnOptions ? filters.categorias : floatCategoria === '' ? [] : [floatCategoria],
+      cutoffMonth: fl.includes('cobro_cutoff_month') ? floatCutoff : filters.cutoffMonth,
+      uns: fl.includes('un') ? floatUns : filters.uns,
+      vias: fl.includes('via_cobro') ? floatVias : filters.vias,
+      categorias: fl.includes('categoria') ? floatCategorias : filters.categorias,
+      supervisors: fl.includes('supervisor') ? floatSupervisors : filters.supervisors,
     }
     await commitAndLoad(next)
     setFloatOpen(false)
-  }, [commitAndLoad, filters, floatCategoria, floatCutoff, floatUns, floatVia, hasUnOptions])
+  }, [
+    commitAndLoad,
+    filters,
+    floatLayoutEff.floating,
+    floatCategorias,
+    floatCutoff,
+    floatSupervisors,
+    floatUns,
+    floatVias,
+  ])
 
   const clearFilters = useCallback(() => {
     setFilters({
@@ -473,8 +590,6 @@ export function AnalisisCobranzasCohorteView() {
   }, [applying, loadingSummary, summary])
 
   const totals = summary?.totals
-  const selectedCategoria = (filters.categorias[0] || '').toUpperCase()
-  const selectedVia = (filters.vias[0] || '').toUpperCase()
   const ticketTransaccional = useMemo(() => {
     const transacciones = Number(totals?.transacciones || 0)
     if (transacciones <= 0) return 0
@@ -696,55 +811,70 @@ export function AnalisisCobranzasCohorteView() {
       {!loadingOptions ? (
         <>
           <div className="rendimiento-filters-panel">
-            <div className="cohorte-filters-grid-3" data-testid="analysis-filters-grid">
-              <div className="analysis-filter-control">
-                <label className="input-label" id="cutoff-month-label">Mes de cobro</label>
-                {cutoffMonthItems.length > 0 ? (
-                  <StringSelect
-                    ui="dropdown"
-                    labelId="cutoff-month-label"
-                    items={cutoffMonthItems}
-                    selectedKey={filters.cutoffMonth}
-                    onSelectionChange={(id) => setFilters((prev) => ({ ...prev, cutoffMonth: id }))}
-                    triggerClassName={STRING_SELECT_TRIGGER_ANALYTICS}
+            <DashboardFiltersLayout
+              sectionId="analisisCobranzaCohorte"
+              macroGridDataTestId="analysis-filters-grid"
+              slots={{
+                cobro_cutoff_month: (
+                  <div className="analysis-filter-control">
+                    <label className="input-label" id="cutoff-month-label">Mes de cobro</label>
+                    {cutoffMonthItems.length > 0 ? (
+                      <StringSelect
+                        ui="dropdown"
+                        labelId="cutoff-month-label"
+                        items={cutoffMonthItems}
+                        selectedKey={filters.cutoffMonth}
+                        onSelectionChange={(id) => setFilters((prev) => ({ ...prev, cutoffMonth: id }))}
+                        triggerClassName={STRING_SELECT_TRIGGER_ANALYTICS}
+                      />
+                    ) : (
+                      <p className="text-sm text-[var(--color-text-muted)]" role="status">Sin meses de cobro disponibles.</p>
+                    )}
+                  </div>
+                ),
+                via_cobro: (
+                  <ConfigurableViaFilter
+                    sectionId="analisisCobranzaCohorte"
+                    viaId="via_cobro"
+                    className="analysis-filter-control"
+                    label="Vía de cobro"
+                    options={options.vias}
+                    selected={filters.vias}
+                    onChange={(vias) => setFilters((prev) => ({ ...prev, vias }))}
+                    fixedAbbrevOptions={VIA_DEBITO_COBRADOR_ABBREV_OPTIONS}
                   />
-                ) : (
-                  <p className="text-sm text-[var(--color-text-muted)]" role="status">Sin meses de cobro disponibles.</p>
-                )}
-              </div>
-
-              <AbbrevSegmentedFilter
-                className="analysis-filter-control"
-                label="Vía de cobro"
-                options={VIA_DEBITO_COBRADOR_ABBREV_OPTIONS}
-                value={selectedVia}
-                onChange={(v) => setFilters((prev) => ({ ...prev, vias: v === '' ? [] : [v] }))}
-              />
-
-              <MultiSelectFilter
-                className="analysis-filter-control"
-                label="Supervisor"
-                options={options.supervisors}
-                selected={filters.supervisors}
-                onChange={(values) => setFilters((prev) => ({ ...prev, supervisors: values }))}
-                placeholder="Todos"
-              />
-
-              <AbbrevSegmentedFilter
-                className="analysis-filter-control"
-                label="Categoría"
-                options={CATEGORIA_ABBREV_OPTIONS}
-                value={selectedCategoria}
-                onChange={(v) => setFilters((prev) => ({ ...prev, categorias: v === '' ? [] : [v] }))}
-              />
-
-              <UnidadNegocioTagFilter
-                className="analysis-filter-control"
-                options={options.uns}
-                selected={filters.uns}
-                onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
-              />
-            </div>
+                ),
+                supervisor: (
+                  <MultiSelectFilter
+                    className="analysis-filter-control"
+                    label="Supervisor"
+                    options={options.supervisors}
+                    selected={filters.supervisors}
+                    onChange={(values) => setFilters((prev) => ({ ...prev, supervisors: values }))}
+                    placeholder="Todos"
+                  />
+                ),
+                categoria: (
+                  <ConfigurableCategoriaFilter
+                    sectionId="analisisCobranzaCohorte"
+                    className="analysis-filter-control"
+                    categoryOptions={options.categorias}
+                    selected={filters.categorias}
+                    onChange={(categorias) => setFilters((prev) => ({ ...prev, categorias }))}
+                  />
+                ),
+                un: (
+                  <ConfigurableUnFilter
+                    sectionId="analisisCobranzaCohorte"
+                    className="analysis-filter-control"
+                    label="UN"
+                    options={options.uns}
+                    selected={filters.uns}
+                    onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
+                  />
+                ),
+              }}
+            />
             <div className="rendimiento-filter-hints" role="note" aria-label="Ayuda de filtros">
               <span className="rendimiento-filter-hint">Mes de cobro define el corte consultado.</span>
               <span className="rendimiento-filter-hint">La cartera efectiva se alinea a gestion operativa.</span>
@@ -868,74 +998,88 @@ export function AnalisisCobranzasCohorteView() {
                 {!hasRows ? <EmptyState className="analysis-empty" message="Sin datos para los filtros seleccionados." suggestion="Ajusta los filtros y vuelve a aplicar para ver resultados." /> : null}
 
                 <div className="analysis-table-section analysis-table-section--cohorte-resumen">
-                  <p className="analysis-table-caption">
-                    {usesTramoBreakdown ? 'Resumen de efectividad por tramo.' : 'Resumen de efectividad por año de venta.'}
-                  </p>
-                  <p className="table-scroll-hint">
-                    {usesTramoBreakdown
-                      ? 'Incluye tramos 0 al 7. Si el panel es estrecho, desplázate horizontalmente en la tabla.'
-                      : 'Desliza la tabla horizontalmente para revisar todas las métricas.'}
-                  </p>
-                  <div className="cohorte-resumen-basic-table w-full min-w-0">
-                    <Table>
-                      <Table.ScrollContainer>
-                        <Table.Content
-                          aria-label={
-                            usesTramoBreakdown
-                              ? 'Resumen de efectividad por tramo'
-                              : 'Resumen de efectividad por año de venta'
-                          }
-                          className="min-w-[64rem]"
-                        >
-                          <Table.Header>
-                            <Table.Column isRowHeader>{usesTramoBreakdown ? 'Tramo' : 'Año'}</Table.Column>
-                            <Table.Column className="text-end">Activos</Table.Column>
-                            <Table.Column className="text-end">Pagaron</Table.Column>
-                            <Table.Column className="text-end">% Pago Contratos</Table.Column>
-                            <Table.Column className="text-end">Debería</Table.Column>
-                            <Table.Column className="text-end">Cobrado</Table.Column>
-                            <Table.Column className="text-end">% Cobertura Monto</Table.Column>
-                          </Table.Header>
-                          <Table.Body>
-                            {byTramoEntries.map(([key, row]) => (
-                              <Table.Row key={key}>
-                                <Table.Cell>{usesTramoBreakdown ? `Tramo ${key}` : key}</Table.Cell>
-                                <Table.Cell className="text-end tabular-nums">{formatCount(row.activos || 0)}</Table.Cell>
-                                <Table.Cell className="text-end tabular-nums">{formatCount(row.pagaron || 0)}</Table.Cell>
-                                <Table.Cell className="text-end tabular-nums">{pct(row.pct_pago_contratos || 0)}</Table.Cell>
-                                <Table.Cell className="text-end tabular-nums">{formatGsFull(row.deberia || 0)}</Table.Cell>
-                                <Table.Cell className="text-end tabular-nums">{formatGsFull(row.cobrado || 0)}</Table.Cell>
-                                <Table.Cell className="text-end tabular-nums">{pct(row.pct_cobertura_monto || 0)}</Table.Cell>
-                              </Table.Row>
-                            ))}
-                            {hasRows ? (
-                              <Table.Row className="cohorte-resumen-total-row">
-                                <Table.Cell>Total</Table.Cell>
-                                <Table.Cell className="text-end tabular-nums">
-                                  {formatCount(cohorteResumenTableTotals.activos)}
-                                </Table.Cell>
-                                <Table.Cell className="text-end tabular-nums">
-                                  {formatCount(cohorteResumenTableTotals.pagaron)}
-                                </Table.Cell>
-                                <Table.Cell className="text-end tabular-nums">
-                                  {pct(cohorteResumenTableTotals.pctPagoContratos)}
-                                </Table.Cell>
-                                <Table.Cell className="text-end tabular-nums">
-                                  {formatGsFull(cohorteResumenTableTotals.deberia)}
-                                </Table.Cell>
-                                <Table.Cell className="text-end tabular-nums">
-                                  {formatGsFull(cohorteResumenTableTotals.cobrado)}
-                                </Table.Cell>
-                                <Table.Cell className="text-end tabular-nums">
-                                  {pct(cohorteResumenTableTotals.pctCoberturaMonto)}
-                                </Table.Cell>
-                              </Table.Row>
-                            ) : null}
-                          </Table.Body>
-                        </Table.Content>
-                      </Table.ScrollContainer>
-                    </Table>
-                  </div>
+                  <Card
+                    variant="transparent"
+                    className="cohorte-resumen-bloc-card w-full min-w-0 gap-0 overflow-visible p-0 shadow-none"
+                  >
+                    <Card.Header className="flex flex-col gap-1.5 px-4 pb-3 pt-4">
+                      <Card.Title className="text-sm font-semibold text-[var(--color-text)]">
+                        {usesTramoBreakdown ? 'Resumen de efectividad por tramo' : 'Resumen de efectividad por año de venta'}
+                      </Card.Title>
+                      <p className="m-0 text-xs leading-snug text-[var(--color-text-muted)]">
+                        {usesTramoBreakdown
+                          ? 'Incluye tramos 0 al 7. Si el panel es estrecho, desplázate horizontalmente en la tabla.'
+                          : 'Desliza la tabla horizontalmente para revisar todas las métricas.'}
+                      </p>
+                    </Card.Header>
+                    <Card.Content className="overflow-visible pt-0 pb-4 px-1 sm:px-2">
+                      <div className="cohorte-resumen-basic-table w-full min-w-0">
+                        <Table variant="secondary" className="min-w-0 w-full bg-transparent">
+                          <Table.ScrollContainer>
+                            <Table.Content
+                              aria-label={
+                                usesTramoBreakdown
+                                  ? 'Resumen de efectividad por tramo'
+                                  : 'Resumen de efectividad por año de venta'
+                              }
+                              className="min-w-[600px] sm:min-w-[52rem] lg:min-w-[64rem]"
+                            >
+                              <Table.Header>
+                                <Table.Column isRowHeader>{usesTramoBreakdown ? 'Tramo' : 'Año'}</Table.Column>
+                                <Table.Column className="text-end">Activos</Table.Column>
+                                <Table.Column className="text-end">Pagaron</Table.Column>
+                                <Table.Column className="text-end">% Pago Contratos</Table.Column>
+                                <Table.Column className="text-end">Debería</Table.Column>
+                                <Table.Column className="text-end">Cobrado</Table.Column>
+                                <Table.Column className="text-end">% Cobertura Monto</Table.Column>
+                              </Table.Header>
+                              <Table.Body>
+                                {byTramoEntries.map(([key, row]) => (
+                                  <Table.Row key={key}>
+                                    <Table.Cell>{usesTramoBreakdown ? `Tramo ${key}` : key}</Table.Cell>
+                                    <Table.Cell className="text-end tabular-nums">{formatCount(row.activos || 0)}</Table.Cell>
+                                    <Table.Cell className="text-end tabular-nums">{formatCount(row.pagaron || 0)}</Table.Cell>
+                                    <Table.Cell className="text-end tabular-nums">{pct(row.pct_pago_contratos || 0)}</Table.Cell>
+                                    <Table.Cell className="text-end tabular-nums">{formatGsFull(row.deberia || 0)}</Table.Cell>
+                                    <Table.Cell className="text-end tabular-nums">{formatGsFull(row.cobrado || 0)}</Table.Cell>
+                                    <Table.Cell className="text-end tabular-nums">{pct(row.pct_cobertura_monto || 0)}</Table.Cell>
+                                  </Table.Row>
+                                ))}
+                                {hasRows ? (
+                                  <Table.Row className="cohorte-resumen-total-row">
+                                    <Table.Cell>TOTAL</Table.Cell>
+                                    <Table.Cell className="text-end tabular-nums">
+                                      {formatCount(cohorteResumenTableTotals.activos)}
+                                    </Table.Cell>
+                                    <Table.Cell className="text-end tabular-nums">
+                                      {formatCount(cohorteResumenTableTotals.pagaron)}
+                                    </Table.Cell>
+                                    <Table.Cell className="text-end tabular-nums">
+                                      {pct(cohorteResumenTableTotals.pctPagoContratos)}
+                                    </Table.Cell>
+                                    <Table.Cell className="text-end tabular-nums">
+                                      {formatGsFull(cohorteResumenTableTotals.deberia)}
+                                    </Table.Cell>
+                                    <Table.Cell className="text-end tabular-nums">
+                                      {formatGsFull(cohorteResumenTableTotals.cobrado)}
+                                    </Table.Cell>
+                                    <Table.Cell className="text-end tabular-nums">
+                                      {pct(cohorteResumenTableTotals.pctCoberturaMonto)}
+                                    </Table.Cell>
+                                  </Table.Row>
+                                ) : null}
+                              </Table.Body>
+                            </Table.Content>
+                          </Table.ScrollContainer>
+                          <Table.Footer className="cohorte-resumen-table-heroui-footer sm:hidden">
+                            <span className="text-center text-xs leading-snug text-[var(--color-text-muted)]">
+                              Deslizá horizontalmente para ver todas las columnas.
+                            </span>
+                          </Table.Footer>
+                        </Table>
+                      </div>
+                    </Card.Content>
+                  </Card>
                 </div>
               </div>
             </>
@@ -1057,55 +1201,24 @@ export function AnalisisCobranzasCohorteView() {
       ) : null}
       </Card>
 
-      {!loadingOptions ? (
+      {!loadingOptions && showFloatingFilters ? (
         <FloatingQuickFilters
           isOpen={floatOpen}
           onOpen={openFloatFilters}
           onCollapse={() => setFloatOpen(false)}
           onApply={() => void applyFloatFilters()}
-          applyDisabled={applying || loadingSummary || noCohorteData || !floatCutoff}
+          applyDisabled={
+            applying ||
+            loadingSummary ||
+            noCohorteData ||
+            (floatLayoutEff.floating.includes('cobro_cutoff_month') && !floatCutoff)
+          }
           applying={applying || loadingSummary}
         >
-          <div className="analysis-filter-control">
-            <label className="input-label" id="float-cutoff-month-label">Mes de cobro</label>
-            {cutoffMonthItems.length > 0 ? (
-              <StringSelect
-                ui="dropdown"
-                labelId="float-cutoff-month-label"
-                items={cutoffMonthItems}
-                selectedKey={floatCutoff}
-                onSelectionChange={setFloatCutoff}
-                triggerClassName={STRING_SELECT_TRIGGER_ANALYTICS}
-              />
-            ) : (
-              <p className="text-sm text-[var(--color-text-muted)]" role="status">Sin meses de cobro.</p>
-            )}
-          </div>
-          {hasUnOptions ? (
-            <UnidadNegocioTagFilter
-              className="analysis-filter-control"
-              options={options.uns}
-              selected={floatUns}
-              onChange={setFloatUns}
-            />
-          ) : (
-            <>
-              <AbbrevSegmentedFilter
-                className="analysis-filter-control"
-                label="Vía de cobro"
-                options={VIA_DEBITO_COBRADOR_ABBREV_OPTIONS}
-                value={floatVia}
-                onChange={(v) => setFloatVia(v)}
-              />
-              <AbbrevSegmentedFilter
-                className="analysis-filter-control"
-                label="Categoría"
-                options={CATEGORIA_ABBREV_OPTIONS}
-                value={floatCategoria}
-                onChange={(v) => setFloatCategoria(v)}
-              />
-            </>
-          )}
+          <DashboardFloatingFiltersLayout
+            sectionId="analisisCobranzaCohorte"
+            slots={floatSlots}
+          />
         </FloatingQuickFilters>
       ) : null}
     </section>

@@ -7,11 +7,15 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
 ## Canonico transversal de desacople
 - El desacople entre frontend **nuevo** y **legacy** se rige por `desacople.md`.
 - Si el cambio toca navegacion, routing, layout o UI de modulos analiticos, validar obligatoriamente contra `desacople.md`.
+- El canon ejecutivo de tableros analytics se rige por `power.md`.
+- Si el cambio toca jerarquia de pantalla, header, KPIs, filtros o composicion general de tableros analytics, validar obligatoriamente contra `power.md`.
+- El seguimiento operativo del rollout ejecutivo por modulo se registra en `power_avance.md`.
 - El canon visual operativo por patrones de UI analytics se rige por `docs/spec-canon-patrones-ui-analytics.md`.
 - Si el cambio toca filtros, botones, tablas, densidad desktop, jerarquia o componentes visuales repetidos, validar obligatoriamente contra `docs/spec-canon-patrones-ui-analytics.md`.
 - La biblioteca de componentes UI del frontend nuevo (**HeroUI**, `@heroui/react`) y la migración incremental se rigen por `docs/heroui/README.md` y `docs/heroui/PLAN-MIGRACION.md`.
 - Si el cambio introduce o altera botones, **menús desplegable (dropdown)**, **select/combobox** de datos, campos de formulario, modales, feedback tipo toast o primitivos equivalentes en el frontend nuevo, validar obligatoriamente contra esos documentos además del spec analytics.
 - El inventario de tablas MySQL de extracción, JOINs alineados a los SQL del repo y capas Postgres de sync/analytics se rige por `docs/base.md`.
+- El Markdown **no canónico** (planes, runbooks históricos, specs de apoyo, etc.) vive bajo `archive-md-no-canonico/`; ver `archive-md-no-canonico/README.md`. No sustituye a los puntos anteriores ni a los canónicos de seguimiento.
 
 ## Canonicos operativos de seguimiento (obligatorios)
 - `bugs.md`: backlog tecnico/operativo y estado AUD-*.

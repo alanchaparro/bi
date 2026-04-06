@@ -1,5 +1,11 @@
 import axios, { type AxiosError } from "axios";
 import type {
+  AnalyticsDashboardSectionId,
+  AnalyticsFilterId,
+  DashboardFilterLayoutsDocument,
+  FilterSlotStyle,
+} from "@/config/analyticsFilterLayouts";
+import type {
   BrokersFilters,
   BrokersPreferences,
   LoginRequest,
@@ -257,6 +263,8 @@ type CachedEntry<T> = {
 };
 const analyticsCacheMemory = new Map<string, CachedEntry<unknown>>();
 const ANALYTICS_CACHE_PREFIX = "analytics_api_cache:";
+const TRANSIENT_RETRYABLE_STATUS = new Set([502, 503, 504]);
+const COHORTE_RETRY_DELAYS_MS = [350, 900];
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -314,11 +322,47 @@ function markCacheHitMeta<T>(value: T): T {
   return { ...value, meta: { ...existingMeta, cache_hit: true } } as T;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function isRetryableAnalyticsError(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  const status = Number(error.response?.status || 0);
+  if (TRANSIENT_RETRYABLE_STATUS.has(status)) return true;
+  return !error.response;
+}
+
+async function analyticsPostWithTransientRetry<T>(
+  path: string,
+  payload: unknown,
+  retryDelaysMs?: number[],
+): Promise<T> {
+  const delays = retryDelaysMs ?? [];
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    try {
+      const response = await api.post<T>(path, payload);
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= delays.length || !isRetryableAnalyticsError(error)) {
+        throw error;
+      }
+      await sleep(delays[attempt]);
+    }
+  }
+  throw lastError;
+}
+
 async function cachedAnalyticsPost<T>(
   path: string,
   payload: unknown,
   policy: AnalyticsCachePolicy,
   cacheKeySuffix = "",
+  retryDelaysMs?: number[],
 ): Promise<T> {
   const key = buildAnalyticsCacheKey(`${path}${cacheKeySuffix}`, payload);
   const now = Date.now();
@@ -345,12 +389,12 @@ async function cachedAnalyticsPost<T>(
     });
     return markCacheHitMeta(hitSession.value);
   }
-  const response = await api.post<T>(path, payload);
+  const data = await analyticsPostWithTransientRetry<T>(path, payload, retryDelaysMs);
   const ttl = ANALYTICS_CACHE_TTL_MS[policy];
-  const entry: CachedEntry<T> = { value: response.data, expiresAt: now + ttl };
+  const entry: CachedEntry<T> = { value: data, expiresAt: now + ttl };
   analyticsCacheMemory.set(key, entry as CachedEntry<unknown>);
   setSessionCache(key, entry);
-  return response.data;
+  return data;
 }
 
 export function clearAnalyticsApiCache(pathPrefix?: string): void {
@@ -568,6 +612,114 @@ export async function putRoleNavMatrix(payload: {
 }): Promise<RoleNavMatrixResponse> {
   const response = await api.put<RoleNavMatrixResponse>("/brokers/role-nav-matrix", payload);
   return response.data;
+}
+
+export type DashboardFilterLayoutsPutPayload = {
+  version: 1;
+  sections: Partial<
+    Record<
+      AnalyticsDashboardSectionId,
+      {
+        macro: AnalyticsFilterId[];
+        micro: AnalyticsFilterId[];
+        floating?: AnalyticsFilterId[];
+        grid_class_macro?: string | null;
+        grid_class_micro?: string | null;
+        slot_styles?: Partial<Record<AnalyticsFilterId, FilterSlotStyle>>;
+      }
+    >
+  >;
+};
+
+function parseDashboardFilterLayoutsApi(
+  raw: unknown,
+): DashboardFilterLayoutsDocument {
+  if (!raw || typeof raw !== "object") {
+    return { version: 1, sections: {} };
+  }
+  const o = raw as Record<string, unknown>;
+  const sectionsIn = o.sections;
+  const sections: DashboardFilterLayoutsDocument["sections"] = {};
+  if (sectionsIn && typeof sectionsIn === "object") {
+    for (const [sk, sv] of Object.entries(sectionsIn)) {
+      if (!sv || typeof sv !== "object") continue;
+      const s = sv as Record<string, unknown>;
+      const macro = Array.isArray(s.macro)
+        ? (s.macro.filter((x) => typeof x === "string") as AnalyticsFilterId[])
+        : [];
+      const micro = Array.isArray(s.micro)
+        ? (s.micro.filter((x) => typeof x === "string") as AnalyticsFilterId[])
+        : [];
+      const floating = Array.isArray(s.floating)
+        ? (s.floating.filter((x) => typeof x === "string") as AnalyticsFilterId[])
+        : undefined;
+      const slot_styles: Partial<Record<AnalyticsFilterId, FilterSlotStyle>> =
+        {};
+      const ss = s.slot_styles;
+      const scales = new Set(["compact", "default", "comfortable"]);
+      if (ss && typeof ss === "object") {
+        for (const [fk, fv] of Object.entries(ss)) {
+          if (!fv || typeof fv !== "object") continue;
+          const o = fv as Record<string, unknown>;
+          const out: FilterSlotStyle = {};
+          const sp = o.column_span;
+          if (typeof sp === "number" && sp >= 2 && sp <= 4) {
+            out.column_span = sp;
+          }
+          const mw = o.min_width_px;
+          if (typeof mw === "number" && mw >= 72 && mw <= 420) {
+            out.min_width_px = Math.round(mw);
+          }
+          const cs = o.control_scale;
+          if (
+            typeof cs === "string" &&
+            scales.has(cs) &&
+            cs !== "default"
+          ) {
+            out.control_scale = cs as FilterSlotStyle["control_scale"];
+          }
+          const lc = o.low_cardinality_control;
+          if (lc === "multi_dropdown") {
+            out.low_cardinality_control = lc;
+          }
+          const uc = o.un_control;
+          if (uc === "tags_split_row" || uc === "multi_dropdown") {
+            out.un_control = uc;
+          }
+          if (Object.keys(out).length > 0) {
+            slot_styles[fk as AnalyticsFilterId] = out;
+          }
+        }
+      }
+      sections[sk as AnalyticsDashboardSectionId] = {
+        macro,
+        micro,
+        ...(floating !== undefined ? { floating } : {}),
+        grid_class_macro:
+          typeof s.grid_class_macro === "string" ? s.grid_class_macro : undefined,
+        grid_class_micro:
+          typeof s.grid_class_micro === "string" ? s.grid_class_micro : undefined,
+        slot_styles:
+          Object.keys(slot_styles).length > 0 ? slot_styles : undefined,
+      };
+    }
+  }
+  return { version: 1, sections };
+}
+
+export async function getDashboardFilterLayouts(): Promise<DashboardFilterLayoutsDocument> {
+  const response = await api.get<unknown>("/brokers/config/dashboard-filter-layouts");
+  return parseDashboardFilterLayoutsApi(response.data);
+}
+
+export async function putDashboardFilterLayouts(
+  payload: DashboardFilterLayoutsPutPayload,
+): Promise<DashboardFilterLayoutsDocument> {
+  const response = await api.put<unknown>(
+    "/brokers/config/dashboard-filter-layouts",
+    payload,
+  );
+  return parseDashboardFilterLayoutsApi(response.data);
 }
 
 export type SyncDomain = "analytics" | "cartera" | "cobranzas" | "contratos" | "eerr" | "gestores";
@@ -1343,7 +1495,13 @@ export async function getCobranzasCohorteOptions(payload: {
   categoria?: string[];
   supervisor?: string[];
 }): Promise<CobranzasCohorteOptionsResponse> {
-  return cachedAnalyticsPost<CobranzasCohorteOptionsResponse>("/analytics/cobranzas-cohorte-v2/options", payload, "options");
+  return cachedAnalyticsPost<CobranzasCohorteOptionsResponse>(
+    "/analytics/cobranzas-cohorte-v2/options",
+    payload,
+    "options",
+    "",
+    COHORTE_RETRY_DELAYS_MS
+  );
 }
 
 /** Igual que options pero sin caché de cliente; sirve para polling de frescura tras sync. */
@@ -1354,8 +1512,11 @@ export async function peekCobranzasCohorteOptionsUncached(payload: {
   categoria?: string[];
   supervisor?: string[];
 } = {}): Promise<CobranzasCohorteOptionsResponse> {
-  const response = await api.post<CobranzasCohorteOptionsResponse>("/analytics/cobranzas-cohorte-v2/options", payload);
-  return response.data;
+  return analyticsPostWithTransientRetry<CobranzasCohorteOptionsResponse>(
+    "/analytics/cobranzas-cohorte-v2/options",
+    payload,
+    COHORTE_RETRY_DELAYS_MS
+  );
 }
 
 export async function getCobranzasCohorteSummary(payload: {
@@ -1389,7 +1550,9 @@ export async function getCobranzasCohorteFirstPaint(payload: {
   return cachedAnalyticsPost<CobranzasCohorteFirstPaintResponse>(
     "/analytics/cobranzas-cohorte-v2/first-paint",
     payload,
-    "first_paint"
+    "first_paint",
+    "",
+    COHORTE_RETRY_DELAYS_MS
   );
 }
 
@@ -1404,7 +1567,13 @@ export async function getCobranzasCohorteDetail(payload: {
   sort_by?: "sale_month" | "cobrado" | "deberia" | "pagaron";
   sort_dir?: "asc" | "desc";
 }): Promise<CobranzasCohorteDetailResponse> {
-  return cachedAnalyticsPost<CobranzasCohorteDetailResponse>("/analytics/cobranzas-cohorte-v2/detail", payload, "detail");
+  return cachedAnalyticsPost<CobranzasCohorteDetailResponse>(
+    "/analytics/cobranzas-cohorte-v2/detail",
+    payload,
+    "detail",
+    "",
+    COHORTE_RETRY_DELAYS_MS
+  );
 }
 
 export async function getCobranzasCohorteOrphanDetail(payload: {
@@ -1421,7 +1590,9 @@ export async function getCobranzasCohorteOrphanDetail(payload: {
   return cachedAnalyticsPost<CobranzasCohorteOrphanDetailResponse>(
     "/analytics/cobranzas-cohorte-v2/orphan-detail",
     payload,
-    "detail"
+    "detail",
+    "",
+    COHORTE_RETRY_DELAYS_MS
   );
 }
 

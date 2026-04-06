@@ -78,7 +78,7 @@ Desacoplar y eliminar de forma ordenada el flujo legacy para que solo quede oper
 - Solo se levanta stack nuevo en el flujo canonico (`INICIAR.bat` / `iniciar.sh`).
 - Se elimina el runtime legacy (`start_dashboard.py` + `dashboard` service) del camino principal.
 - Se retiran variables, endpoints de compatibilidad y pruebas acopladas a legacy.
-- Se conserva documentacion historica del legado en `docs/archive/legacy-retired/`.
+- Se conserva documentacion historica del legado en `archive-md-no-canonico/docs/archive/legacy-retired/`.
 
 ## Inventario: que tenia el legacy (baseline antes de borrado)
 
@@ -112,10 +112,10 @@ Desacoplar y eliminar de forma ordenada el flujo legacy para que solo quede oper
   - `tests/test_movement_endpoint_static.py`
 
 ### 5) Documentacion legacy activa
-- `docs/verificacion-legacy-vs-8080.md`
-- `docs/technical-architecture-v1.md` (compatibilidad temporal legacy)
-- `docs/runbook-local.md` (ejecucion `start_dashboard.py`)
-- Archivos de contexto historico bajo `docs/archive/legacy-prod-20260217/`.
+- `archive-md-no-canonico/docs/archive/legacy-retired/verificacion-legacy-vs-8080.md`
+- `archive-md-no-canonico/docs/technical-architecture-v1.md` (compatibilidad temporal legacy)
+- `archive-md-no-canonico/docs/runbook-local.md` (ejecucion `start_dashboard.py`)
+- Archivos de contexto historico bajo `archive-md-no-canonico/docs/archive/legacy-prod-20260217/`.
 
 ---
 
@@ -123,11 +123,11 @@ Desacoplar y eliminar de forma ordenada el flujo legacy para que solo quede oper
 
 ## Fase 0 - Preparacion y respaldo documental
 1. Crear rama: `chore/remove-legacy-runtime`.
-2. Crear carpeta de archivo: `docs/archive/legacy-retired/`.
-3. Mover/duplicar a `docs/archive/legacy-retired/`:
-   - `docs/verificacion-legacy-vs-8080.md`
+2. Crear carpeta de archivo: `archive-md-no-canonico/docs/archive/legacy-retired/` (hoy el material historico vive bajo `archive-md-no-canonico/`).
+3. Mover/duplicar a `archive-md-no-canonico/docs/archive/legacy-retired/`:
+   - `archive-md-no-canonico/docs/archive/legacy-retired/verificacion-legacy-vs-8080.md`
    - runbooks legacy y checklists de cutover.
-4. Generar un snapshot breve en `docs/archive/legacy-retired/legacy-baseline.md` con:
+4. Generar un snapshot breve en `archive-md-no-canonico/docs/archive/legacy-retired/legacy-baseline.md` con:
    - componentes legacy,
    - rutas/endpoints legacy,
    - variables legacy,
@@ -168,10 +168,10 @@ Desacoplar y eliminar de forma ordenada el flujo legacy para que solo quede oper
 
 ## Fase 4 - Actualizacion documental final
 1. Actualizar docs principales para estado post-legacy:
-   - `docs/runbook-local.md`
-   - `docs/technical-architecture-v1.md`
-   - `docs/api-contracts-v1.md` (si hay menciones de compatibilidad temporal ya retirada)
-2. Crear `docs/legacy-removal-report.md` con:
+   - `archive-md-no-canonico/docs/runbook-local.md`
+   - `archive-md-no-canonico/docs/technical-architecture-v1.md`
+   - `archive-md-no-canonico/docs/api-contracts-v1.md` (si hay menciones de compatibilidad temporal ya retirada)
+2. Crear `archive-md-no-canonico/docs/legacy-removal-report.md` con:
    - fecha/hora de retiro,
    - archivos removidos,
    - variables removidas,
@@ -182,7 +182,7 @@ Desacoplar y eliminar de forma ordenada el flujo legacy para que solo quede oper
 
 ## Checklist tecnico de verificacion (obligatorio)
 - [x] `docker compose --profile prod up -d` levanta sin servicio `dashboard`.
-- [x] No existen referencias activas a `start_dashboard.py` fuera de documentación histórica (`desacople.md` y `docs/archive/legacy-retired/`).
+- [x] No existen referencias activas a `start_dashboard.py` fuera de documentación histórica (`desacople.md` y `archive-md-no-canonico/docs/archive/legacy-retired/`).
 - [x] No existen referencias activas a `v1proxy` ni rutas legacy `/api/*` fuera de documentación histórica.
 - [x] Frontend nuevo funciona en `http://localhost:8080`.
 - [x] Smoke API OK:
@@ -201,8 +201,8 @@ Desacoplar y eliminar de forma ordenada el flujo legacy para que solo quede oper
 - No hay variables de entorno legacy en uso.
 - No hay imports/componentes legacy en frontend nuevo.
 - No hay jobs CI dependientes del legado.
-- Existe reporte final en `docs/legacy-removal-report.md`.
-- Documentacion historica del legacy queda archivada bajo `docs/archive/legacy-retired/`.
+- Existe reporte final en `archive-md-no-canonico/docs/legacy-removal-report.md`.
+- Documentacion historica del legacy queda archivada bajo `archive-md-no-canonico/docs/archive/legacy-retired/`.
 
 ## Riesgos y mitigacion
 - Riesgo: borrar utilidades que aun usa el flujo nuevo.
@@ -214,7 +214,7 @@ Desacoplar y eliminar de forma ordenada el flujo legacy para que solo quede oper
 
 ## Entregables minimos del dev
 - PR de eliminacion legacy con cambios de codigo + CI + docs.
-- `docs/legacy-removal-report.md` completo.
+- `archive-md-no-canonico/docs/legacy-removal-report.md` completo.
 - Evidencia de smoke tests y checklist marcado.
 
 ## Estado de ejecución

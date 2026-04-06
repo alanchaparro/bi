@@ -66,8 +66,8 @@ Genera `src/shared/api-types.ts` desde `../docs/openapi-v1.json` (requiere `open
 
 ## Referencias visuales
 
-- Estándar visual analytics: [docs/frontend-visual-standard.md](C:/desarrollos/bi-clone-nuevo/docs/frontend-visual-standard.md)
-- Checklist de revisión visual para PRs: [docs/frontend-visual-pr-checklist.md](C:/desarrollos/bi-clone-nuevo/docs/frontend-visual-pr-checklist.md)
+- Estándar visual analytics (archivado, no canónico): [../archive-md-no-canonico/docs/frontend-visual-standard.md](../archive-md-no-canonico/docs/frontend-visual-standard.md)
+- Checklist de revisión visual para PRs (archivado): [../archive-md-no-canonico/docs/frontend-visual-pr-checklist.md](../archive-md-no-canonico/docs/frontend-visual-pr-checklist.md)
 
 ## Objetivo
 

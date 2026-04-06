@@ -24,6 +24,7 @@ $blockedPatterns = @(
     '(^|/)analytics_meta\.json$',
     '\.db$',
     '(^|/)docs/archive/.+/evidence-old/.+$',
+    '(^|/)archive-md-no-canonico/docs/archive/.+/evidence-old/.+$',
     '\.pem$',
     '\.key$',
     '\.p12$',

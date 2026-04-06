@@ -45,10 +45,11 @@ export function ViaSegmentedOrMulti({
     [options, placeholder],
   );
 
-  const segmentedClassName =
-    label === "Vía de cobro" && canSegment
-      ? `${className ?? ""} rendimiento-via-cobro-segmented w-[150px] max-w-[150px] shrink-0`.trim()
-      : (className ?? "");
+  const useFixedViaSegmentedWidth =
+    canSegment && (label === "Vía de cobro" || label === "Vía de pago");
+  const segmentedClassName = useFixedViaSegmentedWidth
+    ? `${className ?? ""} rendimiento-via-cobro-segmented shrink-0`.trim()
+    : (className ?? "");
 
   if (canSegment) {
     const value = selected[0] ?? "";

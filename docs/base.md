@@ -14,7 +14,7 @@ Documento único de consulta para:
 
 Este canon existe para que **desarrolladores y asistentes** (p. ej. en Cursor) puedan **consultar una base común** al proponer `query_*.sql` o vistas: no sustituye a `information_schema` en vivo, pero **reduce el ensayo y error** al combinar:
 
-1. **Grafo de tablas y FKs** (secciones 3 y 7, más `docs/archive/epem_mysql_verified_*.md` y el TSV completo si hace falta).
+1. **Grafo de tablas y FKs** (secciones 3 y 7, más `archive-md-no-canonico/docs/archive/epem_mysql_verified_*.md` y el TSV completo si hace falta).
 2. **Contrato de nombres** que ya consume el sync: alias de salida en §4 y los `AS` de `sql/v2/*` (el backend asume esos nombres de columnas).
 3. **Reglas de negocio** que filtran o transforman (`sql/common/*`, `AGENTS.md`).
 4. **Diccionario de campos y catálogos** (§10, §11, Apéndice A) para interpretar columnas y códigos numéricos del legacy.
@@ -32,9 +32,9 @@ Flujo recomendado ante un **dominio nuevo**: leer `base.md` + el query v2 más p
 
 Con esto un asistente o dev puede **proponer consultas nuevas** (p. ej. otro corte por cliente/contrato/UN) **sin adivinar**: une lo que dicen las FKs, lo que ya hace un query v2 parecido y las reglas de `AGENTS.md`. **Lo que no sustituye** es la **ejecución** en MySQL: conteos, promedios o “cuántos hay hoy” exigen correr el SQL en el servidor (o pegar aquí el resultado).
 
-**No es** un volcado automático desde red: Cursor/CI **no** tienen acceso a tu LAN salvo que tú ejecutes consultas o el script con Docker. Tras cambios en el esquema MySQL, correr la sección [7](#7-consultas-para-correr-en-mysql-servidor-de-importación) o `dump_epem_fks.ps1` y dejar el resultado en `docs/archive/` fechado.
+**No es** un volcado automático desde red: Cursor/CI **no** tienen acceso a tu LAN salvo que tú ejecutes consultas o el script con Docker. Tras cambios en el esquema MySQL, correr la sección [7](#7-consultas-para-correr-en-mysql-servidor-de-importación) o `dump_epem_fks.ps1` y dejar el resultado en `archive-md-no-canonico/docs/archive/` fechado.
 
-**Precedencia** con otros canónicos: `AGENTS.md` (reglas de negocio) → `desacople.md` → este archivo para **origen de datos y tablas** → `docs/sync-business-keys.md` (business keys en Postgres) → `docs/data-contracts.md` (columnas esperadas en CSV/UI legacy).
+**Precedencia** con otros canónicos: `AGENTS.md` (reglas de negocio) → `desacople.md` → este archivo para **origen de datos y tablas** → `archive-md-no-canonico/docs/sync-business-keys.md` (business keys en Postgres) → `archive-md-no-canonico/docs/data-contracts.md` (columnas esperadas en CSV/UI legacy).
 
 ---
 
@@ -45,7 +45,7 @@ Con esto un asistente o dev puede **proponer consultas nuevas** (p. ej. otro cor
 | **Origen / importaciones** | **MySQL** (instancia operativa; host típico LAN tipo `192.168.0.241`, vía `MYSQL_*` en `.env`) | Lectura con los `query_*.sql`; sin escritura del pipeline hacia este motor. |
 | **Analytics / API** | **Postgres** (Docker o servicio del stack) | Facts, agregados, materialized options, auth, sync metadata. |
 
-Conexión desde contenedor API a MySQL en otra máquina: usar IP alcanzable (no `localhost` dentro del contenedor). Ver `docs/analytics-data-dependencies.md`.
+Conexión desde contenedor API a MySQL en otra máquina: usar IP alcanzable (no `localhost` dentro del contenedor). Ver `archive-md-no-canonico/docs/analytics-data-dependencies.md`.
 
 ### 1.1 Variables de entorno (credenciales solo en `.env` local)
 
@@ -279,8 +279,8 @@ No reemplaza el catálogo de migraciones; resume **dónde caen** los datos tras 
 
 | Capa | Tablas representativas | Documentación |
 |------|------------------------|---------------|
-| Facts | `cartera_fact`, `cobranzas_fact`, `analytics_fact`, `contratos_fact`, `gestores_fact` | `docs/sync-business-keys.md`, Alembic `0006`, `0007` |
-| Agregados analytics | `cartera_corte_agg`, `cobranzas_cohorte_agg`, `analytics_rendimiento_agg`, … | `docs/dwh-v2-target-architecture.md` |
+| Facts | `cartera_fact`, `cobranzas_fact`, `analytics_fact`, `contratos_fact`, `gestores_fact` | `archive-md-no-canonico/docs/sync-business-keys.md`, Alembic `0006`, `0007` |
+| Agregados analytics | `cartera_corte_agg`, `cobranzas_cohorte_agg`, `analytics_rendimiento_agg`, … | `archive-md-no-canonico/docs/dwh-v2-target-architecture.md` |
 | Dimensiones / mapas | `dim_negocio_un_map`, `dim_negocio_contrato`, … | Mismo |
 | Options MV | `mv_options_cartera`, … | Refresh post-sync |
 | Sync / jobs | `sync_runs`, `sync_records`, `sync_staging_rows`, `sync_jobs`, `sync_schedules` | `sync_schedules.id` ← FK `sync_jobs.schedule_id` |
@@ -301,7 +301,7 @@ No reemplaza el catálogo de migraciones; resume **dónde caen** los datos tras 
 
 ## 7. Consultas para correr en MySQL (servidor de importación)
 
-Ejecutar conectado a la base operativa (`epem` o la que use el DSN). Guardar salida con fecha en `docs/archive/` si es muy larga.
+Ejecutar conectado a la base operativa (`epem` o la que use el DSN). Guardar salida con fecha en `archive-md-no-canonico/docs/archive/` si es muy larga.
 
 ### 7.1 Foreign keys declaradas en el servidor
 
@@ -353,7 +353,7 @@ En **2026-03-28** se ejecutó el inventario con imagen `mysql:8` (`docker run --
 
 El detalle de **FK declaradas** para las tablas núcleo de extracción v2 está en:
 
-- `docs/archive/epem_mysql_verified_2026-03-28.md`
+- `archive-md-no-canonico/docs/archive/epem_mysql_verified_2026-03-28.md`
 
 Para repetir la extracción sin guardar la contraseña en el historial del shell, usar variable de entorno en la sesión o un `.env` leído solo localmente (no commitear).
 
@@ -361,7 +361,7 @@ Para repetir la extracción sin guardar la contraseña en el historial del shell
 
 `.\scripts\dump_epem_fks.ps1`
 
-Genera `epem_mysql_verified_YYYY-MM-DD.md` y `epem_mysql_all_fks_YYYY-MM-DD.tsv` en `docs/archive/`. La clave solo se escribe en un archivo temporal consumido por `docker --env-file` (no queda en los anexos). El cliente usa `--protocol=TCP` para que `localhost` no intente socket Unix dentro del contenedor. `MYSQL_HOST` debe ser alcanzable **desde Docker** (IP LAN del servidor MySQL, o `host.docker.internal` si el motor corre en el mismo PC que Docker Desktop).
+Genera `epem_mysql_verified_YYYY-MM-DD.md` y `epem_mysql_all_fks_YYYY-MM-DD.tsv` en `archive-md-no-canonico/docs/archive/`. La clave solo se escribe en un archivo temporal consumido por `docker --env-file` (no queda en los anexos). El cliente usa `--protocol=TCP` para que `localhost` no intente socket Unix dentro del contenedor. `MYSQL_HOST` debe ser alcanzable **desde Docker** (IP LAN del servidor MySQL, o `host.docker.internal` si el motor corre en el mismo PC que Docker Desktop).
 
 ---
 
@@ -372,11 +372,11 @@ Genera `epem_mysql_verified_YYYY-MM-DD.md` y `epem_mysql_all_fks_YYYY-MM-DD.tsv`
 | Reglas UN / supervisor / empresas permitidas | `sql/common/*.sql`, `AGENTS.md` |
 | Query de extracción cartera/cobranzas | `sql/v2/query_cartera.sql`, `query_cobranzas.sql` |
 | Clasificación débito vs cobrador en SQL | `query_cobranzas.sql`, `query_analytics.sql` (patrón `payment_methods`) |
-| Business keys y upsert Postgres | `docs/sync-business-keys.md` |
-| Columnas esperadas CSV legacy | `docs/data-contracts.md` |
-| Arquitectura aggs/MV | `docs/dwh-v2-target-architecture.md` |
+| Business keys y upsert Postgres | `archive-md-no-canonico/docs/sync-business-keys.md` |
+| Columnas esperadas CSV legacy | `archive-md-no-canonico/docs/data-contracts.md` |
+| Arquitectura aggs/MV | `archive-md-no-canonico/docs/dwh-v2-target-architecture.md` |
 | Código que elige archivo SQL | `backend/app/services/sync_extractors.py` |
-| FKs MySQL `epem` ya volcadas (tablas v2) | `docs/archive/epem_mysql_verified_2026-03-28.md` |
+| FKs MySQL `epem` ya volcadas (tablas v2) | `archive-md-no-canonico/docs/archive/epem_mysql_verified_2026-03-28.md` |
 | Significado de **enteros/códigos** y columnas núcleo `epem` | `base.md` §10–§11 y **Apéndice A** |
 
 ---
@@ -384,12 +384,12 @@ Genera `epem_mysql_verified_YYYY-MM-DD.md` y `epem_mysql_all_fks_YYYY-MM-DD.tsv`
 ## 9. Referencias cruzadas
 
 - `AGENTS.md` — `gestion_month`, tramos, LTV, exclusiones, scope `enterprise_id`, contratos excluidos cobranzas.
-- `docs/sync-business-keys.md` — unicidad en Postgres.
-- `docs/data-contracts.md` — contratos de columnas por dominio CSV.
-- `docs/analytics-data-dependencies.md` — MySQL → snapshot brokers.
+- `archive-md-no-canonico/docs/sync-business-keys.md` — unicidad en Postgres.
+- `archive-md-no-canonico/docs/data-contracts.md` — contratos de columnas por dominio CSV.
+- `archive-md-no-canonico/docs/analytics-data-dependencies.md` — MySQL → snapshot brokers.
 - Modelos SQLAlchemy: `backend/app/models/brokers.py`.
 - Migraciones: `backend/alembic/versions/`.
-- `docs/archive/epem_mysql_verified_2026-03-28.md` — FKs verificadas en servidor (metadatos).
+- `archive-md-no-canonico/docs/archive/epem_mysql_verified_2026-03-28.md` — FKs verificadas en servidor (metadatos).
 - `base.md` §10–§11 y **Apéndice A** — columnas núcleo y catálogos legacy (PHP).
 
 ---

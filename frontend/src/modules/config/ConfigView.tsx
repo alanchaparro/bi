@@ -37,6 +37,7 @@ import {
   type UserItem,
 } from '../../shared/api'
 import { getApiErrorMessage } from '../../shared/apiErrors'
+import { DashboardFilterLayoutsEditor } from './DashboardFilterLayoutsEditor'
 import { THEME_PRESETS, applyThemePreset, getStoredThemePresetId } from '../../shared/themePresets'
 
 type Props = {
@@ -108,7 +109,7 @@ type TramoRule = {
 }
 
 type RoleType = 'admin' | 'analyst' | 'viewer'
-type ConfigSection = 'usuarios' | 'rolesMenus' | 'negocio' | 'importaciones' | 'programacion'
+type ConfigSection = 'usuarios' | 'rolesMenus' | 'layoutsFiltros' | 'negocio' | 'importaciones' | 'programacion'
 const ROLE_OPTIONS: RoleType[] = ['admin', 'analyst', 'viewer']
 const ROLE_SELECT_ITEMS = ROLE_OPTIONS.map((r) => ({ id: r, label: r }))
 const RULE_CATEGORY_SELECT_ITEMS = [
@@ -354,7 +355,10 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
 
   const configTabEntries = useMemo(() => {
     const tabs: Array<[ConfigSection, string]> = [['usuarios', 'Usuarios']]
-    if (canManageRoleNav) tabs.push(['rolesMenus', 'Roles y menús'])
+    if (canManageRoleNav) {
+      tabs.push(['rolesMenus', 'Roles y menús'])
+      tabs.push(['layoutsFiltros', 'Layouts de filtros'])
+    }
     tabs.push(
       ['negocio', 'Configuración de negocio'],
       ['importaciones', 'Importaciones'],
@@ -710,7 +714,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   const sectionDataLoadedRef = useRef<Partial<Record<ConfigSection, boolean>>>({})
 
   useEffect(() => {
-    if (!canManageRoleNav && configSection === 'rolesMenus') {
+    if (!canManageRoleNav && (configSection === 'rolesMenus' || configSection === 'layoutsFiltros')) {
       setConfigSection('usuarios')
     }
   }, [canManageRoleNav, configSection])
@@ -1516,38 +1520,31 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
 
   return (
     <section className="card config-card">
-      <AnalyticsPageHeader kicker="SISTEMA" title="Configuración" subtitle="Usuarios, roles y menús, negocio, importaciones y programación." />
-      <div className="config-segmented-nav" role="tablist" aria-label="Subsecciones de configuración">
-        {configTabEntries.map(([value, label]) => {
-          const selected = configSection === value
-          return (
-            <DomButton
-              key={value}
-              type="button"
-              variant="ghost"
-              role="tab"
-              aria-selected={selected}
-              className={`config-segmented-nav__button ${selected ? 'is-active' : ''}`}
-              onPress={() => setConfigSection(value)}
-            >
-              {label}
-            </DomButton>
-          )
-        })}
-      </div>
+      <AnalyticsPageHeader
+        kicker="SISTEMA"
+        title="Configuración"
+        subtitle="Usuarios, roles y menús, layouts de filtros del tablero, negocio, importaciones y programación."
+      />
       <Tabs
         selectedKey={configSection}
-        onSelectionChange={(key) => key != null && setConfigSection(String(key) as ConfigSection)}
-        className="config-tabs-heroui"
+        onSelectionChange={(key) => {
+          if (key == null) return
+          setConfigSection(String(key) as ConfigSection)
+        }}
+        className="config-tabs-heroui w-full max-w-full text-center"
         aria-label="Subsecciones de configuración"
       >
-        <Tabs.ListContainer>
-          <Tabs.List>
-            <Tabs.Tab id="usuarios">Usuarios</Tabs.Tab>
-            {canManageRoleNav ? <Tabs.Tab id="rolesMenus">Roles y menús</Tabs.Tab> : null}
-            <Tabs.Tab id="negocio">Configuración de negocio</Tabs.Tab>
-            <Tabs.Tab id="importaciones">Importaciones</Tabs.Tab>
-            <Tabs.Tab id="programacion">Programación</Tabs.Tab>
+        <Tabs.ListContainer className="w-full min-w-0">
+          <Tabs.List
+            aria-label="Subsecciones de configuración"
+            className="config-tab-list-inner w-full *:min-h-9 *:w-full *:px-3 *:py-2 *:text-sm *:font-semibold *:data-[selected=true]:text-[#f5fffd]"
+          >
+            {configTabEntries.map(([id, label]) => (
+              <Tabs.Tab key={id} id={id}>
+                {label}
+                <Tabs.Indicator className="config-tab-indicator" />
+              </Tabs.Tab>
+            ))}
           </Tabs.List>
         </Tabs.ListContainer>
       </Tabs>
@@ -1731,6 +1728,16 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
               </div>
             </>
           ) : null}
+        </div>
+        )}
+
+        {configSection === 'layoutsFiltros' && canManageRoleNav && (
+        <div>
+          <h3 className="config-section-title">Layouts de filtros (tablero analytics)</h3>
+          <p className="config-section-subtitle">
+            Editor tipo cirujano: orden, fila macro/micro, anchos y clases de rejilla. Los cambios se guardan en el servidor y aplican a todos los usuarios.
+          </p>
+          <DashboardFilterLayoutsEditor />
         </div>
         )}
 

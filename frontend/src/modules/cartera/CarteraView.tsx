@@ -5,11 +5,21 @@ import { EmptyState } from "../../components/feedback/EmptyState";
 import { ErrorState } from "../../components/feedback/ErrorState";
 import { LoadingState } from "../../components/feedback/LoadingState";
 import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter";
-import { UnidadNegocioTagFilter } from "../../components/filters/UnidadNegocioTagFilter";
-import { AbbrevSegmentedFilter } from "../../components/filters/AbbrevSegmentedFilter";
-import { CATEGORIA_ABBREV_OPTIONS } from "../../components/filters/analyticsAbbrev";
-import { ViaSegmentedOrMulti } from "../../components/filters/ViaSegmentedOrMulti";
+import {
+  ConfigurableCategoriaFilter,
+  ConfigurableUnFilter,
+  ConfigurableViaFilter,
+} from "../../components/filters/ConfigurableAnalyticsFilters";
+import {
+  DashboardFiltersLayout,
+  DashboardFloatingFiltersLayout,
+} from "@/components/filters/DashboardFiltersLayout";
+import { useFilterLayoutConfig } from "@/components/filters/FilterLayoutConfigContext";
 import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
+import {
+  buildEffectiveFilterLayout,
+  type AnalyticsFilterId,
+} from "@/config/analyticsFilterLayouts";
 import {
   getPortfolioCorteOptions,
   getPortfolioCorteSummary,
@@ -80,6 +90,107 @@ export function CarteraView() {
   const [floatOpen, setFloatOpen] = useState(false);
   const [floatMonths, setFloatMonths] = useState<string[]>([]);
   const [floatUns, setFloatUns] = useState<string[]>([]);
+  const [floatSupervisors, setFloatSupervisors] = useState<string[]>([]);
+  const [floatVias, setFloatVias] = useState<string[]>([]);
+  const [floatYears, setFloatYears] = useState<string[]>([]);
+  const [floatCategorias, setFloatCategorias] = useState<string[]>([]);
+  const [floatTramos, setFloatTramos] = useState<string[]>([]);
+
+  const { doc: filterLayoutDoc } = useFilterLayoutConfig();
+  const floatLayoutEff = useMemo(
+    () => buildEffectiveFilterLayout("cartera", [], filterLayoutDoc),
+    [filterLayoutDoc],
+  );
+  const floatSlots = useMemo<Partial<Record<AnalyticsFilterId, React.ReactNode>>>(
+    () => ({
+      gestion_month: (
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Mes de gestión"
+          options={options.months}
+          selected={floatMonths}
+          onChange={setFloatMonths}
+        />
+      ),
+      un: (
+        <ConfigurableUnFilter
+          sectionId="cartera"
+          className="analysis-filter-control"
+          label="UN"
+          options={options.uns}
+          selected={floatUns}
+          onChange={setFloatUns}
+        />
+      ),
+      via_cobro: (
+        <ConfigurableViaFilter
+          sectionId="cartera"
+          viaId="via_cobro"
+          className="analysis-filter-control"
+          label="Vía de cobro"
+          options={options.vias}
+          selected={floatVias}
+          onChange={setFloatVias}
+        />
+      ),
+      categoria: (
+        <ConfigurableCategoriaFilter
+          sectionId="cartera"
+          className="analysis-filter-control"
+          categoryOptions={options.categories}
+          selected={floatCategorias}
+          onChange={setFloatCategorias}
+        />
+      ),
+      tramo: (
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Tramo"
+          options={options.tramos}
+          selected={floatTramos}
+          onChange={setFloatTramos}
+        />
+      ),
+      contract_year: (
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Año de contrato"
+          options={options.years}
+          selected={floatYears}
+          onChange={setFloatYears}
+        />
+      ),
+      supervisor: (
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Supervisor"
+          options={options.supervisors}
+          selected={floatSupervisors}
+          onChange={setFloatSupervisors}
+        />
+      ),
+    }),
+    [
+      options.months,
+      options.uns,
+      options.vias,
+      options.categories,
+      options.tramos,
+      options.years,
+      options.supervisors,
+      floatMonths,
+      floatUns,
+      floatVias,
+      floatCategorias,
+      floatTramos,
+      floatYears,
+      floatSupervisors,
+    ],
+  );
+  const showFloatingFilters = useMemo(
+    () => floatLayoutEff.floating.some((id) => floatSlots[id] != null),
+    [floatLayoutEff.floating, floatSlots],
+  );
 
   const loadOptions = useCallback(async (ctx: BrokersFilters) => {
     const res = await getPortfolioCorteOptions(filtersToCortePayload(ctx));
@@ -198,15 +309,39 @@ export function CarteraView() {
   const openFloatFilters = useCallback(() => {
     setFloatMonths(draftFilters.months);
     setFloatUns(draftFilters.uns);
+    setFloatSupervisors(draftFilters.supervisors);
+    setFloatVias(draftFilters.vias);
+    setFloatYears(draftFilters.years);
+    setFloatCategorias(draftFilters.categorias);
+    setFloatTramos(draftFilters.tramos);
     setFloatOpen(true);
-  }, [draftFilters.months, draftFilters.uns]);
+  }, [draftFilters]);
 
   const applyFloatFilters = useCallback(async () => {
-    const next = { ...draftFilters, months: floatMonths, uns: floatUns };
+    const fl = floatLayoutEff.floating;
+    const next: BrokersFilters = { ...draftFilters };
+    if (fl.includes("gestion_month")) next.months = floatMonths;
+    if (fl.includes("un")) next.uns = floatUns;
+    if (fl.includes("via_cobro")) next.vias = floatVias;
+    if (fl.includes("categoria")) next.categorias = floatCategorias;
+    if (fl.includes("tramo")) next.tramos = floatTramos;
+    if (fl.includes("contract_year")) next.years = floatYears;
+    if (fl.includes("supervisor")) next.supervisors = floatSupervisors;
     setDraftFilters(next);
     setFloatOpen(false);
     await applyFilters(next);
-  }, [applyFilters, draftFilters, floatMonths, floatUns]);
+  }, [
+    applyFilters,
+    draftFilters,
+    floatLayoutEff.floating,
+    floatCategorias,
+    floatMonths,
+    floatSupervisors,
+    floatTramos,
+    floatUns,
+    floatVias,
+    floatYears,
+  ]);
 
   const kpis = summary?.kpis;
   const totalCartera = Number(kpis?.total_cartera ?? 0);
@@ -231,15 +366,7 @@ export function CarteraView() {
   const showEmpty = !loading && !error && (!kpis || totalCartera === 0);
 
   return (
-    <section
-      className="analysis-panel-card rendimiento-panel"
-      style={{
-        background: "var(--bg-marketing-black)",
-        border: "1px solid var(--border-standard-white)",
-        borderRadius: "8px",
-        padding: "16px",
-      }}
-    >
+    <section className="analysis-panel-card rendimiento-panel">
       <AnalyticsPageHeader
         kicker="CARTERA"
         pill="Analytics v2"
@@ -247,109 +374,112 @@ export function CarteraView() {
         subtitle="Resumen por corte operativo (agregados v2). Filtros por mes de gestión, UN, vía, supervisor, categoría (VIGENTE/MOROSO) y tramo — alineado a reportes de cartera. Para detalle por contrato usá «Análisis de cartera»."
       />
 
-      <div className="analysis-filters-grid">
-      <div
-        className="rendimiento-filters-panel"
-        style={{
-          background: "var(--bg-panel-dark)",
-          padding: "16px",
-          border: "1px solid var(--border-subtle-white)",
-          borderRadius: "8px",
-          marginTop: "16px",
-        }}
-      >
-        <div className="analysis-filters-grid">
-          <MultiSelectFilter
-            className="analysis-filter-control"
-            label="Supervisor"
-            options={options.supervisors}
-            selected={draftFilters.supervisors}
-            onChange={(values) =>
-              setDraftFilters((prev) => ({ ...prev, supervisors: values }))
-            }
-          />
-          <ViaSegmentedOrMulti
-            className="analysis-filter-control rendimiento-via-cobro-segmented"
-            label="Vía de cobro"
-            options={options.vias}
-            selected={draftFilters.vias}
-            onChange={(values) =>
-              setDraftFilters((prev) => ({ ...prev, vias: values }))
-            }
-          />
-          <AbbrevSegmentedFilter
-            className="analysis-filter-control"
-            label="Categoría"
-            options={CATEGORIA_ABBREV_OPTIONS}
-            value={(draftFilters.categorias[0] || "").toUpperCase()}
-            onChange={(categoria) =>
-              setDraftFilters((prev) => ({
-                ...prev,
-                categorias: categoria ? [categoria] : [],
-              }))
-            }
-          />
-          <MultiSelectFilter
-            className="analysis-filter-control"
-            label="Tramo"
-            options={options.tramos}
-            selected={draftFilters.tramos}
-            onChange={(values) =>
-              setDraftFilters((prev) => ({ ...prev, tramos: values }))
-            }
-          />
-          <MultiSelectFilter
-            className="analysis-filter-control"
-            label="Año de contrato"
-            options={options.years}
-            selected={draftFilters.years}
-            onChange={(values) =>
-              setDraftFilters((prev) => ({ ...prev, years: values }))
-            }
-          />
-          <MultiSelectFilter
-            className="analysis-filter-control"
-            label="Mes de gestión"
-            options={options.months}
-            selected={draftFilters.months}
-            onChange={(values) =>
-              setDraftFilters((prev) => ({ ...prev, months: values }))
-            }
-          />
-          <UnidadNegocioTagFilter
-            className="analysis-filter-control"
-            label="UN"
-            options={options.uns}
-            selected={draftFilters.uns}
-            onChange={(values) =>
-              setDraftFilters((prev) => ({ ...prev, uns: values }))
-            }
-          />
+      <div className="rendimiento-filters-panel">
+        <DashboardFiltersLayout
+          sectionId="cartera"
+          slots={{
+            supervisor: (
+              <MultiSelectFilter
+                className="analysis-filter-control"
+                label="Supervisor"
+                options={options.supervisors}
+                selected={draftFilters.supervisors}
+                onChange={(values) =>
+                  setDraftFilters((prev) => ({ ...prev, supervisors: values }))
+                }
+              />
+            ),
+            un: (
+              <ConfigurableUnFilter
+                sectionId="cartera"
+                className="analysis-filter-control"
+                label="UN"
+                options={options.uns}
+                selected={draftFilters.uns}
+                onChange={(values) =>
+                  setDraftFilters((prev) => ({ ...prev, uns: values }))
+                }
+              />
+            ),
+            via_cobro: (
+              <ConfigurableViaFilter
+                sectionId="cartera"
+                viaId="via_cobro"
+                className="analysis-filter-control"
+                label="Vía de cobro"
+                options={options.vias}
+                selected={draftFilters.vias}
+                onChange={(values) =>
+                  setDraftFilters((prev) => ({ ...prev, vias: values }))
+                }
+              />
+            ),
+            categoria: (
+              <ConfigurableCategoriaFilter
+                sectionId="cartera"
+                className="analysis-filter-control"
+                categoryOptions={options.categories}
+                selected={draftFilters.categorias}
+                onChange={(categorias) =>
+                  setDraftFilters((prev) => ({ ...prev, categorias }))
+                }
+              />
+            ),
+            tramo: (
+              <MultiSelectFilter
+                className="analysis-filter-control"
+                label="Tramo"
+                options={options.tramos}
+                selected={draftFilters.tramos}
+                onChange={(values) =>
+                  setDraftFilters((prev) => ({ ...prev, tramos: values }))
+                }
+              />
+            ),
+            contract_year: (
+              <MultiSelectFilter
+                className="analysis-filter-control"
+                label="Año de contrato"
+                options={options.years}
+                selected={draftFilters.years}
+                onChange={(values) =>
+                  setDraftFilters((prev) => ({ ...prev, years: values }))
+                }
+              />
+            ),
+            gestion_month: (
+              <MultiSelectFilter
+                className="analysis-filter-control"
+                label="Mes de gestión"
+                options={options.months}
+                selected={draftFilters.months}
+                onChange={(values) =>
+                  setDraftFilters((prev) => ({ ...prev, months: values }))
+                }
+              />
+            ),
+          }}
+        />
+
+        <div className="analysis-actions-row analysis-actions">
+          <Button
+            variant="primary"
+            onPress={() => void applyFilters(draftFilters)}
+            isDisabled={loading}
+          >
+            {loading ? "Aplicando..." : "Aplicar filtros"}
+          </Button>
+          <Button
+            variant="outline"
+            onPress={() => void resetFilters()}
+            isDisabled={loading}
+          >
+            Restablecer
+          </Button>
         </div>
       </div>
-      <div
-        className="analysis-actions-row analysis-actions"
-        style={{ marginTop: "16px", background: "var(--bg-surface-level3)", border: "1px solid var(--border-subtle-white)", borderRadius: "8px" }}
-      >
-        <Button
-          variant="primary"
-          onPress={() => void applyFilters(draftFilters)}
-          isDisabled={loading}
-          style={{ background: "var(--brand-emerald)", borderRadius: "6px" }}
-        >
-          {loading ? "Aplicando…" : "Aplicar filtros"}
-        </Button>
-        <Button
-          variant="outline"
-          onPress={() => void resetFilters()}
-          isDisabled={loading}
-          style={{ border: "1px solid var(--border-subtle-white)" }}
-        >
-          Restablecer
-        </Button>
-      </div>
 
-      {loading && <LoadingState message="Cargando resumen de cartera…" />}
+      {loading && <LoadingState message="Cargando resumen de cartera..." />}
       {!loading && error && (
         <ErrorState message={error} onRetry={() => void loadSummary(filters)} />
       )}
@@ -362,15 +492,7 @@ export function CarteraView() {
 
       {!loading && !error && !showEmpty && byUnRows.length > 0 && (
         <>
-          <p
-            className="table-scroll-hint mt-4"
-            style={{
-              color: "var(--text-secondary-linear)",
-              fontSize: "14px",
-              marginTop: "8px",
-              marginBottom: "16px",
-            }}
-          >
+          <p className="table-scroll-hint mt-4">
             {showPivotByMonth && monthColumns.length > 1
               ? "Contratos por unidad de negocio y mes de gestión (una columna por mes seleccionado). Desplazá la tabla horizontalmente si hay muchos meses."
               : showPivotByMonth
@@ -381,78 +503,36 @@ export function CarteraView() {
             <table>
               <thead>
                 <tr>
-                  <th
-                    style={{
-                      color: "var(--text-primary-linear)",
-                      borderBottom: "1px solid var(--border-subtle-white)",
-                      fontSize: "13px",
-                      fontWeight: "510",
-                    }}
-                  >
-                    UN
-                  </th>
+                  <th>UN</th>
                   {showPivotByMonth ? (
                     monthColumns.map((m) => (
                       <th key={m} className="text-end align-bottom">
-                        <span className="block whitespace-nowrap">
-                          Gestión {m}
-                        </span>
+                        <span className="block whitespace-nowrap">Gestión {m}</span>
                         <span className="block text-muted-sm font-normal">
                           Contratos
                         </span>
                       </th>
                     ))
                   ) : (
-                    <th
-                      style={{
-                        color: "var(--text-primary-linear)",
-                        borderBottom: "1px solid var(--border-subtle-white)",
-                        fontSize: "13px",
-                        fontWeight: "510",
-                      }}
-                    >
-                      Contratos
-                    </th>
+                    <th>Contratos</th>
                   )}
                 </tr>
               </thead>
               <tbody>
                 {byUnRows.slice(0, 60).map((row) => (
                   <tr key={row.un}>
-                    <td
-                      style={{
-                        padding: "8px",
-                        color: "var(--text-secondary-linear)",
-                      }}
-                    >
-                      {row.un}
-                    </td>
+                    <td>{row.un}</td>
                     {showPivotByMonth ? (
                       monthColumns.map((m) => (
                         <td
                           key={`${row.un}-${m}`}
                           className="text-end tabular-nums"
-                          style={{
-                            textAlign: "right",
-                            background: "var(--card-bg)",
-                            borderBottom:
-                              "1px solid var(--border-subtle-white)",
-                            color: "var(--text-secondary-linear)",
-                          }}
                         >
                           {formatCount(Number(byUnByGestion[m]?.[row.un] ?? 0))}
                         </td>
                       ))
                     ) : (
-                      <td
-                        className="text-end tabular-nums"
-                        style={{
-                          textAlign: "right",
-                          background: "var(--card-bg)",
-                          borderBottom: "1px solid var(--border-subtle-white)",
-                          color: "var(--text-secondary-linear)",
-                        }}
-                      >
+                      <td className="text-end tabular-nums">
                         {formatCount(row.count)}
                       </td>
                     )}
@@ -461,13 +541,7 @@ export function CarteraView() {
               </tbody>
             </table>
             {byUnRows.length > 60 && (
-              <p
-                className="text-muted-sm"
-                style={{
-                  color: "var(--text-quaternary-linear)",
-                  marginTop: "16px",
-                }}
-              >
+              <p className="text-muted-sm">
                 Mostrando 60 de {byUnRows.length.toLocaleString("es-PY")} UN con
                 contratos.
               </p>
@@ -476,28 +550,25 @@ export function CarteraView() {
         </>
       )}
 
-      <FloatingQuickFilters
-        isOpen={floatOpen}
-        onOpen={openFloatFilters}
-        onCollapse={() => setFloatOpen(false)}
-        onApply={() => void applyFloatFilters()}
-        applyDisabled={loading || !floatMonths.length}
-        applying={loading}
-      >
-        <MultiSelectFilter
-          className="analysis-filter-control"
-          label="Mes de gestión"
-          options={options.months}
-          selected={floatMonths}
-          onChange={setFloatMonths}
-        />
-        <UnidadNegocioTagFilter
-          className="analysis-filter-control"
-          options={options.uns}
-          selected={floatUns}
-          onChange={setFloatUns}
-        />
-      </FloatingQuickFilters>
+      {showFloatingFilters ? (
+        <FloatingQuickFilters
+          isOpen={floatOpen}
+          onOpen={openFloatFilters}
+          onCollapse={() => setFloatOpen(false)}
+          onApply={() => void applyFloatFilters()}
+          applyDisabled={
+            loading ||
+            (floatLayoutEff.floating.includes("gestion_month") &&
+              !floatMonths.length)
+          }
+          applying={loading}
+        >
+          <DashboardFloatingFiltersLayout
+            sectionId="cartera"
+            slots={floatSlots}
+          />
+        </FloatingQuickFilters>
+      ) : null}
     </section>
   );
 }

@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -136,3 +138,48 @@ class MysqlConnectionTestOut(BaseModel):
     ok: bool
     message: str
     latency_ms: int | None = None
+
+
+class FilterSlotStyleOut(BaseModel):
+    column_span: int | None = None
+    min_width_px: int | None = None
+    control_scale: str | None = None
+    low_cardinality_control: str | None = None
+    un_control: str | None = None
+
+
+class SectionLayoutOut(BaseModel):
+    macro: list[str] = Field(default_factory=list)
+    micro: list[str] = Field(default_factory=list)
+    floating: list[str] = Field(default_factory=list)
+    grid_class_macro: str | None = None
+    grid_class_micro: str | None = None
+    slot_styles: dict[str, FilterSlotStyleOut] = Field(default_factory=dict)
+
+
+class DashboardFilterLayoutsOut(BaseModel):
+    version: Literal[1] = 1
+    sections: dict[str, SectionLayoutOut] = Field(default_factory=dict)
+
+
+class FilterSlotStyleIn(BaseModel):
+    column_span: int | None = Field(default=None, ge=1, le=4)
+    min_width_px: int | None = Field(default=None, ge=72, le=420)
+    control_scale: str | None = Field(default=None, max_length=32)
+    low_cardinality_control: str | None = Field(default=None, max_length=32)
+    un_control: str | None = Field(default=None, max_length=32)
+
+
+class SectionLayoutIn(BaseModel):
+    macro: list[str] = Field(default_factory=list)
+    micro: list[str] = Field(default_factory=list)
+    # None = omitido en JSON (migración → defaults en normalize); [] = FAB sin filtros.
+    floating: list[str] | None = Field(default=None)
+    grid_class_macro: str | None = Field(default=None, max_length=120)
+    grid_class_micro: str | None = Field(default=None, max_length=120)
+    slot_styles: dict[str, FilterSlotStyleIn] = Field(default_factory=dict)
+
+
+class DashboardFilterLayoutsPutIn(BaseModel):
+    version: int = 1
+    sections: dict[str, SectionLayoutIn] = Field(default_factory=dict)

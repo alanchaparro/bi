@@ -18,7 +18,7 @@ fi
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-blocked_regex='(^|/)\.env$|(^|/)\.env\..+$|(^|/)secrets(/|$)|\.csv$|\.xlsx$|(^|/)analytics_meta\.json$|\.db$|(^|/)docs/archive/.+/evidence-old/.+$|\.pem$|\.key$|\.p12$|\.pfx$|\.jks$|\.keystore$|(^|/)id_rsa$|(^|/)id_ed25519$|(^|/)credentials\.json$'
+blocked_regex='(^|/)\.env$|(^|/)\.env\..+$|(^|/)secrets(/|$)|\.csv$|\.xlsx$|(^|/)analytics_meta\.json$|\.db$|(^|/)docs/archive/.+/evidence-old/.+$|(^|/)archive-md-no-canonico/docs/archive/.+/evidence-old/.+$|\.pem$|\.key$|\.p12$|\.pfx$|\.jks$|\.keystore$|(^|/)id_rsa$|(^|/)id_ed25519$|(^|/)credentials\.json$'
 
 tmp_all="$(mktemp)"
 tmp_unique="$(mktemp)"

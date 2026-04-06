@@ -1,3 +1,4 @@
+import { FilterLayoutConfigProvider } from "@/components/filters/FilterLayoutConfigContext";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 
 export default function Layout({
@@ -5,5 +6,9 @@ export default function Layout({
 }: {
   children: React.ReactNode;
 }) {
-  return <DashboardLayout>{children}</DashboardLayout>;
+  return (
+    <DashboardLayout>
+      <FilterLayoutConfigProvider>{children}</FilterLayoutConfigProvider>
+    </DashboardLayout>
+  );
 }

@@ -1,8 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@heroui/react";
 import { MultiSelectFilter } from "../../components/filters/MultiSelectFilter";
-import { UnidadNegocioTagFilter } from "../../components/filters/UnidadNegocioTagFilter";
+import { ConfigurableUnFilter } from "../../components/filters/ConfigurableAnalyticsFilters";
+import {
+  DashboardFiltersLayout,
+  DashboardFloatingFiltersLayout,
+} from "@/components/filters/DashboardFiltersLayout";
+import { useFilterLayoutConfig } from "@/components/filters/FilterLayoutConfigContext";
 import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
+import {
+  buildEffectiveFilterLayout,
+  type AnalyticsFilterId,
+} from "@/config/analyticsFilterLayouts";
 import { ActiveFilterChips, type FilterChip } from "../../components/filters/ActiveFilterChips";
 import { AnalyticsPageHeader } from "../../components/analytics/AnalyticsPageHeader";
 import { AnalyticsMetaBadges } from "../../components/analytics/AnalyticsMetaBadges";
@@ -138,6 +147,51 @@ export function AnalisisAnualesView() {
 
   const onApply = useCallback(() => void commitAndLoad(filters), [commitAndLoad, filters]);
 
+  const { doc: filterLayoutDoc } = useFilterLayoutConfig();
+  const floatLayoutEff = useMemo(
+    () => buildEffectiveFilterLayout("analisisCarteraAnuales", [], filterLayoutDoc),
+    [filterLayoutDoc],
+  );
+  const floatSlots = useMemo<Partial<Record<AnalyticsFilterId, React.ReactNode>>>(
+    () => ({
+      un: (
+        <ConfigurableUnFilter
+          sectionId="analisisCarteraAnuales"
+          className="analysis-filter-control"
+          label="UN"
+          options={options.uns}
+          selected={floatUns}
+          onChange={setFloatUns}
+        />
+      ),
+      contract_year: (
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Año de contrato"
+          options={options.years}
+          selected={floatYears}
+          onChange={setFloatYears}
+          placeholder="Todos"
+        />
+      ),
+      contract_month_combo: (
+        <MultiSelectFilter
+          className="analysis-filter-control"
+          label="Mes/Año de contrato"
+          options={options.contractMonths}
+          selected={floatContractMonths}
+          onChange={setFloatContractMonths}
+          placeholder="Todos"
+        />
+      ),
+    }),
+    [options.uns, options.years, options.contractMonths, floatUns, floatYears, floatContractMonths],
+  );
+  const showFloatingFilters = useMemo(
+    () => floatLayoutEff.floating.some((id) => floatSlots[id] != null),
+    [floatLayoutEff.floating, floatSlots],
+  );
+
   const openFloatFilters = useCallback(() => {
     setFloatUns(filters.uns);
     setFloatYears(filters.years);
@@ -146,16 +200,21 @@ export function AnalisisAnualesView() {
   }, [filters.contractMonths, filters.uns, filters.years]);
 
   const applyFloatFilters = useCallback(async () => {
-    const next: Filters = {
-      uns: floatUns,
-      years: floatYears,
-      contractMonths: floatContractMonths,
-    };
+    const fl = floatLayoutEff.floating;
+    const next: Filters = { ...filters };
+    if (fl.includes("un")) next.uns = floatUns;
+    if (fl.includes("contract_year")) next.years = floatYears;
+    if (fl.includes("contract_month_combo")) next.contractMonths = floatContractMonths;
     await commitAndLoad(next);
     setFloatOpen(false);
-  }, [commitAndLoad, floatContractMonths, floatUns, floatYears]);
-
-  const hasUnOptions = options.uns.length > 0;
+  }, [
+    commitAndLoad,
+    filters,
+    floatLayoutEff.floating,
+    floatContractMonths,
+    floatUns,
+    floatYears,
+  ]);
 
   const clearFilters = useCallback(() => {
     setFilters(EMPTY_FILTERS);
@@ -183,6 +242,25 @@ export function AnalisisAnualesView() {
   const rows = useMemo(() => summary?.rows || [], [summary?.rows]);
   const hasRows = rows.length > 0;
   const cutoff = summary?.cutoff || "-";
+  const summaryCards = useMemo(() => {
+    const totals = rows.reduce(
+      (acc, row) => {
+        acc.contracts += Number(row.contracts || 0);
+        acc.contractsVigentes += Number(row.contractsVigentes || 0);
+        acc.culminados += Number(row.culminados || 0);
+        acc.ltv += Number(row.ltvCulminadoVigente || 0);
+        return acc;
+      },
+      { contracts: 0, contractsVigentes: 0, culminados: 0, ltv: 0 },
+    );
+    const avgLtv = rows.length ? totals.ltv / rows.length : 0;
+    return [
+      { label: "Cohortes visibles", value: formatCount(rows.length), note: "Años con datos en el corte actual" },
+      { label: "Contratos", value: formatCount(totals.contracts), note: "Base anual filtrada" },
+      { label: "Vigentes en corte", value: formatCount(totals.contractsVigentes), note: "Contratos vigentes al cierre anual" },
+      { label: "LTV promedio", value: `${avgLtv.toFixed(2)}%`, note: "Promedio simple de LTV culminado vigente" },
+    ];
+  }, [rows]);
 
   const activeFilterChips = useMemo<FilterChip[]>(() => {
     const blocks: Array<{ key: keyof Filters; label: string }> = [
@@ -247,55 +325,79 @@ export function AnalisisAnualesView() {
         <AnalysisFiltersSkeleton filterCount={3} kpiCount={6} showTable />
       ) : (
         <>
+          {hasRows ? (
+            <div className="summary-cards-grid">
+              {summaryCards.map((card) => (
+                <article key={card.label} className="summary-card">
+                  <div className="summary-card-label">{card.label}</div>
+                  <div className="summary-card-value tabular-nums">{card.value}</div>
+                  <p className="analysis-kpi-note">{card.note}</p>
+                </article>
+              ))}
+            </div>
+          ) : null}
+
           <div className="rendimiento-filters-panel">
-          <div className="analysis-filters-grid">
-            <MultiSelectFilter
-              className="analysis-filter-control"
-              label="Año de contrato"
-              options={options.years}
-              selected={filters.years}
-              onChange={(values) => setFilters((prev) => ({ ...prev, years: values }))}
-              placeholder="Todos"
+            <DashboardFiltersLayout
+              sectionId="analisisCarteraAnuales"
+              slots={{
+                un: (
+                  <ConfigurableUnFilter
+                    sectionId="analisisCarteraAnuales"
+                    className="analysis-filter-control"
+                    label="UN"
+                    options={options.uns}
+                    selected={filters.uns}
+                    onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
+                  />
+                ),
+                contract_year: (
+                  <MultiSelectFilter
+                    className="analysis-filter-control"
+                    label="Año de contrato"
+                    options={options.years}
+                    selected={filters.years}
+                    onChange={(values) => setFilters((prev) => ({ ...prev, years: values }))}
+                    placeholder="Todos"
+                  />
+                ),
+                contract_month_combo: (
+                  <MultiSelectFilter
+                    className="analysis-filter-control"
+                    label="Mes/Año de contrato"
+                    options={options.contractMonths}
+                    selected={filters.contractMonths}
+                    onChange={(values) => setFilters((prev) => ({ ...prev, contractMonths: values }))}
+                    placeholder="Todos"
+                  />
+                ),
+              }}
             />
-            <MultiSelectFilter
-              className="analysis-filter-control"
-              label="Mes/Año de contrato"
-              options={options.contractMonths}
-              selected={filters.contractMonths}
-              onChange={(values) => setFilters((prev) => ({ ...prev, contractMonths: values }))}
-              placeholder="Todos"
-            />
-            <UnidadNegocioTagFilter
-              className="analysis-filter-control"
-              options={options.uns}
-              selected={filters.uns}
-              onChange={(values) => setFilters((prev) => ({ ...prev, uns: values }))}
-            />
-          </div>
-          <div className="rendimiento-filter-hints" role="note" aria-label="Ayuda de filtros">
-            <span className="rendimiento-filter-hint">Los filtros son de contrato, no de gestion.</span>
-            <span className="rendimiento-filter-hint">LTV compara cobrado vs deberia cobrar.</span>
-            <span className="rendimiento-filter-hint">El corte anual debe leerse con calendario de gestion.</span>
-          </div>
+            <div className="rendimiento-filter-hints" role="note" aria-label="Ayuda de filtros">
+              <span className="rendimiento-filter-hint">Los filtros son de contrato, no de gestion.</span>
+              <span className="rendimiento-filter-hint">LTV compara cobrado vs deberia cobrar.</span>
+              <span className="rendimiento-filter-hint">El corte anual debe leerse con calendario de gestion.</span>
+            </div>
 
-          <div className="analysis-actions-row analysis-actions">
-            <Button variant="primary" onPress={() => void onApply()} isDisabled={applying}>
-              {applying ? "Aplicando..." : "Aplicar filtros"}
-            </Button>
-            <Button variant="outline" onPress={clearFilters} isDisabled={applying}>
-              Limpiar
-            </Button>
-            <Button variant="outline" onPress={() => void onReset()} isDisabled={applying}>
-              Restablecer
-            </Button>
-            <span className="analysis-active-count">
-              {activeFilterChips.length} filtro{activeFilterChips.length === 1 ? "" : "s"} activo{activeFilterChips.length === 1 ? "" : "s"}
-            </span>
-          </div>
+            <div className="analysis-actions-row analysis-actions">
+              <Button variant="primary" onPress={() => void onApply()} isDisabled={applying}>
+                {applying ? "Aplicando..." : "Aplicar filtros"}
+              </Button>
+              <Button variant="outline" onPress={clearFilters} isDisabled={applying}>
+                Limpiar
+              </Button>
+              <Button variant="outline" onPress={() => void onReset()} isDisabled={applying}>
+                Restablecer
+              </Button>
+              <span className="analysis-active-count">
+                {activeFilterChips.length} filtro{activeFilterChips.length === 1 ? "" : "s"} activo
+                {activeFilterChips.length === 1 ? "" : "s"}
+              </span>
+            </div>
 
-          <div className="analysis-active-filters">
-            <ActiveFilterChips chips={activeFilterChips} onRemove={removeChip} />
-          </div>
+            <div className="analysis-active-filters">
+              <ActiveFilterChips chips={activeFilterChips} onRemove={removeChip} />
+            </div>
           </div>
 
           <AnalysisSelectionSummary
@@ -319,92 +421,87 @@ export function AnalisisAnualesView() {
           retryLabel="Reintentar"
         />
       ) : null}
-      {loadingSummary && !error ? <LoadingState message="Actualizando resumen anual..." className="analysis-selection-summary" /> : null}
+      {loadingSummary && !error ? (
+        <LoadingState message="Actualizando resumen anual..." className="analysis-selection-summary" />
+      ) : null}
 
       {!loadingOptions && !error ? (
-        <div className={`data-transition ${loadingSummary ? 'data-transition--loading' : ''}`}>
-        <div className="analysis-table-section">
-          <p className="table-scroll-hint">Desliza la tabla horizontalmente para ver todas las columnas.</p>
-          <div className="table-wrap analysis-table-wrap analysis-table-wrap-annual">
-            <table>
-              <thead>
-                <tr>
-                  <th>AÑO</th>
-                  <th className="num">CONTRATOS</th>
-                  <th className="num">CONTRATOS VIGENTES (CORTE)</th>
-                  <th className="num">TKP CONTRATO</th>
-                  <th className="num">TKP TRANSACCIONAL</th>
-                  <th className="num">TKP PAGO</th>
-                  <th className="num">CULMINADOS</th>
-                  <th className="num">CULMINADOS VIGENTES</th>
-                  <th className="num">TKP DEL CONTRATO CULMINADO</th>
-                  <th className="num">TKP DEL PAGO CULMINADO</th>
-                  <th className="num">TKP CONTRATO CULMINADO VIGENTE</th>
-                  <th className="num">TKP PAGO CULMINADO VIGENTE</th>
-                  <th className="num">LTV CULMINADO VIGENTE</th>
-                </tr>
-              </thead>
-              <tbody>
-                {hasRows ? (
-                  rows.map((row) => (
-                    <tr key={row.year}>
-                      <td className="analysis-key-cell">{row.year}</td>
-                      <td className="num">{formatCount(row.contracts)}</td>
-                      <td className="num">{formatCount(row.contractsVigentes)}</td>
-                      <td className="num">{formatGsFull(row.tkpContrato)}</td>
-                      <td className="num">{formatGsFull(row.tkpTransaccional)}</td>
-                      <td className="num">{formatGsFull(row.tkpPago)}</td>
-                      <td className="num">{formatCount(row.culminados)}</td>
-                      <td className="num">{formatCount(row.culminadosVigentes)}</td>
-                      <td className="num">{formatGsFull(row.tkpContratoCulminado)}</td>
-                      <td className="num">{formatGsFull(row.tkpPagoCulminado)}</td>
-                      <td className="num">{formatGsFull(row.tkpContratoCulminadoVigente)}</td>
-                      <td className="num">{formatGsFull(row.tkpPagoCulminadoVigente)}</td>
-                      <td className="num">{Number(row.ltvCulminadoVigente || 0).toFixed(2)}</td>
-                    </tr>
-                  ))
-                ) : (
+        <div className={`data-transition ${loadingSummary ? "data-transition--loading" : ""}`}>
+          <div className="analysis-table-section">
+            <p className="table-scroll-hint">
+              Mostrando {rows.length.toLocaleString("es-PY")} cohorte{rows.length === 1 ? "" : "s"} anual
+              {rows.length === 1 ? "" : "es"} para el corte {cutoff}. Desliza la tabla horizontalmente para ver todas las columnas.
+            </p>
+            <div className="table-wrap analysis-table-wrap analysis-table-wrap-annual">
+              <table>
+                <thead>
                   <tr>
-                    <td colSpan={13}>
-                      <EmptyState message="Sin datos para filtros seleccionados." suggestion="Prueba ajustando la unidad de negocio, el año o el mes/año de contrato." />
-                    </td>
+                    <th>AÑO</th>
+                    <th className="num">CONTRATOS</th>
+                    <th className="num">CONTRATOS VIGENTES (CORTE)</th>
+                    <th className="num">TKP CONTRATO</th>
+                    <th className="num">TKP TRANSACCIONAL</th>
+                    <th className="num">TKP PAGO</th>
+                    <th className="num">CULMINADOS</th>
+                    <th className="num">CULMINADOS VIGENTES</th>
+                    <th className="num">TKP DEL CONTRATO CULMINADO</th>
+                    <th className="num">TKP DEL PAGO CULMINADO</th>
+                    <th className="num">TKP CONTRATO CULMINADO VIGENTE</th>
+                    <th className="num">TKP PAGO CULMINADO VIGENTE</th>
+                    <th className="num">LTV CULMINADO VIGENTE</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {hasRows ? (
+                    rows.map((row) => (
+                      <tr key={row.year}>
+                        <td className="analysis-key-cell">{row.year}</td>
+                        <td className="num">{formatCount(row.contracts)}</td>
+                        <td className="num">{formatCount(row.contractsVigentes)}</td>
+                        <td className="num">{formatGsFull(row.tkpContrato)}</td>
+                        <td className="num">{formatGsFull(row.tkpTransaccional)}</td>
+                        <td className="num">{formatGsFull(row.tkpPago)}</td>
+                        <td className="num">{formatCount(row.culminados)}</td>
+                        <td className="num">{formatCount(row.culminadosVigentes)}</td>
+                        <td className="num">{formatGsFull(row.tkpContratoCulminado)}</td>
+                        <td className="num">{formatGsFull(row.tkpPagoCulminado)}</td>
+                        <td className="num">{formatGsFull(row.tkpContratoCulminadoVigente)}</td>
+                        <td className="num">{formatGsFull(row.tkpPagoCulminadoVigente)}</td>
+                        <td className="num">{Number(row.ltvCulminadoVigente || 0).toFixed(2)}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={13}>
+                        <EmptyState
+                          message="Sin datos para filtros seleccionados."
+                          suggestion="Prueba ajustando la unidad de negocio, el año o el mes/año de contrato."
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
         </div>
       ) : null}
 
-      <FloatingQuickFilters
-        isOpen={floatOpen}
-        onOpen={openFloatFilters}
-        onCollapse={() => setFloatOpen(false)}
-        onApply={() => void applyFloatFilters()}
-        applyDisabled={applying || loadingOptions || loadingSummary}
-        applying={applying || loadingSummary}
-      >
-        {hasUnOptions ? (
-          <UnidadNegocioTagFilter className="analysis-filter-control" options={options.uns} selected={floatUns} onChange={setFloatUns} />
-        ) : null}
-        <MultiSelectFilter
-          className="analysis-filter-control"
-          label="Año de contrato"
-          options={options.years}
-          selected={floatYears}
-          onChange={setFloatYears}
-          placeholder="Todos"
-        />
-        <MultiSelectFilter
-          className="analysis-filter-control"
-          label="Mes/Año de contrato"
-          options={options.contractMonths}
-          selected={floatContractMonths}
-          onChange={setFloatContractMonths}
-          placeholder="Todos"
-        />
-      </FloatingQuickFilters>
+      {showFloatingFilters ? (
+        <FloatingQuickFilters
+          isOpen={floatOpen}
+          onOpen={openFloatFilters}
+          onCollapse={() => setFloatOpen(false)}
+          onApply={() => void applyFloatFilters()}
+          applyDisabled={applying || loadingOptions || loadingSummary}
+          applying={applying || loadingSummary}
+        >
+          <DashboardFloatingFiltersLayout
+            sectionId="analisisCarteraAnuales"
+            slots={floatSlots}
+          />
+        </FloatingQuickFilters>
+      ) : null}
     </section>
   );
 }

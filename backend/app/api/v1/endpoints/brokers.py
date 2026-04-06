@@ -14,6 +14,9 @@ from app.schemas.brokers import (
     CarteraTramoRulesIn,
     CarteraTramoRulesOut,
     CarteraUnsOut,
+    DashboardFilterLayoutsOut,
+    DashboardFilterLayoutsPutIn,
+    FilterSlotStyleOut,
     MysqlConnectionIn,
     MysqlConnectionOut,
     MysqlConnectionTestOut,
@@ -21,6 +24,7 @@ from app.schemas.brokers import (
     RoleNavMatrixPutIn,
     RulesIn,
     RulesOut,
+    SectionLayoutOut,
     SupervisorsScopeIn,
     SupervisorsScopeOut,
 )
@@ -29,6 +33,68 @@ from app.services.role_nav_service import get_matrix, replace_matrix
 from app.services.sync_service import SyncService
 
 router = APIRouter()
+
+
+def _dashboard_filter_layouts_out_from_normalized(norm: dict) -> DashboardFilterLayoutsOut:
+    sections: dict[str, SectionLayoutOut] = {}
+    for k, v in (norm.get('sections') or {}).items():
+        if not isinstance(v, dict):
+            continue
+        slot_styles: dict[str, FilterSlotStyleOut] = {}
+        for sk, sv in (v.get('slot_styles') or {}).items():
+            if not isinstance(sv, dict):
+                continue
+            cs_out = None
+            mw_out = None
+            scale_out = None
+            if sv.get('column_span') is not None:
+                try:
+                    n = int(sv['column_span'])
+                    cs_out = n if 2 <= n <= 4 else None
+                except (TypeError, ValueError):
+                    cs_out = None
+            if sv.get('min_width_px') is not None:
+                try:
+                    m = int(sv['min_width_px'])
+                    mw_out = m if 72 <= m <= 420 else None
+                except (TypeError, ValueError):
+                    mw_out = None
+            sc = sv.get('control_scale')
+            if isinstance(sc, str) and sc.strip().lower() in ('compact', 'comfortable'):
+                scale_out = sc.strip().lower()
+            lc_raw = sv.get('low_cardinality_control')
+            lc_out = None
+            if isinstance(lc_raw, str) and lc_raw.strip().lower() == 'multi_dropdown':
+                lc_out = 'multi_dropdown'
+            uc_raw = sv.get('un_control')
+            uc_out = None
+            if isinstance(uc_raw, str):
+                ucl = uc_raw.strip().lower()
+                if ucl in ('tags_split_row', 'multi_dropdown'):
+                    uc_out = ucl
+            if (
+                cs_out is not None
+                or mw_out is not None
+                or scale_out is not None
+                or lc_out is not None
+                or uc_out is not None
+            ):
+                slot_styles[str(sk)] = FilterSlotStyleOut(
+                    column_span=cs_out,
+                    min_width_px=mw_out,
+                    control_scale=scale_out,
+                    low_cardinality_control=lc_out,
+                    un_control=uc_out,
+                )
+        sections[str(k)] = SectionLayoutOut(
+            macro=list(v.get('macro') or []),
+            micro=list(v.get('micro') or []),
+            floating=list(v.get('floating') or []),
+            grid_class_macro=v.get('grid_class_macro'),
+            grid_class_micro=v.get('grid_class_micro'),
+            slot_styles=slot_styles,
+        )
+    return DashboardFilterLayoutsOut(version=1, sections=sections)
 
 
 def _user_to_out(row) -> AuthUserItemOut:
@@ -304,6 +370,32 @@ def get_cartera_uns(
 ):
     uns = BrokersConfigService.get_cartera_uns(db)
     return CarteraUnsOut(uns=uns)
+
+
+@router.get('/config/dashboard-filter-layouts', response_model=DashboardFilterLayoutsOut)
+def get_dashboard_filter_layouts(
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('brokers:read')),
+):
+    norm = BrokersConfigService.get_dashboard_filter_layouts(db)
+    return _dashboard_filter_layouts_out_from_normalized(norm)
+
+
+@router.put('/config/dashboard-filter-layouts', response_model=DashboardFilterLayoutsOut)
+def put_dashboard_filter_layouts(
+    payload: DashboardFilterLayoutsPutIn,
+    _rl=Depends(write_rate_limiter),
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('brokers:write_config')),
+):
+    body = {
+        'version': payload.version,
+        'sections': {
+            k: v.model_dump(exclude_none=True) for k, v in payload.sections.items()
+        },
+    }
+    norm = BrokersConfigService.save_dashboard_filter_layouts(db, body, str(user.get('sub', 'system')))
+    return _dashboard_filter_layouts_out_from_normalized(norm)
 
 
 @router.post('/sync-analytics')
