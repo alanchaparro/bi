@@ -26,11 +26,10 @@ if [[ ! -f .env ]]; then
   echo "  Creado .env desde .env.example; edite MYSQL_* y credenciales." >&2
 fi
 
-LAN_PORT="80"
-if [[ -f .env ]] && grep -qE '^[[:space:]]*LAN_HTTP_PORT=' .env; then
-  LAN_PORT="$(grep -E '^[[:space:]]*LAN_HTTP_PORT=' .env | head -1 | cut -d= -f2- | tr -d ' \r')"
-  [[ -z "${LAN_PORT:-}" ]] && LAN_PORT="80"
-fi
+step "2b" "Puerto HTTP para acceso LAN (LAN_HTTP_PORT en .env)..."
+# shellcheck source=scripts/lan_port_prompt.sh
+source "$SCRIPT_DIR/scripts/lan_port_prompt.sh"
+LAN_PORT="$(resolve_lan_http_port "$SCRIPT_DIR/.env")"
 
 step "3" "Deteniendo servicios previos del proyecto (evita conflicto prod vs prod-lan)..."
 docker compose --profile "*" down --remove-orphans

@@ -4,8 +4,10 @@
  *
  * **Nueva sección de tablero:** añadir aquí un `sectionId` con `macro`, `micro` y `floating`
  * como el resto; en la vista usar `DashboardFiltersLayout`, `FloatingQuickFilters` +
- * `DashboardFloatingFiltersLayout`, y `buildEffectiveFilterLayout`. Espejo backend en
- * `dashboard_filter_layouts.py` si la API normaliza layouts.
+ * `DashboardFloatingFiltersLayout`, y `buildEffectiveFilterLayout`. Para el auto-aplicar
+ * del panel principal tras inactividad (~4 s), usar siempre `useDashboardMainFilterAutoApply`
+ * (`frontend/src/hooks/useDashboardMainFilterAutoApply.ts`) con el mismo `effective` que el
+ * layout. Espejo backend en `dashboard_filter_layouts.py` si la API normaliza layouts.
  *
  * Para quitar un filtro en una vista concreta sin editar este archivo, usá `omit` en
  * `DashboardFiltersLayout`. Para cambiar el canon de una sección, editá solo este módulo.

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import axios from 'axios'
 import { AlertDialog, Button, Dropdown, Input, Label, Tabs, TextField, useOverlayState } from '@heroui/react'
 import { DomButton } from '@/components/ui/DomButton'
@@ -11,6 +12,7 @@ import {
   api,
   createUser,
   createSyncSchedule,
+  deleteUser,
   deleteSyncSchedule,
   emergencyResumeSchedules,
   emergencyStopSchedules,
@@ -28,6 +30,7 @@ import {
   runSyncScheduleNow,
   saveMysqlConnectionConfig,
   testMysqlConnectionConfig,
+  unlockAuthUser,
   updateSyncSchedule,
   updateUser,
   type MysqlConnectionConfig,
@@ -37,6 +40,13 @@ import {
   type UserItem,
 } from '../../shared/api'
 import { getApiErrorMessage } from '../../shared/apiErrors'
+import {
+  CONFIG_SECTION_NAV_IDS,
+  CONFIG_SECTION_NAV_PERM,
+  configSectionToTabSlug,
+  tabSlugToConfigSection,
+  type ConfigSectionKey,
+} from '@/config/roleNav'
 import { DashboardFilterLayoutsEditor } from './DashboardFilterLayoutsEditor'
 import { THEME_PRESETS, applyThemePreset, getStoredThemePresetId } from '../../shared/themePresets'
 
@@ -109,7 +119,7 @@ type TramoRule = {
 }
 
 type RoleType = 'admin' | 'analyst' | 'viewer'
-type ConfigSection = 'usuarios' | 'rolesMenus' | 'layoutsFiltros' | 'negocio' | 'importaciones' | 'programacion'
+type ConfigSection = ConfigSectionKey
 const ROLE_OPTIONS: RoleType[] = ['admin', 'analyst', 'viewer']
 const ROLE_SELECT_ITEMS = ROLE_OPTIONS.map((r) => ({ id: r, label: r }))
 const RULE_CATEGORY_SELECT_ITEMS = [
@@ -150,6 +160,31 @@ const MASSIVE_PREVIEW_TIMEOUT_SECONDS = 8
 
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+function usernameFromAccessToken(accessToken: string | null | undefined): string | null {
+  if (!accessToken || typeof accessToken !== 'string') return null
+  const parts = accessToken.split('.')
+  if (parts.length < 2) return null
+  try {
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const payload = JSON.parse(atob(b64)) as { sub?: unknown }
+    const sub = payload?.sub
+    return typeof sub === 'string' ? sub.trim().toLowerCase() : null
+  } catch {
+    return null
+  }
+}
+
+function formatUserLockSummary(u: UserItem): string {
+  if (u.is_login_locked && u.blocked_until) {
+    const d = new Date(u.blocked_until)
+    const label = Number.isNaN(d.getTime()) ? String(u.blocked_until) : d.toLocaleString()
+    return `Bloqueado hasta ${label}`
+  }
+  const fa = Number(u.failed_attempts || 0)
+  if (fa > 0) return `${fa} intento(s) fallidos recientes (sin bloqueo activo)`
+  return ''
 }
 
 function normalizeTramos(values: number[]): number[] {
@@ -276,9 +311,22 @@ function getAppliedRows(status: Pick<SyncStatusResponse, "rows_upserted" | "rows
 
 export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveChange }: Props) {
   const { auth, login } = useAuth()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const permissions = auth?.permissions ?? []
+  const sessionUsername = useMemo(() => usernameFromAccessToken(auth?.access_token), [auth?.access_token])
   const canManageRoleNav = useMemo(
-    () => (auth?.permissions ?? []).includes('brokers:write_config'),
-    [auth?.permissions],
+    () => permissions.includes('brokers:write_config'),
+    [permissions],
+  )
+  const canSeeConfigTab = useCallback(
+    (s: ConfigSection): boolean => {
+      const nav = CONFIG_SECTION_NAV_PERM[s]
+      if (!permissions.includes(nav)) return false
+      if (s === 'rolesMenus' || s === 'layoutsFiltros') return canManageRoleNav
+      return true
+    },
+    [permissions, canManageRoleNav],
   )
   const resumeAttemptedRef = useRef(false)
   const previewEnabledRef = useRef(true)
@@ -342,7 +390,9 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   const [scheduleActionLoading, setScheduleActionLoading] = useState<number | 'emergency' | null>(null)
   const emergencyStopConfirm = useOverlayState()
   const deleteScheduleConfirm = useOverlayState()
+  const deleteUserConfirm = useOverlayState()
   const [schedulePendingDeleteId, setSchedulePendingDeleteId] = useState<number | null>(null)
+  const [userPendingDelete, setUserPendingDelete] = useState<string | null>(null)
 
   const [roleNavLoading, setRoleNavLoading] = useState(false)
   const [roleNavSaving, setRoleNavSaving] = useState(false)
@@ -354,18 +404,16 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   } | null>(null)
 
   const configTabEntries = useMemo(() => {
-    const tabs: Array<[ConfigSection, string]> = [['usuarios', 'Usuarios']]
-    if (canManageRoleNav) {
-      tabs.push(['rolesMenus', 'Roles y menús'])
-      tabs.push(['layoutsFiltros', 'Layouts de filtros'])
-    }
-    tabs.push(
+    const all: Array<[ConfigSection, string]> = [
+      ['usuarios', 'Usuarios'],
+      ['rolesMenus', 'Roles y menús'],
+      ['layoutsFiltros', 'Layouts de filtros'],
       ['negocio', 'Configuración de negocio'],
       ['importaciones', 'Importaciones'],
       ['programacion', 'Programación'],
-    )
-    return tabs
-  }, [canManageRoleNav])
+    ]
+    return all.filter(([id]) => canSeeConfigTab(id))
+  }, [canSeeConfigTab])
 
   const hasCarteraSelected = selectedDomains.includes('cartera')
   const closeMonthFromValue = useMemo(() => {
@@ -714,10 +762,23 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   const sectionDataLoadedRef = useRef<Partial<Record<ConfigSection, boolean>>>({})
 
   useEffect(() => {
-    if (!canManageRoleNav && (configSection === 'rolesMenus' || configSection === 'layoutsFiltros')) {
-      setConfigSection('usuarios')
+    const ids = configTabEntries.map(([k]) => k)
+    if (!ids.includes(configSection) && ids[0]) {
+      setConfigSection(ids[0])
     }
-  }, [canManageRoleNav, configSection])
+  }, [configTabEntries, configSection])
+
+  useEffect(() => {
+    const slug = searchParams.get('tab')
+    const fromUrl = tabSlugToConfigSection(slug)
+    if (fromUrl && canSeeConfigTab(fromUrl)) setConfigSection(fromUrl)
+  }, [searchParams, canSeeConfigTab])
+
+  useEffect(() => {
+    const slug = configSectionToTabSlug(configSection)
+    if (searchParams.get('tab') === slug) return
+    router.replace(`/config?tab=${encodeURIComponent(slug)}`, { scroll: false })
+  }, [configSection, router, searchParams])
 
   useEffect(() => {
     const key = configSection
@@ -954,6 +1015,38 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
       setUsersSaving(false)
     }
   }, [loadUsers, rowPasswordDraft])
+
+  const handleUnlockUser = useCallback(async (username: string) => {
+    setUsersSaving(true)
+    setUsersMessage(null)
+    try {
+      const updated = await unlockAuthUser(username)
+      setUsers((prev) => prev.map((x) => (x.username === updated.username ? { ...x, ...updated } : x)))
+      setUsersMessage({ ok: true, text: `Usuario ${username} desbloqueado.` })
+    } catch (e: unknown) {
+      setUsersMessage({ ok: false, text: getApiErrorMessage(e) })
+    } finally {
+      setUsersSaving(false)
+    }
+  }, [])
+
+  const handleConfirmDeleteUser = useCallback(async () => {
+    const un = userPendingDelete
+    if (!un) return
+    setUsersSaving(true)
+    setUsersMessage(null)
+    try {
+      await deleteUser(un)
+      setUsersMessage({ ok: true, text: `Usuario ${un} eliminado.` })
+      setUserPendingDelete(null)
+      deleteUserConfirm.close()
+      await loadUsers()
+    } catch (e: unknown) {
+      setUsersMessage({ ok: false, text: getApiErrorMessage(e) })
+    } finally {
+      setUsersSaving(false)
+    }
+  }, [userPendingDelete, deleteUserConfirm, loadUsers])
 
   const pollDomainStatus = useCallback(
     async (
@@ -1534,10 +1627,10 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
         className="config-tabs-heroui w-full max-w-full text-center"
         aria-label="Subsecciones de configuración"
       >
-        <Tabs.ListContainer className="w-full min-w-0">
+        <Tabs.ListContainer className="w-full min-w-0 config-tabs-list-container">
           <Tabs.List
             aria-label="Subsecciones de configuración"
-            className="config-tab-list-inner w-full *:min-h-9 *:w-full *:px-3 *:py-2 *:text-sm *:font-semibold *:data-[selected=true]:text-[#f5fffd]"
+            className="config-tab-list-inner w-full *:min-h-9 *:min-w-0 *:px-2 *:py-2 *:text-sm *:font-semibold *:data-[selected=true]:text-[#f5fffd]"
           >
             {configTabEntries.map(([id, label]) => (
               <Tabs.Tab key={id} id={id}>
@@ -1695,7 +1788,8 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                       <tr key={item.id}>
                         <td className="border-b border-[var(--glass-border)] p-2">{item.label}</td>
                         {roleNavMeta.roles.map((role) => {
-                          const locked = role === 'admin' && item.id === 'config'
+                          const locked =
+                            role === 'admin' && (CONFIG_SECTION_NAV_IDS as readonly string[]).includes(item.id)
                           const checked = locked || (roleNavDraft[role]?.includes(item.id) ?? false)
                           return (
                             <td key={`${role}-${item.id}`} className="border-b border-[var(--glass-border)] p-2 text-center">
@@ -1807,52 +1901,118 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                 Sin usuarios en base de datos.
               </p>
             ) : (
-              users.map((u) => (
-                <div key={u.username} className="config-grid-3 config-items-center">
-                  <TextField className="w-full min-w-0" aria-label={`Usuario ${u.username}`}>
-                    <Input className="input-heroui-tokens" value={u.username} readOnly />
-                  </TextField>
-
-                  <StringSelect
-                    aria-label={`Rol de ${u.username}`}
-                    items={[...ROLE_SELECT_ITEMS]}
-                    selectedKey={u.role}
-                    onSelectionChange={(id) => {
-                      const role = (id as RoleType) || 'viewer'
-                      setUsers((prev) => prev.map((x) => (x.username === u.username ? { ...x, role } : x)))
-                    }}
-                    isDisabled={usersBusy}
-                    triggerClassName="input-heroui-tokens w-full"
-                  />
-
-                  <div className="config-row-wrap-tight">
-                    <label className="config-check-row config-check-row-tight">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(u.is_active)}
-                        onChange={(e) => {
-                          const is_active = e.target.checked
-                          setUsers((prev) => prev.map((x) => (x.username === u.username ? { ...x, is_active } : x)))
-                        }}
-                        disabled={usersBusy}
-                      />
-                      <span>Activo</span>
-                    </label>
-                    <TextField className="min-w-0 flex-1" isDisabled={usersBusy} aria-label={`Nueva contraseña para ${u.username}`}>
-                      <Input
-                        className="input-heroui-tokens"
-                        type="password"
-                        placeholder="Nueva contraseña (opcional)"
-                        value={rowPasswordDraft[u.username] || ''}
-                        onChange={(e) => setRowPasswordDraft((prev) => ({ ...prev, [u.username]: e.target.value }))}
-                      />
-                    </TextField>
-                    <Button type="button" variant="outline" onPress={() => void handleUpdateUser(u)} isDisabled={usersBusy}>
-                      Guardar
-                    </Button>
+              <div className="config-users-scroll">
+                <div className="config-users-panel" role="region" aria-label="Usuarios registrados">
+                  <div className="config-users-grid config-users-header">
+                    <span>Usuario</span>
+                    <span>Rol</span>
+                    <span className="text-center" title="Usuario activo (puede iniciar sesión)">
+                      Act.
+                    </span>
+                    <span>Contraseña</span>
+                    <span className="text-right">Acciones</span>
                   </div>
+                  {users.map((u) => {
+                    const lockHint = formatUserLockSummary(u)
+                    const isSelf = sessionUsername === u.username.trim().toLowerCase()
+                    const showUnlock = Boolean(u.is_login_locked || (u.failed_attempts && u.failed_attempts > 0))
+                    return (
+                      <div key={u.username} className="config-users-block">
+                        <div className="config-users-grid config-users-row" data-testid={`user-row-${u.username}`}>
+                          <div className="min-w-0 self-center">
+                            <span className="config-users-monospace break-all" title={u.username}>
+                              {u.username}
+                            </span>
+                          </div>
+                          <div className="min-w-0">
+                            <StringSelect
+                              aria-label={`Rol de ${u.username}`}
+                              items={[...ROLE_SELECT_ITEMS]}
+                              selectedKey={u.role}
+                              onSelectionChange={(id) => {
+                                const role = (id as RoleType) || 'viewer'
+                                setUsers((prev) => prev.map((x) => (x.username === u.username ? { ...x, role } : x)))
+                              }}
+                              isDisabled={usersBusy}
+                              triggerClassName="input-heroui-tokens w-full min-h-9"
+                            />
+                          </div>
+                          <div className="flex justify-center self-center">
+                            <label className="config-check-row config-check-row-tight cursor-pointer" title="Activo">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(u.is_active)}
+                                onChange={(e) => {
+                                  const is_active = e.target.checked
+                                  setUsers((prev) => prev.map((x) => (x.username === u.username ? { ...x, is_active } : x)))
+                                }}
+                                disabled={usersBusy}
+                              />
+                            </label>
+                          </div>
+                          <div className="min-w-0">
+                            <Input
+                              className="input-heroui-tokens min-h-9"
+                              type="password"
+                              placeholder="Opcional"
+                              title="Dejar vacío para no cambiar la contraseña"
+                              aria-label={`Nueva contraseña para ${u.username}`}
+                              value={rowPasswordDraft[u.username] || ''}
+                              onChange={(e) => setRowPasswordDraft((prev) => ({ ...prev, [u.username]: e.target.value }))}
+                              disabled={usersBusy}
+                            />
+                          </div>
+                          <div className="config-users-cell-actions">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onPress={() => void handleUpdateUser(u)}
+                              isDisabled={usersBusy}
+                            >
+                              Guardar
+                            </Button>
+                            {showUnlock && canManageRoleNav ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onPress={() => void handleUnlockUser(u.username)}
+                                isDisabled={usersBusy}
+                              >
+                                Desbloquear
+                              </Button>
+                            ) : null}
+                            {canManageRoleNav && !isSelf ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="text-[var(--color-state-error)] border-[var(--color-state-error)]"
+                                aria-label={`Eliminar usuario ${u.username}`}
+                                onPress={() => {
+                                  setUserPendingDelete(u.username)
+                                  deleteUserConfirm.open()
+                                }}
+                                isDisabled={usersBusy}
+                              >
+                                Eliminar
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                        {lockHint ? (
+                          <p
+                            className={`config-users-lock-note config-no-margin ${u.is_login_locked ? 'status-error' : 'config-muted-text'}`}
+                          >
+                            {lockHint}
+                          </p>
+                        ) : null}
+                      </div>
+                    )
+                  })}
                 </div>
-              ))
+              </div>
             )}
           </div>
         </div>
@@ -2617,6 +2777,44 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
                   isDisabled={schedulePendingDeleteId === null || typeof scheduleActionLoading === 'number'}
                 >
                   {typeof scheduleActionLoading === 'number' ? 'Eliminando...' : 'Eliminar programación'}
+                </Button>
+              </AlertDialog.Footer>
+            </AlertDialog.Dialog>
+          </AlertDialog.Container>
+        </AlertDialog.Backdrop>
+      </AlertDialog>
+      <AlertDialog
+        isOpen={deleteUserConfirm.isOpen}
+        onOpenChange={(open) => {
+          deleteUserConfirm.setOpen(open)
+          if (!open) setUserPendingDelete(null)
+        }}
+      >
+        <AlertDialog.Backdrop>
+          <AlertDialog.Container size="sm" placement="center">
+            <AlertDialog.Dialog>
+              <AlertDialog.Header>
+                <AlertDialog.Icon status="danger" />
+                <AlertDialog.Heading>Eliminar usuario</AlertDialog.Heading>
+              </AlertDialog.Header>
+              <AlertDialog.Body>
+                {userPendingDelete
+                  ? `Se eliminará el usuario «${userPendingDelete}», sus preferencias y sesiones. Esta acción no se puede deshacer.`
+                  : null}
+              </AlertDialog.Body>
+              <AlertDialog.Footer className="config-actions-row">
+                <Button
+                  variant="outline"
+                  onPress={() => {
+                    setUserPendingDelete(null)
+                    deleteUserConfirm.close()
+                  }}
+                  isDisabled={usersBusy}
+                >
+                  Cancelar
+                </Button>
+                <Button variant="danger" onPress={() => void handleConfirmDeleteUser()} isDisabled={usersBusy || !userPendingDelete}>
+                  {usersBusy ? 'Eliminando...' : 'Eliminar'}
                 </Button>
               </AlertDialog.Footer>
             </AlertDialog.Dialog>

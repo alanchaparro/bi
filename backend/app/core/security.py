@@ -7,7 +7,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.role_nav import DEFAULT_NAV_IDS_BY_ROLE
+from app.core.role_nav import CONFIG_SUBNAV_IDS, DEFAULT_NAV_IDS_BY_ROLE
 from app.models.brokers import AuthUser
 
 pwd_context = CryptContext(schemes=['pbkdf2_sha256'], deprecated='auto')
@@ -29,6 +29,13 @@ def effective_permissions(role: str, db: Session | None) -> List[str]:
         from app.services.role_nav_service import get_nav_ids_for_role
 
         nav_ids = get_nav_ids_for_role(db, r)
+    # Compat: tokens/BD con solo `config` amplían a las secciones finas.
+    if 'config' in nav_ids:
+        nav_ids = [x for x in nav_ids if x != 'config']
+        for nid in CONFIG_SUBNAV_IDS:
+            if nid not in nav_ids:
+                nav_ids.append(nid)
+    nav_ids = sorted(set(nav_ids))
     return api + [f'nav:{n}' for n in nav_ids]
 
 DEMO_USERS = {

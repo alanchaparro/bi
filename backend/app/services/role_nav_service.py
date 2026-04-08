@@ -3,11 +3,12 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.core.role_nav import (
+    ALL_NAV_IDS,
     ALL_NAV_IDS_SET,
+    CONFIG_SUBNAV_IDS,
     DEFAULT_NAV_IDS_BY_ROLE,
     KNOWN_ROLES,
     NAV_LABELS,
-    ALL_NAV_IDS,
 )
 from app.models.brokers import AuthRoleNav
 
@@ -16,7 +17,14 @@ def get_nav_ids_for_role(db: Session, role: str) -> list[str]:
     r = (role or 'viewer').strip().lower() or 'viewer'
     rows = db.query(AuthRoleNav).filter(AuthRoleNav.role == r).all()
     if rows:
-        out = sorted({row.nav_id for row in rows if row.nav_id in ALL_NAV_IDS_SET})
+        raw_ids = {row.nav_id for row in rows}
+        out = sorted({nid for nid in raw_ids if nid in ALL_NAV_IDS_SET})
+        # Legado: fila nav_id=config (previo a secciones finas); ya no está en ALL_NAV_IDS.
+        if 'config' in raw_ids:
+            out = sorted(set(out) | set(CONFIG_SUBNAV_IDS))
+        # Misma regla que replace_nav_for_role: admin siempre ve Configuración completa.
+        if r == 'admin':
+            out = sorted(set(out) | set(CONFIG_SUBNAV_IDS))
         return out
     default = DEFAULT_NAV_IDS_BY_ROLE.get(r) or DEFAULT_NAV_IDS_BY_ROLE['viewer']
     return list(default)
@@ -37,9 +45,9 @@ def replace_nav_for_role(db: Session, role: str, nav_ids: list[str], actor: str)
     if r not in KNOWN_ROLES:
         raise ValueError(f'Rol no válido: {role}')
     clean = sorted({n for n in nav_ids if n in ALL_NAV_IDS_SET})
-    # El rol admin debe conservar acceso a Configuración para no bloquear la gestión.
-    if r == 'admin' and 'config' not in clean:
-        clean = sorted(set(clean) | {'config'})
+    # El rol admin conserva todas las secciones de Configuración.
+    if r == 'admin':
+        clean = sorted(set(clean) | set(CONFIG_SUBNAV_IDS))
     db.query(AuthRoleNav).filter(AuthRoleNav.role == r).delete()
     for nid in clean:
         db.add(AuthRoleNav(role=r, nav_id=nid))

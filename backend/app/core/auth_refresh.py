@@ -141,3 +141,17 @@ def register_login_success(db: Session, username: str) -> None:
     row.blocked_until = None
     row.updated_at = _utcnow()
     db.commit()
+
+
+def clear_user_lockout(db: Session, username: str) -> None:
+    """Quita bloqueo por intentos fallidos y reinicia el contador (administración)."""
+    name = str(username or '').strip().lower()
+    if not name:
+        return
+    row = db.query(AuthUserState).filter(AuthUserState.username == name).first()
+    if row is None:
+        return
+    row.failed_attempts = 0
+    row.blocked_until = None
+    row.updated_at = _utcnow()
+    db.commit()

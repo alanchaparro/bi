@@ -3,6 +3,15 @@
 from __future__ import annotations
 
 # Orden estable para matrices en UI y API.
+CONFIG_SUBNAV_IDS: tuple[str, ...] = (
+    'config_usuarios',
+    'config_roles_menus',
+    'config_layouts_filtros',
+    'config_negocio',
+    'config_importaciones',
+    'config_programacion',
+)
+
 ALL_NAV_IDS: tuple[str, ...] = (
     'cartera',
     'analisisCartera',
@@ -11,8 +20,7 @@ ALL_NAV_IDS: tuple[str, ...] = (
     'analisisCarteraRendimiento',
     'analisisCobranzaCohorte',
     'eerr',
-    'config',
-)
+) + CONFIG_SUBNAV_IDS
 
 NAV_LABELS: dict[str, str] = {
     'cartera': 'Resumen de Cartera',
@@ -22,7 +30,12 @@ NAV_LABELS: dict[str, str] = {
     'analisisCarteraRendimiento': 'Rendimiento de Cartera',
     'analisisCobranzaCohorte': 'Análisis Cobranzas Corte',
     'eerr': 'EERR',
-    'config': 'Configuración',
+    'config_usuarios': 'Config.: usuarios y roles',
+    'config_roles_menus': 'Config.: roles y menús',
+    'config_layouts_filtros': 'Config.: layouts de filtros',
+    'config_negocio': 'Config.: negocio y apariencia',
+    'config_importaciones': 'Config.: importaciones (MySQL)',
+    'config_programacion': 'Config.: programación sync',
 }
 
 # Hasta que existan filas en auth_role_nav, se usa este mapa (paridad con sidebar sin BD).

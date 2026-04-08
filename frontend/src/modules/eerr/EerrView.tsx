@@ -44,6 +44,7 @@ import {
   type EerrDetalleEmpresaNode,
   type MayorNetLine,
 } from "@/modules/eerr/eerrMayorBreakdown";
+import { EerrGlosarioInfo } from "@/modules/eerr/eerrGlosario";
 
 const BLOCK_LABELS: Record<string, string> = {
   ventas: "Ventas (ingresos)",
@@ -166,6 +167,7 @@ function CostoGastoMayorRow({
         <span className="truncate min-w-0 flex-1 text-[var(--color-text-muted)]" title={line.mayor}>
           {line.mayor}
         </span>
+        <EerrGlosarioInfo kind="mayor" label={line.mayor} eerrBlock={line.eerr_block} />
         <span className="flex flex-col items-end gap-0.5 shrink-0 text-right sm:flex-row sm:items-baseline sm:gap-2">
           <span className="font-mono tabular-nums">{formatGsFull(line.net)}</span>
           <span className="font-mono tabular-nums text-[11px] text-[var(--color-text-muted)] whitespace-nowrap">
@@ -178,8 +180,16 @@ function CostoGastoMayorRow({
           {cuentas.length ? (
             cuentas.map((c) => (
               <li key={`${line.mayor}||${c.cuenta}`} className="flex justify-between gap-2 text-[11px] items-baseline">
-                <span className="truncate text-[var(--color-text-muted)] min-w-0" title={c.cuenta}>
-                  {c.cuenta}
+                <span className="flex items-baseline gap-1 min-w-0 flex-1">
+                  <span className="truncate text-[var(--color-text-muted)] min-w-0" title={c.cuenta}>
+                    {c.cuenta}
+                  </span>
+                  <EerrGlosarioInfo
+                    kind="cuenta"
+                    label={c.cuenta}
+                    eerrBlock={block}
+                    mayorHint={line.mayor}
+                  />
                 </span>
                 <span className="flex flex-col items-end gap-0.5 shrink-0 sm:flex-row sm:items-baseline sm:gap-2">
                   <span className="font-mono tabular-nums">{formatGsFull(c.net)}</span>
@@ -359,8 +369,11 @@ function EerrDetalleArbolTable({ tree }: { tree: EerrDetalleEmpresaNode[] }) {
                                 ) : (
                                   <span className="inline-block w-7 shrink-0" aria-hidden />
                                 )}
-                                <span className="truncate" title={m.mayor}>
-                                  {m.mayor}
+                                <span className="flex items-center gap-1 min-w-0">
+                                  <span className="truncate" title={m.mayor}>
+                                    {m.mayor}
+                                  </span>
+                                  <EerrGlosarioInfo kind="mayor" label={m.mayor} eerrBlock={null} />
                                 </span>
                               </div>
                             </td>
@@ -375,10 +388,16 @@ function EerrDetalleArbolTable({ tree }: { tree: EerrDetalleEmpresaNode[] }) {
                                   <td className="p-2" />
                                   <td className="p-2" />
                                   <td className="p-2 align-middle">
-                                    <div className="pl-6 ml-3 border-l border-[var(--color-border-subtle)]">
-                                      <span className="text-xs truncate block" title={c.cuenta}>
+                                    <div className="pl-6 ml-3 border-l border-[var(--color-border-subtle)] flex items-center gap-1 min-w-0">
+                                      <span className="text-xs truncate block min-w-0 flex-1" title={c.cuenta}>
                                         {c.cuenta}
                                       </span>
+                                      <EerrGlosarioInfo
+                                        kind="cuenta"
+                                        label={c.cuenta}
+                                        eerrBlock={null}
+                                        mayorHint={m.mayor}
+                                      />
                                     </div>
                                   </td>
                                   <td className="p-2 text-right font-mono tabular-nums text-xs align-middle">

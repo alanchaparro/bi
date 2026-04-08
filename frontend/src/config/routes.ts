@@ -53,5 +53,18 @@ export const NAV_ITEMS = [
   { id: "analisisCarteraRendimiento", label: "Rendimiento de Cartera", href: ROUTES.rendimiento, group: "Análisis de Cartera" },
   { id: "analisisCobranzaCohorte", label: "Análisis Cobranzas Corte", href: ROUTES.cobranzasCohorte, group: "Análisis de Cartera" },
   { id: "eerr", label: "EERR", href: ROUTES.eerr, group: "Finanzas" },
-  { id: "config", label: "Configuración", href: ROUTES.config, group: "Sistema" },
+  {
+    id: "config",
+    label: "Configuración",
+    href: ROUTES.config,
+    group: "Sistema",
+    children: [
+      { id: "config_usuarios", label: "Usuarios", href: `${ROUTES.config}?tab=usuarios` },
+      { id: "config_roles_menus", label: "Roles y menús", href: `${ROUTES.config}?tab=roles-menus` },
+      { id: "config_layouts_filtros", label: "Layouts filtros", href: `${ROUTES.config}?tab=layouts-filtros` },
+      { id: "config_negocio", label: "Negocio", href: `${ROUTES.config}?tab=negocio` },
+      { id: "config_importaciones", label: "Importaciones", href: `${ROUTES.config}?tab=importaciones` },
+      { id: "config_programacion", label: "Programación", href: `${ROUTES.config}?tab=programacion` },
+    ],
+  },
 ] as const satisfies readonly NavItem[];

@@ -82,6 +82,9 @@ class AuthUserItemOut(BaseModel):
     is_active: bool
     created_at: str | None = None
     updated_at: str | None = None
+    failed_attempts: int = 0
+    blocked_until: str | None = None
+    is_login_locked: bool = False
 
 
 class AuthUsersOut(BaseModel):

@@ -2,10 +2,11 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button, Popover } from "@heroui/react";
 import { useAuth } from "@/app/providers";
 import type { LoginResponse } from "@/shared/contracts";
+import { CONFIG_SECTION_NAV_IDS, hasConfigNavPermission } from "@/config/roleNav";
 import { NAV_ITEMS, type NavItem } from "@/config/routes";
 import { LoadingState } from "@/components/feedback/LoadingState";
 import {
@@ -91,6 +92,11 @@ function roleInitials(role: string | null | undefined): string {
   return "U";
 }
 
+function configNavAllowed(allowed: Set<string>): boolean {
+  if (allowed.has("config")) return true;
+  return CONFIG_SECTION_NAV_IDS.some((id) => allowed.has(id));
+}
+
 /** Permisos `nav:<id>` vienen del backend; si no hay ninguno (tokens viejos), se muestra todo el menú. */
 function filterNavByPermissions(permissions: string[] | undefined): NavItem[] {
   const list = permissions ?? [];
@@ -100,7 +106,7 @@ function filterNavByPermissions(permissions: string[] | undefined): NavItem[] {
 
   const out: NavItem[] = [];
   for (const item of NAV_ITEMS as readonly NavItem[]) {
-    const selfOk = allowed.has(item.id);
+    const selfOk = item.id === "config" ? configNavAllowed(allowed) : allowed.has(item.id);
     const rawChildren = item.children;
     if (rawChildren?.length) {
       const kids = rawChildren.filter((c) => allowed.has(c.id));
@@ -116,17 +122,27 @@ function filterNavByPermissions(permissions: string[] | undefined): NavItem[] {
   return out;
 }
 
-function isActivePath(pathname: string, href: string) {
-  return pathname === href || pathname.startsWith(`${href}/`);
+/** Activo en sidebar: path coincide; si `href` trae query (p. ej. `/config?tab=usuarios`), exige mismos params. */
+function navHrefMatchesLocation(pathname: string, searchRaw: string, href: string): boolean {
+  const [pathPart, queryPart] = href.split("?");
+  const base = pathPart || href;
+  if (pathname !== base && !pathname.startsWith(`${base}/`)) return false;
+  if (!queryPart) return true;
+  const want = new URLSearchParams(queryPart);
+  const got = new URLSearchParams(searchRaw);
+  for (const [k, v] of want.entries()) {
+    if (got.get(k) !== v) return false;
+  }
+  return true;
 }
 
-function computeSubmenuDefaultOpen(pathname: string, items: readonly NavItem[]): Record<string, boolean> {
+function computeSubmenuDefaultOpen(pathname: string, searchRaw: string, items: readonly NavItem[]): Record<string, boolean> {
   const out: Record<string, boolean> = {};
   for (const item of items) {
     const kids = item.children;
     if (!kids?.length) continue;
-    const parentMatch = isActivePath(pathname, item.href);
-    const childMatch = kids.some((c) => isActivePath(pathname, c.href));
+    const parentMatch = navHrefMatchesLocation(pathname, searchRaw, item.href);
+    const childMatch = kids.some((c) => navHrefMatchesLocation(pathname, searchRaw, c.href));
     out[item.id] = parentMatch || childMatch;
   }
   return out;
@@ -454,6 +470,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { auth, loading, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const navSearchRaw = searchParams.toString();
   const [themePresetId, setThemePresetId] = useState<string>("epem_obsidiana");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const sidebarCloseTimerRef = React.useRef<number | null>(null);
@@ -550,11 +568,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     [auth?.permissions]
   );
   const groups = useMemo(() => groupNavItems(visibleNavItems), [visibleNavItems]);
-  const canOpenConfigNav = Boolean(auth?.permissions?.includes("nav:config"));
+  const canOpenConfigNav = useMemo(
+    () => hasConfigNavPermission(auth?.permissions),
+    [auth?.permissions],
+  );
 
   const submenuDefaultOpen = useMemo(
-    () => computeSubmenuDefaultOpen(pathname, visibleNavItems),
-    [pathname, visibleNavItems]
+    () => computeSubmenuDefaultOpen(pathname, navSearchRaw, visibleNavItems),
+    [pathname, navSearchRaw, visibleNavItems]
   );
   const [submenuOverrides, setSubmenuOverrides] = useState<Record<string, boolean>>({});
 
@@ -696,7 +717,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               {groupName ? <div className="dashboard-sidebar-group-label">{groupName}</div> : null}
               <div className="dashboard-sidebar-links">
                 {items.map((item) => {
-                  const isActive = isActivePath(pathname, item.href);
+                  const isActive = navHrefMatchesLocation(pathname, navSearchRaw, item.href);
                   const showChildren = Boolean(item.children?.length);
                   const submenuOpen = showChildren ? isSubmenuExpanded(item.id) : false;
                   const isRendimiento = item.id === "analisisCarteraRendimiento";
@@ -751,7 +772,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                       {showChildren && submenuOpen ? (
                         <div id={`nav-submenu-${item.id}`} className="dashboard-sidebar-submenu">
                           {item.children?.map((child) => {
-                            const isChildActive = isActivePath(pathname, child.href);
+                            const isChildActive = navHrefMatchesLocation(pathname, navSearchRaw, child.href);
                             return (
                               <Link
                                 key={child.id}

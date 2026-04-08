@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import timezone as tz_utc
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -28,6 +30,7 @@ from app.schemas.brokers import (
     SupervisorsScopeIn,
     SupervisorsScopeOut,
 )
+from app.repositories import brokers_config
 from app.services.brokers_config_service import BrokersConfigService
 from app.services.role_nav_service import get_matrix, replace_matrix
 from app.services.sync_service import SyncService
@@ -97,13 +100,35 @@ def _dashboard_filter_layouts_out_from_normalized(norm: dict) -> DashboardFilter
     return DashboardFilterLayoutsOut(version=1, sections=sections)
 
 
-def _user_to_out(row) -> AuthUserItemOut:
+def _user_lock_fields(state) -> tuple[int, str | None, bool]:
+    if state is None:
+        return 0, None, False
+    fa = int(state.failed_attempts or 0)
+    bu = state.blocked_until
+    until_iso: str | None = None
+    locked = False
+    if bu is not None:
+        blocked = bu
+        if getattr(blocked, 'tzinfo', None) is not None:
+            blocked = blocked.astimezone(tz_utc).replace(tzinfo=None)
+        from app.core.auth_refresh import _utcnow_naive
+
+        locked = blocked > _utcnow_naive()
+        until_iso = bu.isoformat() if hasattr(bu, 'isoformat') else str(bu)
+    return fa, until_iso, locked
+
+
+def _user_to_out(row, state=None) -> AuthUserItemOut:
+    fa, until_iso, locked = _user_lock_fields(state)
     return AuthUserItemOut(
         username=str(row.username or ''),
         role=str(row.role or 'viewer'),
         is_active=bool(row.is_active),
         created_at=row.created_at.isoformat() if getattr(row, 'created_at', None) else None,
         updated_at=row.updated_at.isoformat() if getattr(row, 'updated_at', None) else None,
+        failed_attempts=fa,
+        blocked_until=until_iso,
+        is_login_locked=locked,
     )
 
 
@@ -168,8 +193,8 @@ def list_users(
     db: Session = Depends(get_db),
     user=Depends(require_permission('brokers:read')),
 ):
-    rows = BrokersConfigService.list_auth_users(db)
-    return AuthUsersOut(users=[_user_to_out(r) for r in rows])
+    pairs = BrokersConfigService.list_auth_users_with_lock_state(db)
+    return AuthUsersOut(users=[_user_to_out(r, s) for r, s in pairs])
 
 
 @router.post('/users', response_model=AuthUserItemOut)
@@ -188,7 +213,8 @@ def create_user(
             is_active=payload.is_active,
             actor=str(user.get('sub', 'system')),
         )
-        return _user_to_out(row)
+        st = brokers_config.auth_user_states_for_usernames(db, [str(row.username)]).get(str(row.username))
+        return _user_to_out(row, st)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={'message': str(exc)})
     except RuntimeError as exc:
@@ -213,7 +239,42 @@ def update_user(
             actor=str(user.get('sub', 'system')),
             actor_username=str(user.get('sub', '')),
         )
-        return _user_to_out(row)
+        st = brokers_config.auth_user_states_for_usernames(db, [str(row.username)]).get(str(row.username))
+        return _user_to_out(row, st)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail={'message': str(exc)})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={'message': str(exc)})
+
+
+@router.post('/users/{username}/unlock', response_model=AuthUserItemOut)
+def unlock_auth_user_lockout(
+    username: str,
+    _rl=Depends(write_rate_limiter),
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('brokers:write_config')),
+):
+    try:
+        row, st = BrokersConfigService.unlock_auth_user_lockout(db, username)
+        return _user_to_out(row, st)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail={'message': str(exc)})
+
+
+@router.delete('/users/{username}', status_code=status.HTTP_204_NO_CONTENT)
+def delete_auth_user(
+    username: str,
+    _rl=Depends(write_rate_limiter),
+    db: Session = Depends(get_db),
+    user=Depends(require_permission('brokers:write_config')),
+):
+    try:
+        BrokersConfigService.delete_auth_user(
+            db,
+            username=username,
+            actor=str(user.get('sub', 'system')),
+            actor_username=str(user.get('sub', '')),
+        )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail={'message': str(exc)})
     except ValueError as exc:

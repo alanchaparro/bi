@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@heroui/react";
+import { useFilterAutoApplyAfterIdle } from "@/hooks/useFilterAutoApplyAfterIdle";
 
 const DEFAULT_AUTO_APPLY_MS = 4000;
 
@@ -45,10 +46,6 @@ export function FloatingQuickFilters({
   autoApplyIdleMs,
 }: FloatingQuickFiltersProps) {
   const [mounted, setMounted] = useState(false);
-  const onApplyRef = useRef(onApply);
-  onApplyRef.current = onApply;
-  const flagsRef = useRef({ applyDisabled, applying });
-  flagsRef.current = { applyDisabled, applying };
 
   useEffect(() => {
     setMounted(true);
@@ -77,21 +74,15 @@ export function FloatingQuickFilters({
       ? (autoApplyIdleMs ?? DEFAULT_AUTO_APPLY_MS)
       : 0;
 
-  useEffect(() => {
-    if (!isOpen || idleMs <= 0) return;
-    if (floatDraftActivityKey === floatAppliedActivityKey) return;
-    const id = window.setTimeout(() => {
-      const { applyDisabled: d, applying: a } = flagsRef.current;
-      if (d || a) return;
-      void onApplyRef.current();
-    }, idleMs);
-    return () => window.clearTimeout(id);
-  }, [
-    isOpen,
+  useFilterAutoApplyAfterIdle({
+    draftKey: floatDraftActivityKey,
+    appliedKey: floatAppliedActivityKey,
+    onApply,
+    enabled: isOpen && idleMs > 0,
+    applyDisabled,
+    applying,
     idleMs,
-    floatDraftActivityKey,
-    floatAppliedActivityKey,
-  ]);
+  });
 
   if (!mounted) return null;
 

@@ -168,6 +168,8 @@ Los `WHERE` por bloque son equivalentes al legado `IF(accounting_types.status = 
 
 **Modelo de dimensiones (estado actual vs cobranzas/cartera):** no hay tablas `dim_*` dedicadas para EERR. El hecho **`eerr_fact`** lleva **desnormalizado** `empresa`, `mayor`, `cuenta`, `social_reason_id`, `accounting_plan_id` en el grano del sync (una fila por clave de negocio mes + razón social + plan + bloque). Es el mismo patrón “fact como vista analítica” que otros dominios antes de introducir agregados.
 
+**Glosario de cuentas (referencia negocio, no sync):** `docs/eerr/glosario_cuentas.json` (y `glosario_cuentas.csv` derivado) — partidas agrupadas en **COSTOS** y **GASTOS** con `rubro`, `cuenta_concepto` y `descripcion`; útil para mapeos y textos en UI EERR. El front importa una copia en `frontend/src/modules/eerr/glosario_cuentas.json` (mantener alineada si se actualiza el glosario en `docs/eerr/`).
+
 **Fases de seguimiento sugeridas (roadmap):**
 
 | Fase | Alcance | Notas |

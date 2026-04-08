@@ -12,6 +12,7 @@ import {
 import {
   DashboardFiltersLayout,
   DashboardFloatingFiltersLayout,
+  useDashboardMainFilterAutoApply,
 } from "@/components/filters/DashboardFiltersLayout";
 import { useFilterLayoutConfig } from "@/components/filters/FilterLayoutConfigContext";
 import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
@@ -20,6 +21,7 @@ import {
   snapshotFloatingFilterValues,
   type AnalyticsFilterId,
 } from "@/config/analyticsFilterLayouts";
+import { useFilterAutoApplyAfterIdle } from "@/hooks/useFilterAutoApplyAfterIdle";
 import { EmptyState } from "../../components/feedback/EmptyState";
 import { ErrorState } from "../../components/feedback/ErrorState";
 import { LoadingState } from "../../components/feedback/LoadingState";
@@ -34,6 +36,10 @@ import {
 import { getApiErrorMessage } from "../../shared/apiErrors";
 import { useIsLightTheme } from "../../shared/useIsLightTheme";
 import { formatCount } from "../../shared/formatters";
+import {
+  downloadRoloOtrosAjustesCsv,
+  downloadRoloOtrosAjustesXls,
+} from "../../shared/roloOtrosAjustesExport";
 import { sortMesGestionDesc } from "../../shared/sortMesGestionOptions";
 
 type Filters = {
@@ -427,9 +433,69 @@ export function AnalisisRoloCarteraView() {
     [floatLayoutEff.floating, pickFloatApplied],
   );
 
+  const pickMainDraft = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case "close_month":
+          return filters.closeMonths;
+        case "un":
+          return filters.uns;
+        case "via_cobro":
+          return filters.vias;
+        case "contract_year":
+          return filters.years;
+        case "supervisor":
+          return filters.supervisors;
+        default:
+          return [];
+      }
+    },
+    [filters],
+  );
+  const pickMainApplied = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case "close_month":
+          return appliedFilters.closeMonths;
+        case "un":
+          return appliedFilters.uns;
+        case "via_cobro":
+          return appliedFilters.vias;
+        case "contract_year":
+          return appliedFilters.years;
+        case "supervisor":
+          return appliedFilters.supervisors;
+        default:
+          return [];
+      }
+    },
+    [appliedFilters],
+  );
+  useDashboardMainFilterAutoApply({
+    effective: floatLayoutEff,
+    pickDraft: pickMainDraft,
+    pickApplied: pickMainApplied,
+    onApply: () => void applyFilters(),
+    floatSidebarOpen: isFloatingFiltersOpen,
+    applyDisabled: loadingOptions || !filters.closeMonths.length || loadingSummary,
+    applying: loadingSummary,
+  });
+
   const hasRows = rows.length > 0;
   const otrosKpis = otrosData?.kpis ?? {};
   const otrosRows = otrosData?.rows ?? [];
+  const otrosCloseLabel = String(otrosKpis.resolved_close_month || appliedFilters.closeMonths[0] || "cierre");
+
+  const onExportOtrosCsv = useCallback(() => {
+    if (!otrosRows.length) return;
+    downloadRoloOtrosAjustesCsv(otrosRows, otrosCloseLabel);
+  }, [otrosRows, otrosCloseLabel]);
+
+  const onExportOtrosXls = useCallback(() => {
+    if (!otrosRows.length) return;
+    downloadRoloOtrosAjustesXls(otrosRows, otrosCloseLabel);
+  }, [otrosRows, otrosCloseLabel]);
+
   const activeFilterCount = useMemo(
     () =>
       filters.closeMonths.length +
@@ -650,12 +716,34 @@ export function AnalisisRoloCarteraView() {
                 ) : null}
 
                 {roloTab === "otros_ajustes" ? (
-                  <div className="analysis-table-section">
-                    <p className="m-0 mb-3 text-sm leading-snug text-[var(--color-text-muted)]">
-                      Contratos en los que el cambio de vigente entre el cierre anterior y el analizado no se explica
-                      solo con venta nueva, recuperación a vigente, culminación o caída a moroso. La suma de la columna
-                      «Residual» coincide con el KPI «Otros ajustes» del resumen.
-                    </p>
+                  <div className="analysis-table-section rolo-otros-ajustes-panel w-full min-w-0 box-border px-2 sm:px-4 md:px-5">
+                    <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <p className="m-0 max-w-[72ch] flex-1 text-sm leading-snug text-[var(--color-text-muted)]">
+                        Contratos en los que el cambio de vigente entre el cierre anterior y el analizado no se explica
+                        solo con venta nueva, recuperación a vigente, culminación o caída a moroso. La suma de la columna
+                        «Residual» coincide con el KPI «Otros ajustes» del resumen.
+                      </p>
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onPress={onExportOtrosCsv}
+                          isDisabled={!otrosRows.length || loadingOtros}
+                        >
+                          Exportar CSV
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onPress={onExportOtrosXls}
+                          isDisabled={!otrosRows.length || loadingOtros}
+                        >
+                          Exportar Excel (.xls)
+                        </Button>
+                      </div>
+                    </div>
                     {loadingOtros ? (
                       <LoadingState message="Cargando contratos con residual..." className="summary-loading-note" />
                     ) : null}
@@ -668,10 +756,12 @@ export function AnalisisRoloCarteraView() {
                     ) : null}
                     {!loadingOtros && !otrosError ? (
                       <>
-                        <p className="table-scroll-hint">
+                        <p className="table-scroll-hint mb-2">
                           {Number(otrosKpis.contratos_con_residual || 0).toLocaleString("es-PY")} contrato
                           {Number(otrosKpis.contratos_con_residual || 0) === 1 ? "" : "s"} con residual ≠ 0 · Total
                           residual: <SignedCount value={Number(otrosKpis.otros_ajustes || 0)} />
+                          {" · "}
+                          Desplazá horizontalmente si hay muchas columnas.
                         </p>
                         {otrosRows.length === 0 ? (
                           <EmptyState
@@ -680,98 +770,109 @@ export function AnalisisRoloCarteraView() {
                             className="analysis-empty"
                           />
                         ) : (
-                          <div className="analysis-table-wrap w-full min-w-0 overflow-x-auto">
-                            <table className="w-full min-w-[920px] border-collapse text-sm">
-                              <thead>
-                                <tr>
-                                  <th className="analysis-key-cell border-b border-[var(--color-border)] py-2 pr-3 text-left font-semibold">
-                                    Contrato
-                                  </th>
-                                  <th className="border-b border-[var(--color-border)] py-2 pr-3 text-left font-semibold">
-                                    UN
-                                  </th>
-                                  <th className="border-b border-[var(--color-border)] py-2 pr-3 text-left font-semibold">
-                                    Supervisor
-                                  </th>
-                                  <th className="border-b border-[var(--color-border)] py-2 pr-3 text-left font-semibold">
-                                    Vía
-                                  </th>
-                                  <th className="num border-b border-[var(--color-border)] py-2 pr-2 text-right font-semibold">
-                                    Δ vig.
-                                  </th>
-                                  <th className="num border-b border-[var(--color-border)] py-2 pr-2 text-right font-semibold">
-                                    Vta.
-                                  </th>
-                                  <th className="num border-b border-[var(--color-border)] py-2 pr-2 text-right font-semibold">
-                                    Rec.
-                                  </th>
-                                  <th className="num border-b border-[var(--color-border)] py-2 pr-2 text-right font-semibold">
-                                    Culm.
-                                  </th>
-                                  <th className="num border-b border-[var(--color-border)] py-2 pr-2 text-right font-semibold">
-                                    Caído
-                                  </th>
-                                  <th className="num border-b border-[var(--color-border)] py-2 pr-2 text-right font-semibold">
-                                    Residual
-                                  </th>
-                                  <th className="border-b border-[var(--color-border)] py-2 pr-2 text-left font-semibold">
-                                    Mes venta
-                                  </th>
-                                  <th className="border-b border-[var(--color-border)] py-2 pr-2 text-left font-semibold">
-                                    Mes culm.
-                                  </th>
-                                  <th className="border-b border-[var(--color-border)] py-2 pr-2 text-center font-semibold">
-                                    Ant.
-                                  </th>
-                                  <th className="border-b border-[var(--color-border)] py-2 text-center font-semibold">
-                                    Act.
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {otrosRows.map((r) => (
-                                  <tr key={r.contract_id}>
-                                    <td className="analysis-key-cell border-b border-[var(--color-border)] py-1.5 pr-3 font-mono text-xs">
-                                      {r.contract_id}
-                                    </td>
-                                    <td className="border-b border-[var(--color-border)] py-1.5 pr-3">{r.un}</td>
-                                    <td className="border-b border-[var(--color-border)] py-1.5 pr-3">{r.supervisor}</td>
-                                    <td className="border-b border-[var(--color-border)] py-1.5 pr-3">{r.via_cobro}</td>
-                                    <td className="num border-b border-[var(--color-border)] py-1.5 pr-2 text-right">
-                                      {r.delta_vigente > 0 ? "+" : ""}
-                                      {r.delta_vigente}
-                                    </td>
-                                    <td className="num border-b border-[var(--color-border)] py-1.5 pr-2 text-right">
-                                      {r.venta_nueva}
-                                    </td>
-                                    <td className="num border-b border-[var(--color-border)] py-1.5 pr-2 text-right">
-                                      {r.recuperado}
-                                    </td>
-                                    <td className="num border-b border-[var(--color-border)] py-1.5 pr-2 text-right">
-                                      {r.culminado}
-                                    </td>
-                                    <td className="num border-b border-[var(--color-border)] py-1.5 pr-2 text-right">
-                                      {r.caido}
-                                    </td>
-                                    <td className="num border-b border-[var(--color-border)] py-1.5 pr-2 text-right">
-                                      <SignedCount value={r.residual} />
-                                    </td>
-                                    <td className="border-b border-[var(--color-border)] py-1.5 pr-2 text-xs">
-                                      {r.sale_month || "—"}
-                                    </td>
-                                    <td className="border-b border-[var(--color-border)] py-1.5 pr-2 text-xs">
-                                      {r.culm_month || "—"}
-                                    </td>
-                                    <td className="border-b border-[var(--color-border)] py-1.5 pr-2 text-center text-xs">
-                                      {r.en_cierre_anterior ? "Sí" : "No"}
-                                    </td>
-                                    <td className="border-b border-[var(--color-border)] py-1.5 text-center text-xs">
-                                      {r.en_cierre_actual ? "Sí" : "No"}
-                                    </td>
+                          <div className="rolo-otros-ajustes-scroll-shell mx-auto w-full max-w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/30 p-3 sm:p-4">
+                            <div
+                              className="rolo-otros-ajustes-scroll max-h-[min(70vh,560px)] overflow-auto overscroll-x-contain"
+                              style={{ scrollbarGutter: "stable" }}
+                            >
+                              <table className="rolo-otros-ajustes-table w-max min-w-full border-collapse text-sm">
+                                <thead>
+                                  <tr>
+                                    <th className="rolo-otros-th analysis-key-cell border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 py-2.5 pl-3 pr-3 text-left font-semibold whitespace-nowrap sm:pl-4">
+                                      Contrato
+                                    </th>
+                                    <th className="rolo-otros-th border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 px-3 py-2.5 text-left font-semibold whitespace-nowrap">
+                                      UN
+                                    </th>
+                                    <th className="rolo-otros-th border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 px-3 py-2.5 text-left font-semibold whitespace-nowrap min-w-[10rem]">
+                                      Supervisor
+                                    </th>
+                                    <th className="rolo-otros-th border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 px-3 py-2.5 text-left font-semibold whitespace-nowrap">
+                                      Vía
+                                    </th>
+                                    <th className="rolo-otros-th num border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 px-2 py-2.5 text-right font-semibold whitespace-nowrap">
+                                      Δ vig.
+                                    </th>
+                                    <th className="rolo-otros-th num border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 px-2 py-2.5 text-right font-semibold whitespace-nowrap">
+                                      Vta.
+                                    </th>
+                                    <th className="rolo-otros-th num border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 px-2 py-2.5 text-right font-semibold whitespace-nowrap">
+                                      Rec.
+                                    </th>
+                                    <th className="rolo-otros-th num border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 px-2 py-2.5 text-right font-semibold whitespace-nowrap">
+                                      Culm.
+                                    </th>
+                                    <th className="rolo-otros-th num border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 px-2 py-2.5 text-right font-semibold whitespace-nowrap">
+                                      Caído
+                                    </th>
+                                    <th className="rolo-otros-th num border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 px-3 py-2.5 text-right font-semibold whitespace-nowrap">
+                                      Residual
+                                    </th>
+                                    <th className="rolo-otros-th border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 px-3 py-2.5 text-left font-semibold whitespace-nowrap">
+                                      Mes venta
+                                    </th>
+                                    <th className="rolo-otros-th border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 px-3 py-2.5 text-left font-semibold whitespace-nowrap">
+                                      Mes culm.
+                                    </th>
+                                    <th className="rolo-otros-th border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 px-2 py-2.5 text-center font-semibold whitespace-nowrap">
+                                      Ant.
+                                    </th>
+                                    <th className="rolo-otros-th border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 py-2.5 pl-2 pr-4 text-center font-semibold whitespace-nowrap sm:pr-5">
+                                      Act.
+                                    </th>
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                                </thead>
+                                <tbody>
+                                  {otrosRows.map((r) => (
+                                    <tr key={r.contract_id} className="hover:bg-[var(--color-surface)]/40">
+                                      <td className="rolo-otros-td analysis-key-cell border-b border-[var(--color-border)] py-2 pl-3 pr-3 font-mono text-xs whitespace-nowrap sm:pl-4">
+                                        {r.contract_id}
+                                      </td>
+                                      <td className="rolo-otros-td border-b border-[var(--color-border)] px-3 py-2 whitespace-nowrap">
+                                        {r.un}
+                                      </td>
+                                      <td className="rolo-otros-td border-b border-[var(--color-border)] px-3 py-2 whitespace-nowrap min-w-[10rem]">
+                                        {r.supervisor}
+                                      </td>
+                                      <td className="rolo-otros-td border-b border-[var(--color-border)] px-3 py-2 whitespace-nowrap">
+                                        {r.via_cobro}
+                                      </td>
+                                      <td className="rolo-otros-td num border-b border-[var(--color-border)] px-2 py-2 text-right whitespace-nowrap">
+                                        {r.delta_vigente > 0 ? "+" : ""}
+                                        {r.delta_vigente}
+                                      </td>
+                                      <td className="rolo-otros-td num border-b border-[var(--color-border)] px-2 py-2 text-right whitespace-nowrap">
+                                        {r.venta_nueva}
+                                      </td>
+                                      <td className="rolo-otros-td num border-b border-[var(--color-border)] px-2 py-2 text-right whitespace-nowrap">
+                                        {r.recuperado}
+                                      </td>
+                                      <td className="rolo-otros-td num border-b border-[var(--color-border)] px-2 py-2 text-right whitespace-nowrap">
+                                        {r.culminado}
+                                      </td>
+                                      <td className="rolo-otros-td num border-b border-[var(--color-border)] px-2 py-2 text-right whitespace-nowrap">
+                                        {r.caido}
+                                      </td>
+                                      <td className="rolo-otros-td num border-b border-[var(--color-border)] px-3 py-2 text-right whitespace-nowrap">
+                                        <SignedCount value={r.residual} />
+                                      </td>
+                                      <td className="rolo-otros-td border-b border-[var(--color-border)] px-3 py-2 text-xs whitespace-nowrap">
+                                        {r.sale_month || "—"}
+                                      </td>
+                                      <td className="rolo-otros-td border-b border-[var(--color-border)] px-3 py-2 text-xs whitespace-nowrap">
+                                        {r.culm_month || "—"}
+                                      </td>
+                                      <td className="rolo-otros-td border-b border-[var(--color-border)] px-2 py-2 text-center text-xs whitespace-nowrap">
+                                        {r.en_cierre_anterior ? "Sí" : "No"}
+                                      </td>
+                                      <td className="rolo-otros-td border-b border-[var(--color-border)] py-2 pl-2 pr-4 text-center text-xs whitespace-nowrap sm:pr-5">
+                                        {r.en_cierre_actual ? "Sí" : "No"}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
                         )}
                       </>

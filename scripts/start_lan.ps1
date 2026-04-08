@@ -10,7 +10,14 @@
   - Los volúmenes (p. ej. PostgreSQL) no se eliminan.
   - Primera instalación: ejecutar antes scripts\start_one_click.ps1 (INICIAR.bat) o el bootstrap
     documentado, para tener BD y usuarios. Este script asume .env ya configurado.
+  - Puerto LAN: pregunta interactiva y guarda LAN_HTTP_PORT en .env; use -LanPort 8088 para evitar la pregunta.
 #>
+param(
+  [Parameter(HelpMessage = "Puerto en el host para nginx (prod-lan). 0 = preguntar o mantener .env")]
+  [ValidateRange(0, 65535)]
+  [int]$LanPort = 0
+)
+
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Join-Path $PSScriptRoot ".."
 Set-Location -Path $ProjectRoot
@@ -122,8 +129,9 @@ if ([string]::IsNullOrWhiteSpace($appEnv) -or $appEnv.Trim().ToLowerInvariant() 
 
 Ensure-ProdSecrets -EnvPath $envFile
 
-$httpPort = [string](Get-EnvValue -Path $envFile -Key "LAN_HTTP_PORT")
-if ([string]::IsNullOrWhiteSpace($httpPort)) { $httpPort = "80" }
+Write-Step "[2b] Puerto HTTP para acceso LAN (LAN_HTTP_PORT en .env)..."
+. (Join-Path $PSScriptRoot "lan_port_prompt.ps1")
+$httpPort = Resolve-LanHttpPort -EnvFilePath $envFile -LanPort $LanPort
 
 Write-Step "[3] Deteniendo servicios previos del proyecto (evita conflicto prod vs prod-lan)..."
 docker compose --profile "*" down --remove-orphans

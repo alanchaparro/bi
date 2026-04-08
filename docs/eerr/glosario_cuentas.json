@@ -1,0 +1,628 @@
+{
+  "meta": {
+    "source_file": "Glosario de Cuentas - original.xlsx",
+    "exported_at_utc": "2026-04-08T13:03:25Z",
+    "row_count": 103,
+    "note": "Referencia de negocio para mapeo EERR / partidas. No sustituye catálogo contable en BD."
+  },
+  "entries": [
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "ALQUILER",
+      "cuenta_concepto": "ALQUILERES PAGADOS",
+      "descripcion": "Se registran las facturas remitidas por los contratos vigentes de  alquiler de clinicas"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "COMISIONES-COSTOS",
+      "cuenta_concepto": "COMISIONES BANCARIAS",
+      "descripcion": "Comisiones por gestiones bancarias, comisiones pagadas a procesadoras (Grupo Impulso, Bancard, Cabal, Panal,Nete)"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "COMISIONES-COSTOS",
+      "cuenta_concepto": "COMISIONES COMERCIALES EXTERNAS",
+      "descripcion": "Pagos comisiones s/contrato LINE,  Derlis Flores, Digitalab"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "COMISIONES-COSTOS",
+      "cuenta_concepto": "COMISIONES PAGADAS GESTORES COBRANZAS",
+      "descripcion": "Comisiones abonadas a colaboradores con factura, proviene de la Planilla Mensual de Prestadores Comisiones (Gestores que tienen Iva)"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "COMISIONES-COSTOS",
+      "cuenta_concepto": "COMISIONES POR VENTAS",
+      "descripcion": "Comsiones abonadas a colaboradores sistema call, corporativos, proviene de la  Planilla Mensual de Fijo y Prestadores Comsión"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "COMISIONES-COSTOS",
+      "cuenta_concepto": "COMISIONES POR VENTAS EXTERNAS",
+      "descripcion": "Pagos semanales a vendedores externos (no incluidos en nómina Idem - Puro Ventas) por 1er. Anticipo - 2do. Anticipo - Contrapago - Ampliaciones - Guardias, y cobros de 1era cuota por cajas de recaudación"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "COMISIONES-COSTOS",
+      "cuenta_concepto": "PREMIOS POR METAS ALCANZADAS",
+      "descripcion": "Pagos semanales a vendedores externos (no incluidos en nómina Idem - Puro Ventas)"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "COMISIONES-COSTOS",
+      "cuenta_concepto": "VARIABLE POR CUMPLIMIENTO DE GESTION",
+      "descripcion": "Pago por cumplimientos de metas, proviene de planilla mensual Prestadores Comsión"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "COMISIONES-COSTOS",
+      "cuenta_concepto": "VIATICOS Y MOVILIDAD-COSTOS",
+      "descripcion": "Planilla Semanal, Viatico Supervisores, Sanofi, Tape  y Facturas de Puro Ventas"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "MANTENIMIENTO (COSTOS)",
+      "cuenta_concepto": "MANTENIMIENTO DE MOVILES",
+      "descripcion": "Se registra los gastos mantemimiento de movil"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "MARKETING-COSTOS",
+      "cuenta_concepto": "COSTOS POR MARKETING",
+      "descripcion": "Registra las facturas asociadas a las publicaciones en redes sociales, canjes por publicidades en radios y revistas"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "MATERIALES/INSUMOS-COSTOS",
+      "cuenta_concepto": "COMBUSTIBLES Y LUBRICANTES",
+      "descripcion": "Registra el consumo de combustible realizado por la flota de móviles, vendedores y cobradores, facturas de Bahia y Copetrol"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "MATERIALES/INSUMOS-COSTOS",
+      "cuenta_concepto": "INSUMOS FARMACEUTICOS",
+      "descripcion": "Está compuesto por las salidas de inventario en concepto de insumos"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "MATERIALES/INSUMOS-COSTOS",
+      "cuenta_concepto": "INSUMOS MEDICINA ESTETICA",
+      "descripcion": "Está compuesto por las salidas de inventario en concepto de insumos"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "MATERIALES/INSUMOS-COSTOS",
+      "cuenta_concepto": "INSUMOS ODONTOLOGICOS",
+      "descripcion": "Está compuesto por las salidas de inventario en concepto de insumos"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "MATERIALES/INSUMOS-COSTOS",
+      "cuenta_concepto": "INSUMOS ODONTOLÓGICOS - (LABORATORIO ODONTOLOGICO)",
+      "descripcion": "Está compuesto por las salidas de inventario en concepto de insumos"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "AGUINALDOS (COSTOS)",
+      "descripcion": "Registra la provisión mensual del 13er. Salario establecido en el código laboral según la planilla de Salarios IPS"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "APORTE PATRONAL COSTOS",
+      "descripcion": "Registra la provisión mensual del 16,5% de aporte al Seguro Social realizado por el Empleador s/ planilla de salarios IPS"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "BONIFICACIÓN ANUAL PRESTADORES - COSTOS",
+      "descripcion": "Registra la provisión mensual del 13er. Honorarios según contrato de prestación de servicios del personal en nómina con factura."
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "BONIFICACIÓN FAMILIAR COSTOS",
+      "descripcion": "Regista la provisión del 5% sobre el salario mínimo en concepto de bonificación por cada hijo según planilla de Salarios IPS"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "HONORARIOS POR GESTIÓN DE COBRANZAS",
+      "descripcion": "Facturas de Glosud, Nexo y Catatrepa SA"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "HONORARIOS POR SERVICIOS",
+      "descripcion": "Registra los honorarios abonados al personal según contrato, Planilla de Prestadores Horas, Planillas Prestadores Fijos, Provisón Hs. Ruben Pesoa Tape"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "HONORARIOS POR SERVICIOS COOTRAFE (COSTOS)",
+      "descripcion": "Planillas de Cootrafe Anticipo, Planilla de Cootrafe Liqudiación, Planilla de Cootrafe Mensual, Planilla de Cootrafe Complementos"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "HONORARIOS POR SERVICIOS DE COBRANZAS (PRESTADORES)",
+      "descripcion": "Honorarios pagagos a Gestores de Cobrnazas permanentes, proviene de la Planilla de Prestadores Fijo."
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "HONORARIOS POR SERVICIOS DE MEDICINA LABORAL",
+      "descripcion": "Rendición de Cuentas de Profesionales para el área de Medicina Laboral"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "HONORARIOS POR SERVICIOS DE REGENCIA",
+      "descripcion": "Facturas de los regentes de odo - emer - ML"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "HONORARIOS POR SERVICIOS EMERGENCIAS CONTINGENCIA/COBERTURA",
+      "descripcion": "Honorarios a conductores, paramedicos y medicos, por coberturas (Personal no permanente en Idem)"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "HONORARIOS POR SERVICIOS EXTERNOS",
+      "descripcion": "Facturación de Infoco por rabajos del Laboratorio Dempro - Servicios Ambientales"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "HONORARIOS PROFES. DOCTORES EXTERNOS ODONTOLOGIA",
+      "descripcion": "Planilla de Odontologos Externos"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "HONORARIOS PROFESIONALES DOCTORES EMERGENCIA",
+      "descripcion": "Honorarios a doctores que prestan servicios permanente en Idem, proviene de la Planilla de Prestadores Fijo y Prestadores hora."
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "HONORARIOS PROFESIONALES DOCTORES MEDICINA LABORAL",
+      "descripcion": "Honorarios abonados a profesionales de Salud, se realizada por medio de la rendición de Cuentas de Profesionales para el área de Medicina Laboral"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "HONORARIOS PROFESIONALES ODONTOLOGOS",
+      "descripcion": "Honorarios a odontologos que prestan servicios permanente en Idem, proviene de la Planilla de Odontologos Internos"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "INDEMNIZACIÓN IPS COSTOS",
+      "descripcion": "Pago a funcionarios permanentes en concepto liquidaciones de acuerdo a lo establecido en el Codigo Laboiral."
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "INDEMNIZACIÓN PRESTADORES COSTOS",
+      "descripcion": "Honorarios abonado a Colaboradores concepto de liquidaciones"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "PREAVISO IPS COSTOS",
+      "descripcion": "Pago a funcionarios permanentes en concepto liquidaciones de acuerdo a lo establecido en el Codigo Laboiral."
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "PREAVISO PRESTADORES COSTOS",
+      "descripcion": "Honorarios abonado a Colaboradores concepto de liquidaciones"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "SUELDOS Y JORNALES OPERATIVOS",
+      "descripcion": "Se registran los sueldos de los Médicos, Choferes, Paramédicos del área de Emergencias. Salario Fijo Gestor de Cobranzas, Cobradores del área de Servicios, Salarios Fijos de Técnico en prótesis y supervisor técnico del Laboratorio Denpro y los salarios del profesional de estética y asistente dental, proviene de la Planilla de IPS (Fijo + Comisiones + Hs)"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "VACACIONES IPS COSTOS",
+      "descripcion": "Pago a funcionarios permanentes en concepto de vacaciones legales (Se utiliza en caso de liquidaciones)"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SALARIOS/HONORARIOS-COSTOS",
+      "cuenta_concepto": "VACACIONES PRESTADORES COSTOS",
+      "descripcion": "Honorarios abonado a Colaboradores concepto de vacaciones  (Se utiliza en caso de liquidaciones)"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SERVICIOS - COSTOS",
+      "cuenta_concepto": "SERVICIOS EXTERNOS - MEDICINA LABORAL",
+      "descripcion": "Se registra los analisis y test para los procesos Preocupacionales y Ocupacionales Laborales"
+    },
+    {
+      "grupo_epem": "COSTOS",
+      "rubro": "SERVICIOS - COSTOS",
+      "cuenta_concepto": "TEST RAPIDO PCR",
+      "descripcion": null
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "ALQUILERES",
+      "cuenta_concepto": "ALQUILERES PAGADOS",
+      "descripcion": "Alquiler de las Sucursales de Luque y San Lorenzo, abonados a Martin Zurbriggen"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "GASTOS VARIOS",
+      "cuenta_concepto": "ARTICULOS DE FERRETERIA Y ELECTRIDAD",
+      "descripcion": "Compras menores de florescentes, focos, cableados para mantenimiento edilicio de casa matriz y sucursales"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "GASTOS VARIOS",
+      "cuenta_concepto": "DONACIONES Y CONTRIBUCIONES",
+      "descripcion": "Se registran las donaciones efectuadas por las diferentes unidades de negocios"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "GASTOS VARIOS",
+      "cuenta_concepto": "FLETES Y ENCOMIENDAS",
+      "descripcion": "Se registran los pagos efectuados por traslados bienes y la correspondencia entre sucursales"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "GASTOS VARIOS",
+      "cuenta_concepto": "GASTOS DE CAFETERIA",
+      "descripcion": "Registra el servicio de máquina expendedora de cafetería en sucursal brasilia"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "GASTOS VARIOS",
+      "cuenta_concepto": "GASTOS DE CONSUMICION",
+      "descripcion": "Comprende a gastos por refrigerios al área de Call Ventas, reuniones y capacitaciones."
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "GASTOS VARIOS",
+      "cuenta_concepto": "GASTOS DE LIMPIEZA",
+      "descripcion": "Se registra la compra de prodcutos de limpieza"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "GASTOS VARIOS",
+      "cuenta_concepto": "GASTOS DE REPRESENTACION",
+      "descripcion": "Se registran los importes correspondientes a regalos y presentes."
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "GASTOS VARIOS",
+      "cuenta_concepto": "GASTOS DE SORTEOS Y PREMIOS",
+      "descripcion": null
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "GASTOS VARIOS",
+      "cuenta_concepto": "GASTOS MINIST. DEL TRABAJO",
+      "descripcion": "Tasas pagadas en el Ministerio del Trabajo"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "GASTOS VARIOS",
+      "cuenta_concepto": "GASTOS POR ESTACIONAMIENTO",
+      "descripcion": "Corresponde a los gastos pagados por estacionamiento de vehiculos"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "GASTOS VARIOS",
+      "cuenta_concepto": "GASTOS VARIOS",
+      "descripcion": "Compras menores de pilas, vasos y otros insumos"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "GASTOS VARIOS",
+      "cuenta_concepto": "GASTOS VARIOS ADMINISTRACION",
+      "descripcion": "Honorarios por contrato para cobertura de IPS, IVA de la empresa Puro Ventas EAS y gastos menores"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "GASTOS VARIOS",
+      "cuenta_concepto": "INSUMOS DE LIMPIEZA",
+      "descripcion": "Compras mensuales según pedidos realizados al Dpto. Compras"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "GASTOS VARIOS",
+      "cuenta_concepto": "INSUMOS P/MANTENIMIENTO OPERATIVO",
+      "descripcion": null
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "GASTOS VARIOS",
+      "cuenta_concepto": "SUSCRIPCIONES Y AFILIACIONES",
+      "descripcion": "Corresponde a gastos en suscripciones mensuales, ejemplo el pago efectuado a la Camara Prehospitalaria del Paraguay."
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "IMPUESTOS",
+      "cuenta_concepto": "IVA GASTOS",
+      "descripcion": "Comprende el iva que según la DDJJ mensual es deducible como gastos en el IRE"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "IMPUESTOS",
+      "cuenta_concepto": "PATENTES, IMPUESTOS Y TASAS",
+      "descripcion": "Registra el importe abonado en concepto de patente comercial, patente de rodados, habilitaciones en la Superintendencia de Salud y otros afines."
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "IT & COMUNICACIONES",
+      "cuenta_concepto": "ALQUILER DE FOTOCOPIADORA",
+      "descripcion": "Comprende el importe abonado por alquiler de impresoras según el contrato Leasing por cada sucursal"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "IT & COMUNICACIONES",
+      "cuenta_concepto": "GASTOS DE INFORMATICA",
+      "descripcion": "Registra el consumo mensual de Whatsapp, sistema web p/Directorio y compras en concepto de Memorias, Pen drive, cargadores y mouses."
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "IT & COMUNICACIONES",
+      "cuenta_concepto": "GASTOS DE INFORMATICA - TARJETA DE CREDITO",
+      "descripcion": "Corresponde al uso de servidor web, servidor de mail y licencias de Power Bi"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "IT & COMUNICACIONES",
+      "cuenta_concepto": "GASTOS DE INTERNET Y TV-CABLE",
+      "descripcion": "Servicio de internet de Rieder y Nucleo S.A."
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "IT & COMUNICACIONES",
+      "cuenta_concepto": "GASTOS DE TELEFONIAS CELULARES",
+      "descripcion": "Registra las facturas asociadas al uso de líneas corporativas s/Contrato con Claro y Nucleo S.A."
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "MANTENIMIENTO",
+      "cuenta_concepto": "COMBUSTIBLES Y LUBRICANTES ADMINISTRATIVO",
+      "descripcion": "Registra el consumo de combustible realizado por los jefes operativos, área de RR.HH. y gestiones administrativas"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "MANTENIMIENTO",
+      "cuenta_concepto": "MANTENIMIENTO Y REPARACION DE MOTOCICLETAS",
+      "descripcion": "Corresponde a la cobertura de gastos por concepto de mantenimiento mensual de las motos de los cobradores del área de Servicios y cerradores de ventas"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "MANTENIMIENTO",
+      "cuenta_concepto": "MANTENIMIENTO Y REPARACION DE MÓVILES",
+      "descripcion": "Está compuesto por los pagos realizados por reparaciónes, compra de repuestos y neumáticos del móvil de Servicios Generales"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "MANTENIMIENTO",
+      "cuenta_concepto": "REPARACION Y MANTENIMIENTO DE EQUIPOS",
+      "descripcion": "Registro de mantenimientos correctivos y preventivos a generadores, compresores, sillones dentales, equipos de estética."
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "MANTENIMIENTO",
+      "cuenta_concepto": "REPARACION Y MANTENIMIENTO DE INMUEBLES - INSTALACIONES",
+      "descripcion": "Comprende mejoras en infraestructura edilicia, pinturas, reparación de techos, arreglos."
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "MANTENIMIENTO",
+      "cuenta_concepto": "REPARACION Y MANTENIMIENTO DE MUEBLES Y EQUIPOS",
+      "descripcion": "Reparaciones de estantes con divisorias, puerta corrediza y cambios de cerraduras y otros."
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "MARKETING-GASTOS",
+      "cuenta_concepto": "GASTOS DE AFICHES, IMPRESOS Y VOLANTES",
+      "descripcion": "Comprende las compras en concepto de folletos, gif cards y stickers"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "MARKETING-GASTOS",
+      "cuenta_concepto": "GASTOS POR MARKETNG",
+      "descripcion": null
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "MARKETING-GASTOS",
+      "cuenta_concepto": "PUBLICIDAD Y PROPAGANDA",
+      "descripcion": "Impresiones de señaléticas, carteles de acrílico y banners roll up"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "AGASAJO AL PERSONAL",
+      "descripcion": "Registra las compras en concepto de agasajos por fechas festivas: (Día del trabajador, día de la madre, día del padre, aniversario y fin de año)"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "AGUINALDOS (GASTOS)",
+      "descripcion": "Registra la provisión mensual del 13er. Salario establecido en el código laboral según la planilla de Salarios IPS"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "APORTE PATRONAL IPS GASTOS",
+      "descripcion": "Registra la provisión mensual del 16,5% de aporte al Seguro Social realizado por el Empleador s/ planilla de salarios IPS"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "BONIFICACIÓN ANUAL PRESTADORES - GASTOS",
+      "descripcion": "Registra la provisión mensual del 13er. Honorarios según contrato de prestación de servicios del personal en nómina con factura."
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "BONIFICACION FAMILIAR",
+      "descripcion": "Regista la provisión del 5% sobre el salario mínimo en concepto de bonificación por cada hijo según planilla de Salarios IPS"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "CAPACITACION DEL PERSONAL",
+      "descripcion": "Registra los importes en concepto de cursos de capacitación (Curso TOE)"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "HONORARIOS ASESORIAS LABORALES Y RR.HH.",
+      "descripcion": null
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "HONORARIOS POR SERVICIOS COOTRAFE (GASTOS)",
+      "descripcion": "Planillas de Cootrafe Anticipo, Planilla de Cootrafe Liqudiación, Planilla de Cootrafe Mensual, Planilla de Cootrafe Complementos"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "HONORARIOS PROFESIONALES",
+      "descripcion": "Registra los honorarios de los colaboradores contratados en la modalidad de prestadores de servicios del área Gerencial, Coordinador de TH, Asesor Jurídico, Gestores de Cuenta y Área AdministrativaPlanilla de Prestadores fijos"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "HONORARIOS PROFESIONALES EXTERNOS",
+      "descripcion": "Honorarios de Asesoría Jurídica con Peña Gamba, Arquitectura y Gastos de Juicios"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "INDEMNIZACIÓN AL PERSONAL IPS- LIQUIDACION DE HABERES GASTOS",
+      "descripcion": "Pago a funcionarios permanentes en concepto liquidaciones de acuerdo a lo establecido en el Codigo Laboiral."
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "INDEMNIZACIÓN AL PERSONAL PRESTADORES- LIQUIDACION DE HABERES GASTOS",
+      "descripcion": "Honorarios abonado a Colaboradores concepto de liquidaciones"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "PAUTAJES REDES SOCIALES RR.HH.",
+      "descripcion": null
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "PREAVISO IPS GASTOS",
+      "descripcion": "Pago a funcionarios permanentes en concepto liquidaciones de acuerdo a lo establecido en el Codigo Laboiral."
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "PREAVISO PRESTADORES GASTOS",
+      "descripcion": "Honorarios abonado a Colaboradores concepto de liquidaciones"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "SUELDOS Y JORNALES",
+      "descripcion": "Se registran los sueldos de los Ejecutivos de Cuenta, área administrativa, tesorería, contabilidad, como así también las áreas de BI, TI, Talento Humano, RR.HH., ATC Estética - Odontología y servicios generales, inscriptas en IPS"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "UNIFORMES DEL PERSONAL",
+      "descripcion": "Comprende los importes de uniformes del área de Emergencias, Administración, ATC"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "VACACIONES AL PERSONAL IPS GASTOS",
+      "descripcion": "Pago a funcionarios permanentes en concepto de vacaciones legales (Se utiliza en caso de liquidaciones)"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SALARIOS/HONORARIOS-GASTOS",
+      "cuenta_concepto": "VACACIONES AL PERSONAL PRESTADORES GASTOS",
+      "descripcion": "Honorarios abonado a Colaboradores concepto de vacaciones  (Se utiliza en caso de liquidaciones)"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SERVICIOS - GASTOS",
+      "cuenta_concepto": "HONORARIOS ESCRIBANIA",
+      "descripcion": "Registra los honorarios por certificación de firmas, certificados de quiebras e interdicción, autenticación de documentos para trámites administrativos"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SERVICIOS - GASTOS",
+      "cuenta_concepto": "INFORMES Y REFERENCIAS COMERCIALES",
+      "descripcion": "Comprende el costo de la cuota mensual de consultas de informes."
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SERVICIOS - GASTOS",
+      "cuenta_concepto": "SEGUROS PAGADOS",
+      "descripcion": "Comprende pago de seguros de vida por cobertura de Emergencia y devengamiento de móviles"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SERVICIOS - GASTOS",
+      "cuenta_concepto": "SERVICIOS DE TERCEROS",
+      "descripcion": "Servicio de Ambulancia en la ciudad de Encarnación"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SERVICIOS - GASTOS",
+      "cuenta_concepto": "SISTEMAS DE SEGURIDAD",
+      "descripcion": "Cobertura de monitoreo en casa matriz y sucursales"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SERVICIOS BÁSICOS",
+      "cuenta_concepto": "AGUA, LUZ Y TELÉFONO",
+      "descripcion": "Comprende el consumo de luz, agua, telefonía, servicio de recolección de basura de las sucursales"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "SERVICIOS BÁSICOS",
+      "cuenta_concepto": "PAPELES, UTILES E IMPRESOS",
+      "descripcion": "Registra los pedidos de impresiones de talonarios, hojas membretadas, pedidos de resma de hojas y utiles de papelería"
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "VIÁTICO/MOVILIDAD",
+      "cuenta_concepto": "PASAJES Y PEAJES",
+      "descripcion": "Comprende los gastos realizados en concepto de pasajes, peajes MOPC y traslados según políticas establecidas."
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "VIÁTICO/MOVILIDAD",
+      "cuenta_concepto": "SERVICIOS TRASLADO DE PERSONAL",
+      "descripcion": null
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "VIÁTICO/MOVILIDAD",
+      "cuenta_concepto": "VIATICO Y MOVILIDAD GND",
+      "descripcion": "Comprende los gastos realizados en concepto de viáticos que por algún inconveniente eventual y justificado no poseen facturas."
+    },
+    {
+      "grupo_epem": "GASTOS",
+      "rubro": "VIÁTICO/MOVILIDAD",
+      "cuenta_concepto": "VIATICOS Y MOVILIDAD-GASTOS",
+      "descripcion": "Comprende los gastos realizados en concepto de viáticos según políticas establecidas, traslados para servicos Medina Laboral, y traslados autorizados a las Sucursales"
+    }
+  ]
+}

@@ -10,6 +10,13 @@ import {
 } from "@/config/analyticsFilterLayouts";
 import { useFilterLayoutConfig } from "@/components/filters/FilterLayoutConfigContext";
 
+/** Contrato estándar: panel principal + FAB comparten layout; auto-aplicar idle vive en el hook. */
+export {
+  useDashboardMainFilterAutoApply,
+  type DashboardMainFilterLayoutSlice,
+  type UseDashboardMainFilterAutoApplyParams,
+} from "@/hooks/useDashboardMainFilterAutoApply";
+
 export type DashboardFiltersLayoutProps = {
   sectionId: AnalyticsDashboardSectionId;
   /** Nodos por id de filtro; solo se renderizan los que existen en el layout y tienen slot. */

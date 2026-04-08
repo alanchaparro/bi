@@ -22,6 +22,15 @@ echo "  Reinicio limpio LAN: contenedores abajo, imagenes locales del proyecto (
 echo "  rebuild prod-lan sin cache, volumenes de datos NO se borran."
 echo ""
 
+if [[ ! -f .env ]]; then
+  fail "Falta .env en la raiz. Copie .env.example o ejecute ./iniciar.sh primero."
+fi
+
+step "1b" "Puerto HTTP para acceso LAN (LAN_HTTP_PORT en .env)..."
+# shellcheck source=scripts/lan_port_prompt.sh
+source "$SCRIPT_DIR/scripts/lan_port_prompt.sh"
+LAN_PORT="$(resolve_lan_http_port "$SCRIPT_DIR/.env")"
+
 step "2" "Bajando stack (todos los perfiles) y eliminando imagenes locales del proyecto..."
 docker compose --profile "*" down --remove-orphans --rmi local
 
@@ -37,12 +46,6 @@ docker compose --profile prod-lan up -d
 sleep 2
 step "6" "Listo."
 echo ""
-
-LAN_PORT="80"
-if [[ -f .env ]] && grep -qE '^[[:space:]]*LAN_HTTP_PORT=' .env; then
-  LAN_PORT="$(grep -E '^[[:space:]]*LAN_HTTP_PORT=' .env | head -1 | cut -d= -f2- | tr -d ' \r')"
-  [[ -z "${LAN_PORT:-}" ]] && LAN_PORT="80"
-fi
 
 if [[ "$LAN_PORT" == "80" ]]; then
   echo "  En este equipo: http://localhost/"

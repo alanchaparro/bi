@@ -5,6 +5,7 @@ import { ConfigurableUnFilter } from "../../components/filters/ConfigurableAnaly
 import {
   DashboardFiltersLayout,
   DashboardFloatingFiltersLayout,
+  useDashboardMainFilterAutoApply,
 } from "@/components/filters/DashboardFiltersLayout";
 import { useFilterLayoutConfig } from "@/components/filters/FilterLayoutConfigContext";
 import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
@@ -258,6 +259,46 @@ export function AnalisisAnualesView() {
     () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatApplied),
     [floatLayoutEff.floating, pickFloatApplied],
   );
+
+  const pickMainDraft = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case "un":
+          return filters.uns;
+        case "contract_year":
+          return filters.years;
+        case "contract_month_combo":
+          return filters.contractMonths;
+        default:
+          return [];
+      }
+    },
+    [filters],
+  );
+  const pickMainApplied = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case "un":
+          return appliedFilters.uns;
+        case "contract_year":
+          return appliedFilters.years;
+        case "contract_month_combo":
+          return appliedFilters.contractMonths;
+        default:
+          return [];
+      }
+    },
+    [appliedFilters],
+  );
+  useDashboardMainFilterAutoApply({
+    effective: floatLayoutEff,
+    pickDraft: pickMainDraft,
+    pickApplied: pickMainApplied,
+    onApply: () => void commitAndLoad(filters),
+    floatSidebarOpen: floatOpen,
+    applyDisabled: applying,
+    applying,
+  });
 
   const clearFilters = useCallback(() => {
     setFilters(EMPTY_FILTERS);

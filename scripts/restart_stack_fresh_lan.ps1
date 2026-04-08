@@ -8,7 +8,14 @@
   - Equivale a rebuild forzado + up prod-lan (LAN: nginx + API + front en un puerto).
   - Los volúmenes (p. ej. PostgreSQL) NO se borran.
   - Primera instalación: como mínimo bootstrap con start_one_click / INICIAR según docs.
+  - Puerto LAN: misma pregunta que INICIAR_LAN; use -LanPort 8088 para fijar sin preguntar.
 #>
+param(
+  [Parameter(HelpMessage = "Puerto en el host para nginx (prod-lan). 0 = preguntar o mantener .env")]
+  [ValidateRange(0, 65535)]
+  [int]$LanPort = 0
+)
+
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Join-Path $PSScriptRoot ".."
 Set-Location -Path $ProjectRoot
@@ -29,6 +36,15 @@ try {
 } catch {
   Write-Fail "Docker Compose V2 no esta disponible."
 }
+
+$envPath = Join-Path $ProjectRoot ".env"
+if (-not (Test-Path $envPath)) {
+  Write-Fail "Falta .env en la raiz. Copie .env.example o ejecute INICIAR.bat primero."
+}
+
+Write-Step "[1b] Puerto HTTP para acceso LAN (LAN_HTTP_PORT en .env)..."
+. (Join-Path $PSScriptRoot "lan_port_prompt.ps1")
+$script:LanHttpPortResolved = Resolve-LanHttpPort -EnvFilePath $envPath -LanPort $LanPort
 
 Write-Host ""
 Write-Host "  Reinicio limpio LAN: se detendran contenedores, se quitaran imagenes locales" -ForegroundColor Yellow
@@ -56,15 +72,7 @@ Start-Sleep -Seconds 2
 Write-Step "[6] Listo."
 Write-Host ""
 
-$lanPort = "80"
-$envPath = Join-Path $ProjectRoot ".env"
-if (Test-Path $envPath) {
-  $line = Get-Content -Path $envPath -Encoding UTF8 | Where-Object { $_ -match '^\s*LAN_HTTP_PORT\s*=' } | Select-Object -First 1
-  if ($line) {
-    $v = (($line -split "=", 2)[1]).Trim()
-    if ($v) { $lanPort = $v }
-  }
-}
+$lanPort = [string]$script:LanHttpPortResolved
 
 if ($lanPort -eq "80") {
   Write-Host "  En este equipo: http://localhost/" -ForegroundColor Green

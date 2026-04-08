@@ -12,6 +12,7 @@ import { FloatingQuickFilters } from '../../components/filters/FloatingQuickFilt
 import {
   DashboardFiltersLayout,
   DashboardFloatingFiltersLayout,
+  useDashboardMainFilterAutoApply,
 } from '@/components/filters/DashboardFiltersLayout'
 import { useFilterLayoutConfig } from '@/components/filters/FilterLayoutConfigContext'
 import {
@@ -489,6 +490,54 @@ export function AnalisisCobranzasCohorteView() {
     () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatApplied),
     [floatLayoutEff.floating, pickFloatApplied],
   )
+
+  const pickMainDraft = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case 'cobro_cutoff_month':
+          return filters.cutoffMonth ? [filters.cutoffMonth] : []
+        case 'un':
+          return filters.uns
+        case 'via_cobro':
+          return filters.vias
+        case 'categoria':
+          return filters.categorias
+        case 'supervisor':
+          return filters.supervisors
+        default:
+          return []
+      }
+    },
+    [filters],
+  )
+  const pickMainApplied = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case 'cobro_cutoff_month':
+          return appliedFilters.cutoffMonth ? [appliedFilters.cutoffMonth] : []
+        case 'un':
+          return appliedFilters.uns
+        case 'via_cobro':
+          return appliedFilters.vias
+        case 'categoria':
+          return appliedFilters.categorias
+        case 'supervisor':
+          return appliedFilters.supervisors
+        default:
+          return []
+      }
+    },
+    [appliedFilters],
+  )
+  useDashboardMainFilterAutoApply({
+    effective: floatLayoutEff,
+    pickDraft: pickMainDraft,
+    pickApplied: pickMainApplied,
+    onApply: () => void commitAndLoad(filters),
+    floatSidebarOpen: floatOpen,
+    applyDisabled: applying,
+    applying,
+  })
 
   const clearFilters = useCallback(() => {
     setFilters({

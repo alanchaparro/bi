@@ -10,6 +10,7 @@ import { FloatingQuickFilters } from '../../components/filters/FloatingQuickFilt
 import {
   DashboardFiltersLayout,
   DashboardFloatingFiltersLayout,
+  useDashboardMainFilterAutoApply,
 } from '@/components/filters/DashboardFiltersLayout'
 import { useFilterLayoutConfig } from '@/components/filters/FilterLayoutConfigContext'
 import {
@@ -910,6 +911,62 @@ export function AnalisisRendimientoView() {
     () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatApplied),
     [floatLayoutEff.floating, pickFloatApplied],
   )
+
+  const pickMainDraft = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case 'gestion_month':
+          return filters.gestionMonths
+        case 'un':
+          return filters.uns
+        case 'via_cobro':
+          return filters.viasCobro
+        case 'via_pago':
+          return filters.viasPago
+        case 'categoria':
+          return filters.categorias
+        case 'tramo':
+          return filters.tramos
+        case 'supervisor':
+          return filters.supervisors
+        default:
+          return []
+      }
+    },
+    [filters],
+  )
+  const pickMainApplied = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case 'gestion_month':
+          return appliedFilters.gestionMonths
+        case 'un':
+          return appliedFilters.uns
+        case 'via_cobro':
+          return appliedFilters.viasCobro
+        case 'via_pago':
+          return appliedFilters.viasPago
+        case 'categoria':
+          return appliedFilters.categorias
+        case 'tramo':
+          return appliedFilters.tramos
+        case 'supervisor':
+          return appliedFilters.supervisors
+        default:
+          return []
+      }
+    },
+    [appliedFilters],
+  )
+  useDashboardMainFilterAutoApply({
+    effective: floatLayoutEff,
+    pickDraft: pickMainDraft,
+    pickApplied: pickMainApplied,
+    onApply: () => void commitAndLoad(filters),
+    floatSidebarOpen: floatOpen,
+    applyDisabled: applying || loadingSummary,
+    applying: applying || loadingSummary,
+  })
 
   const clearFilters = useCallback(() => {
     const defaultMonth = options.defaultGestionMonth || options.gestionMonths?.[0] || ''

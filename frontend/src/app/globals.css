@@ -1131,6 +1131,12 @@ body {
     padding: 0.15rem 0 0.1rem 0.75rem;
     border-left: 1px solid
         color-mix(in srgb, var(--color-primary) 18%, transparent);
+    /* Muchos ítems (p. ej. Configuración): scroll interno en lugar de alargar toda la barra */
+    max-height: min(42vh, 320px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+    padding-right: 2px;
 }
 
 .dashboard-sidebar-sublink {

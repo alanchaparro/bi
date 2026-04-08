@@ -565,6 +565,9 @@ export type UserItem = {
   is_active: boolean;
   created_at?: string | null;
   updated_at?: string | null;
+  failed_attempts?: number;
+  blocked_until?: string | null;
+  is_login_locked?: boolean;
 };
 
 export async function listUsers(): Promise<{ users: UserItem[] }> {
@@ -592,6 +595,15 @@ export async function updateUser(
 ): Promise<UserItem> {
   const response = await api.put<UserItem>(`/brokers/users/${encodeURIComponent(username)}`, payload);
   return response.data;
+}
+
+export async function unlockAuthUser(username: string): Promise<UserItem> {
+  const response = await api.post<UserItem>(`/brokers/users/${encodeURIComponent(username)}/unlock`);
+  return response.data;
+}
+
+export async function deleteUser(username: string): Promise<void> {
+  await api.delete(`/brokers/users/${encodeURIComponent(username)}`);
 }
 
 export type RoleNavItemMeta = { id: string; label: string };

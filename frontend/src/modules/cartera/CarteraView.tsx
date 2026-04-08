@@ -13,6 +13,7 @@ import {
 import {
   DashboardFiltersLayout,
   DashboardFloatingFiltersLayout,
+  useDashboardMainFilterAutoApply,
 } from "@/components/filters/DashboardFiltersLayout";
 import { useFilterLayoutConfig } from "@/components/filters/FilterLayoutConfigContext";
 import { FloatingQuickFilters } from "../../components/filters/FloatingQuickFilters";
@@ -47,6 +48,27 @@ function gestionMonthRank(value: string): number {
   const y = Number(parts[1]);
   if (!Number.isFinite(m) || !Number.isFinite(y) || m < 1 || m > 12) return 0;
   return y * 100 + m;
+}
+
+function pickCarteraSlot(f: BrokersFilters, id: string): readonly string[] {
+  switch (id) {
+    case "gestion_month":
+      return f.months;
+    case "un":
+      return f.uns;
+    case "via_cobro":
+      return f.vias;
+    case "categoria":
+      return f.categorias;
+    case "tramo":
+      return f.tramos;
+    case "contract_year":
+      return f.years;
+    case "supervisor":
+      return f.supervisors;
+    default:
+      return [];
+  }
 }
 
 function filtersToCortePayload(next: BrokersFilters) {
@@ -409,6 +431,24 @@ export function CarteraView() {
     () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatApplied),
     [floatLayoutEff.floating, pickFloatApplied],
   );
+
+  const pickMainDraft = useCallback(
+    (id: string): readonly string[] => pickCarteraSlot(draftFilters, id),
+    [draftFilters],
+  );
+  const pickMainApplied = useCallback(
+    (id: string): readonly string[] => pickCarteraSlot(filters, id),
+    [filters],
+  );
+  useDashboardMainFilterAutoApply({
+    effective: floatLayoutEff,
+    pickDraft: pickMainDraft,
+    pickApplied: pickMainApplied,
+    onApply: () => void applyFilters(draftFilters),
+    floatSidebarOpen: floatOpen,
+    applyDisabled: loading,
+    applying: loading,
+  });
 
   const kpis = summary?.kpis;
   const totalCartera = Number(kpis?.total_cartera ?? 0);

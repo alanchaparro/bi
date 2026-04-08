@@ -1,4 +1,4 @@
-﻿import json
+import json
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.brokers import (
     AuditLog,
+    AuthSession,
     AuthUser,
+    AuthUserState,
     BrokersSupervisorScope,
     CarteraFact,
     CommissionRules,
@@ -182,6 +184,13 @@ def list_auth_users(db: Session) -> list[AuthUser]:
     return db.query(AuthUser).order_by(AuthUser.username.asc()).all()
 
 
+def auth_user_states_for_usernames(db: Session, usernames: list[str]) -> dict[str, AuthUserState]:
+    if not usernames:
+        return {}
+    rows = db.query(AuthUserState).filter(AuthUserState.username.in_(usernames)).all()
+    return {str(r.username): r for r in rows}
+
+
 def get_auth_user(db: Session, username: str) -> AuthUser | None:
     return db.query(AuthUser).filter(AuthUser.username == username).first()
 
@@ -227,6 +236,21 @@ def update_auth_user(
     db.refresh(row)
     add_audit(db, 'auth_users', 'update', actor, {'username': row.username, 'role': row.role, 'is_active': row.is_active})
     return row
+
+
+def delete_auth_user(db: Session, username: str, actor: str) -> None:
+    uname = str(username or '').strip().lower()
+    if not uname:
+        raise LookupError('Usuario no encontrado')
+    row = db.query(AuthUser).filter(AuthUser.username == uname).first()
+    if row is None:
+        raise LookupError('Usuario no encontrado')
+    db.query(AuthSession).filter(AuthSession.username == uname).delete()
+    db.query(AuthUserState).filter(AuthUserState.username == uname).delete()
+    db.query(UserPreference).filter(UserPreference.username == uname).delete()
+    db.delete(row)
+    db.commit()
+    add_audit(db, 'auth_users', 'delete', actor, {'username': uname})
 
 
 def get_mysql_connection(db: Session) -> dict:

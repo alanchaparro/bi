@@ -13,6 +13,7 @@ import { SegmentedControl } from "../../components/filters/SegmentedControl";
 import {
   DashboardFiltersLayout,
   DashboardFloatingFiltersLayout,
+  useDashboardMainFilterAutoApply,
 } from "@/components/filters/DashboardFiltersLayout";
 import { useFilterLayoutConfig } from "@/components/filters/FilterLayoutConfigContext";
 import {
@@ -165,6 +166,34 @@ const monthRank = (value: string) => {
   if (!Number.isFinite(month) || !Number.isFinite(year)) return 0;
   return year * 100 + month;
 };
+
+/** Cierre MM/YYYY = gestión − 1 mes (AGENTS.md). */
+function closeMonthFromGestionMmYyyy(gestionMmYyyy: string): string | null {
+  const r = monthRank(gestionMmYyyy);
+  if (!r) return null;
+  const year = Math.floor(r / 100);
+  const month = r % 100;
+  const previousMonthRank = month === 1 ? (year - 1) * 100 + 12 : year * 100 + (month - 1);
+  return monthFromRank(previousMonthRank) || null;
+}
+
+/** Un cierre por cada gestión seleccionada, solo si está en el catálogo de cierres. */
+function closeMonthsDerivedFromGestionSelection(
+  gestionMonths: readonly string[],
+  allowedCloses: readonly string[],
+): string[] {
+  const allow = new Set(allowedCloses);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const g of gestionMonths) {
+    const c = closeMonthFromGestionMmYyyy(g);
+    if (c && allow.has(c) && !seen.has(c)) {
+      seen.add(c);
+      out.push(c);
+    }
+  }
+  return out;
+}
 
 function readStoredOrder<T extends string>(storageKey: string, defaults: T[]): T[] {
   try {
@@ -520,6 +549,15 @@ export function AnalisisCarteraView() {
   const closeMonthFilterOptions = useMemo(() => sortMesGestionDesc(options.close_months), [options.close_months]);
   const hasCloseMonthsOption = useMemo(() => (options.close_months || []).length > 0, [options.close_months]);
 
+  /** Si el usuario no elige cierre, se infiere desde gestión (misma regla que KPI «último cierre»). */
+  const floatCloseEffective = useMemo(
+    () =>
+      floatClose.length > 0
+        ? floatClose
+        : closeMonthsDerivedFromGestionSelection(floatGestion, closeMonthFilterOptions),
+    [floatClose, floatGestion, closeMonthFilterOptions],
+  );
+
   const { doc: filterLayoutDoc } = useFilterLayoutConfig();
   const floatLayoutEff = useMemo(
     () => buildEffectiveFilterLayout("analisisCartera", [], filterLayoutDoc),
@@ -628,7 +666,11 @@ export function AnalisisCarteraView() {
   );
 
   const openFloatFilters = useCallback(() => {
-    setFloatClose(filters.closeMonths);
+    const syncedClose =
+      filters.closeMonths.length > 0
+        ? filters.closeMonths
+        : closeMonthsDerivedFromGestionSelection(filters.gestionMonths, closeMonthFilterOptions);
+    setFloatClose(syncedClose);
     setFloatGestion(filters.gestionMonths);
     setFloatUns(filters.uns);
     setFloatSupervisors(filters.supervisors);
@@ -638,6 +680,7 @@ export function AnalisisCarteraView() {
     setFloatCategorias(filters.categorias);
     setFloatOpen(true);
   }, [
+    closeMonthFilterOptions,
     filters.categorias,
     filters.closeMonths,
     filters.gestionMonths,
@@ -652,7 +695,7 @@ export function AnalisisCarteraView() {
     const fl = floatLayoutEff.floating;
     const next: Filters = { ...filters };
     if (fl.includes("gestion_month")) next.gestionMonths = floatGestion;
-    if (fl.includes("close_month")) next.closeMonths = floatClose;
+    if (fl.includes("close_month")) next.closeMonths = floatCloseEffective;
     if (fl.includes("un")) next.uns = floatUns;
     if (fl.includes("via_cobro")) next.vias = floatVias;
     if (fl.includes("categoria")) next.categorias = floatCategorias;
@@ -666,7 +709,7 @@ export function AnalisisCarteraView() {
     filters,
     floatLayoutEff.floating,
     floatCategorias,
-    floatClose,
+    floatCloseEffective,
     floatGestion,
     floatSupervisors,
     floatTramos,
@@ -681,7 +724,7 @@ export function AnalisisCarteraView() {
         case "gestion_month":
           return floatGestion;
         case "close_month":
-          return floatClose;
+          return floatCloseEffective;
         case "un":
           return floatUns;
         case "via_cobro":
@@ -700,7 +743,7 @@ export function AnalisisCarteraView() {
     },
     [
       floatGestion,
-      floatClose,
+      floatCloseEffective,
       floatUns,
       floatVias,
       floatCategorias,
@@ -745,6 +788,66 @@ export function AnalisisCarteraView() {
     () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatApplied),
     [floatLayoutEff.floating, pickFloatApplied],
   );
+
+  const pickMainDraft = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case "gestion_month":
+          return filters.gestionMonths;
+        case "close_month":
+          return filters.closeMonths;
+        case "un":
+          return filters.uns;
+        case "via_cobro":
+          return filters.vias;
+        case "categoria":
+          return filters.categorias;
+        case "tramo":
+          return filters.tramos;
+        case "contract_year":
+          return filters.years;
+        case "supervisor":
+          return filters.supervisors;
+        default:
+          return [];
+      }
+    },
+    [filters],
+  );
+  const pickMainApplied = useCallback(
+    (id: string): readonly string[] => {
+      switch (id) {
+        case "gestion_month":
+          return appliedFilters.gestionMonths;
+        case "close_month":
+          return appliedFilters.closeMonths;
+        case "un":
+          return appliedFilters.uns;
+        case "via_cobro":
+          return appliedFilters.vias;
+        case "categoria":
+          return appliedFilters.categorias;
+        case "tramo":
+          return appliedFilters.tramos;
+        case "contract_year":
+          return appliedFilters.years;
+        case "supervisor":
+          return appliedFilters.supervisors;
+        default:
+          return [];
+      }
+    },
+    [appliedFilters],
+  );
+  useDashboardMainFilterAutoApply({
+    effective: floatLayoutEff,
+    pickDraft: pickMainDraft,
+    pickApplied: pickMainApplied,
+    onApply: () => void applyFilters(),
+    floatSidebarOpen: floatOpen,
+    applyDisabled: loadingOptions || isApplyingFilters,
+    applying: isApplyingFilters,
+  });
 
   const expectedGestionMonths = useMemo(() => {
     if (appliedFilters.gestionMonths.length) {
@@ -1268,7 +1371,7 @@ export function AnalisisCarteraView() {
             isApplyingFilters ||
             (floatLayoutEff.floating.includes("close_month") &&
               hasCloseMonthsOption &&
-              !floatClose.length) ||
+              !floatCloseEffective.length) ||
             (floatLayoutEff.floating.includes("gestion_month") &&
               (!hasCloseMonthsOption || !floatLayoutEff.floating.includes("close_month")) &&
               !floatGestion.length)

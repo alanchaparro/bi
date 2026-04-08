@@ -121,12 +121,12 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
    - Linux/macOS: `reiniciar.sh`.
    - Flujo: down con `--rmi local`, `docker builder prune -f`, `build --pull --no-cache`, `up -d` perfil prod.
 3.1. **Reinicio limpio LAN (rebuild prod-lan)**:
-   - Windows: `REINICIAR_LAN.bat` -> `scripts/restart_stack_fresh_lan.ps1`.
-   - Linux/macOS: `reiniciar_lan.sh`.
+   - Windows: `REINICIAR_LAN.bat` -> `scripts/restart_stack_fresh_lan.ps1` (pregunta `LAN_HTTP_PORT` y lo guarda en `.env`, como `INICIAR_LAN`; opcional `REINICIAR_LAN.bat -LanPort 8088`).
+   - Linux/macOS: `reiniciar_lan.sh` (misma pregunta vía `scripts/lan_port_prompt.sh`).
    - Flujo: mismo que el reinicio prod, pero `build`/`up` contra el perfil `prod-lan` (nginx + API + front para LAN).
 4. **Acceso por red local (LAN), una sola URL**:
-   - Windows: `INICIAR_LAN.bat` (raiz) -> `scripts/start_lan.ps1` -> perfil Docker Compose `prod-lan` (nginx en `LAN_HTTP_PORT`, por defecto 80; front con API bajo `/api/v1` en el mismo origen).
-   - Linux/macOS: `iniciar_lan.sh` (raiz).
+   - Windows: `INICIAR_LAN.bat` -> `scripts/start_lan.ps1` -> perfil `prod-lan` (pregunta el puerto y guarda `LAN_HTTP_PORT` en `.env`; nginx publica ahí; front con API bajo `/api/v1` mismo origen). Sin pregunta: `INICIAR_LAN.bat -LanPort 8088`.
+   - Linux/macOS: `iniciar_lan.sh` (raiz; misma pregunta).
    - **Primera instalación**: conviene completar bootstrap con `INICIAR.bat` / `iniciar.sh` (perfil `prod`) al menos una vez; luego `INICIAR_LAN` puede sustituir el `up` diario para uso desde otras PCs en la LAN.
    - **Bajar todo**: igual que siempre — `DETENER.bat` / `detener.sh` (`--profile "*"`).
 5. Estos launchers son contrato operativo: cambios en compose/bootstrap/env no deben romperlos.

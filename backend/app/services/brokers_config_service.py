@@ -1,3 +1,4 @@
+from app.core.auth_refresh import clear_user_lockout
 from app.core.security import ROLE_PERMISSIONS, hash_password
 from app.core.config import settings
 from app.repositories import brokers_config
@@ -105,6 +106,31 @@ class BrokersConfigService:
     @staticmethod
     def list_auth_users(db):
         return brokers_config.list_auth_users(db)
+
+    @staticmethod
+    def list_auth_users_with_lock_state(db):
+        rows = brokers_config.list_auth_users(db)
+        names = [str(r.username) for r in rows]
+        states = brokers_config.auth_user_states_for_usernames(db, names)
+        return [(r, states.get(str(r.username))) for r in rows]
+
+    @staticmethod
+    def delete_auth_user(db, username: str, actor: str, actor_username: str | None = None):
+        uname = str(username or '').strip().lower()
+        actor_u = str(actor_username or '').strip().lower()
+        if actor_u and actor_u == uname:
+            raise ValueError('No puedes eliminar tu propio usuario')
+        brokers_config.delete_auth_user(db, uname, actor)
+
+    @staticmethod
+    def unlock_auth_user_lockout(db, username: str):
+        uname = str(username or '').strip().lower()
+        row = brokers_config.get_auth_user(db, uname)
+        if row is None:
+            raise LookupError('Usuario no encontrado')
+        clear_user_lockout(db, uname)
+        st = brokers_config.auth_user_states_for_usernames(db, [uname]).get(uname)
+        return row, st
 
     @staticmethod
     def create_auth_user(db, username: str, password: str, role: str, is_active: bool, actor: str):
