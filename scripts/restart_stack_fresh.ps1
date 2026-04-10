@@ -14,6 +14,17 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Join-Path $PSScriptRoot ".."
 Set-Location -Path $ProjectRoot
 
+function Get-EnvValue {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Key
+  )
+  if (-not (Test-Path $Path)) { return $null }
+  $line = Get-Content -Path $Path -Encoding UTF8 | Where-Object { $_ -match "^\s*$Key\s*=" } | Select-Object -First 1
+  if (-not $line) { return $null }
+  return (($line -split "=", 2)[1]).Trim()
+}
+
 function Write-Step { param($Message) Write-Host $Message -ForegroundColor Cyan }
 function Write-Fail { param($Message) Write-Host $Message -ForegroundColor Red; exit 1 }
 
@@ -53,9 +64,24 @@ Write-Step "[5] Levantando perfil prod..."
 docker compose --profile prod up -d
 if ($LASTEXITCODE -ne 0) { Write-Fail "Error: docker compose up fallo (codigo $LASTEXITCODE)." }
 
+Write-Step "[6] Sincronizando version de migraciones y aplicando pendientes..."
+# Fix known migration version mismatch: 0026_auth_role_nav_contratos -> 0026_auth_nav_config_subsections
+$envFile = Join-Path $ProjectRoot ".env"
+$pgUser = Get-EnvValue -Path $envFile -Key "POSTGRES_USER"
+$pgDb = Get-EnvValue -Path $envFile -Key "POSTGRES_DB"
+if ([string]::IsNullOrWhiteSpace($pgUser)) { $pgUser = "cobranzas_user" }
+if ([string]::IsNullOrWhiteSpace($pgDb)) { $pgDb = "cobranzas_prod" }
+
+$fixMigrationSql = "UPDATE alembic_version SET version_num = '0026_auth_nav_config_subsections' WHERE version_num = '0026_auth_role_nav_contratos';"
+docker compose --profile prod exec -T postgres psql -U $pgUser -d $pgDb -c $fixMigrationSql
+
+Write-Host "Ejecutando migraciones (alembic upgrade head)..."
+docker compose --profile prod run --rm -w /app/backend -e PYTHONPATH=/app/backend api-v1 alembic upgrade head
+if ($LASTEXITCODE -ne 0) { Write-Fail "Error: alembic upgrade head fallo (codigo $LASTEXITCODE)." }
+
 Start-Sleep -Seconds 2
-Write-Step "[6] Listo."
+Write-Step "[7] Listo."
 Write-Host ""
-Write-Host "  Stack prod en marcha. Frontend tipico: http://localhost:8080" -ForegroundColor Green
+Write-Host "  Stack prod en marcha y migraciones aplicadas. Frontend tipico: http://localhost:8080" -ForegroundColor Green
 Write-Host "  Si necesita bootstrap o admin one-shot, ejecute INICIAR.bat / iniciar.sh." -ForegroundColor DarkGray
 Write-Host ""

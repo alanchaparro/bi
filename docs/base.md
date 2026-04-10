@@ -164,6 +164,8 @@ Mismo grafo que §3.6. Extracto de **gastos** para el EBITDA (`margen − gastos
 
 Mismo grafo de tablas que §3.6. Tres bloques `UNION ALL` con discriminador `eerr_block` (`ventas`, `costos`, `gastos`). Salida adicional respecto a los extractos por separado: **`eerr_block`** (primera columna). Destino de carga: tabla Postgres **`eerr_fact`** vía sync batch dominio `eerr`.
 
+**Columna `is_tapo`** (agregada en migración `0027_eerr_fact_is_tapo`): identifica asientos contables de tratamientos odontológicos financiados por TAPO. Se calcula con un LEFT JOIN a una subconsulta derivada `tapo` que precalcula (`SELECT DISTINCT`) los `accounting_entry_id` de asientos provenientes de vouchers de Odontología (`enterprise_id = 1`) con al menos un detail `service_invoice_id = 2` (Tratamiento Odontológico) y un payment con método `financing = 1`. La expresión `CASE WHEN tapo.accounting_entry_id IS NOT NULL THEN 1 ELSE 0 END AS is_tapo` se **incluye en el `GROUP BY`** para que los montos TAPO y no-TAPO queden en filas separadas. Así, al filtrar "Sin TAPO" (`is_tapo = 0`), solo se excluye la porción financiada TAPO de cada cuenta, preservando la porción no-TAPO. Si se usara `MAX(is_tapo)` sin incluirlo en el GROUP BY, los montos se mezclarían y toda la fila quedaría marcada como TAPO, eliminando la cuenta completa al filtrar. **Clave única de negocio** (migración `0028_eerr_fact_unique_key_is_tapo`): `is_tapo` forma parte de la constraint única `ux_eerr_fact_business_key` junto con `(gestion_month, social_reason_id, accounting_plan_id, eerr_block)`. Sin `is_tapo` en la clave, el upsert ON CONFLICT sobreescribiría la fila `is_tapo=0` con la `is_tapo=1` (o viceversa) para la misma cuenta, anulando la separación del GROUP BY. El filtro UI (`exclude_tapo`) excluye filas con `is_tapo = TRUE` del resultado; la API pasa el flag al backend que filtra `EerrFact.is_tapo == False` cuando está activo. El agregado `eerr_monthly_agg` no tiene esta columna, por lo que el backend hace fallback directo a `eerr_fact` cuando el filtro TAPO está activo.
+
 Los `WHERE` por bloque son equivalentes al legado `IF(accounting_types.status = 1 AND accounting_types.type = N, 1, 0) = 1` con umbral de año alineado en los tres bloques: **`YEAR(accounting_entries.date) >= 2020`**. En cada bloque se aplica además la exclusión GESE descrita en §3.6 (`-- @include sql/common/eerr_exclude_mayor_cuenta_gese.sql`).
 
 **Modelo de dimensiones (estado actual vs cobranzas/cartera):** no hay tablas `dim_*` dedicadas para EERR. El hecho **`eerr_fact`** lleva **desnormalizado** `empresa`, `mayor`, `cuenta`, `social_reason_id`, `accounting_plan_id` en el grano del sync (una fila por clave de negocio mes + razón social + plan + bloque). Es el mismo patrón “fact como vista analítica” que otros dominios antes de introducir agregados.
@@ -367,6 +369,12 @@ Para repetir la extracción sin guardar la contraseña en el historial del shell
 
 Genera `epem_mysql_verified_YYYY-MM-DD.md` y `epem_mysql_all_fks_YYYY-MM-DD.tsv` en `archive-md-no-canonico/docs/archive/`. La clave solo se escribe en un archivo temporal consumido por `docker --env-file` (no queda en los anexos). El cliente usa `--protocol=TCP` para que `localhost` no intente socket Unix dentro del contenedor. `MYSQL_HOST` debe ser alcanzable **desde Docker** (IP LAN del servidor MySQL, o `host.docker.internal` si el motor corre en el mismo PC que Docker Desktop).
 
+**Guía completa para agentes (todas las tablas, columnas, PK y FK):** desde la raíz del repo, con `MYSQL_*` en `.env` y red hasta el servidor:
+
+`python scripts/mysql_schema_to_agent_guide.py`
+
+Escribe `docs/agents/mysql-epem-schema-agent-guide.md` (regenerable; no incluye credenciales). Útil cuando se necesita el catálogo entero del esquema; para el subconjunto núcleo v2 siguen siendo preferibles los anexos FK anteriores y la sección 3 de este documento.
+
 ---
 
 ## 8. Índice rápido “necesito…”
@@ -381,6 +389,7 @@ Genera `epem_mysql_verified_YYYY-MM-DD.md` y `epem_mysql_all_fks_YYYY-MM-DD.tsv`
 | Arquitectura aggs/MV | `archive-md-no-canonico/docs/dwh-v2-target-architecture.md` |
 | Código que elige archivo SQL | `backend/app/services/sync_extractors.py` |
 | FKs MySQL `epem` ya volcadas (tablas v2) | `archive-md-no-canonico/docs/archive/epem_mysql_verified_2026-03-28.md` |
+| Esquema MySQL completo (agentes: tablas/columnas/FK) | Regenerar con `python scripts/mysql_schema_to_agent_guide.py` → `docs/agents/mysql-epem-schema-agent-guide.md` |
 | Significado de **enteros/códigos** y columnas núcleo `epem` | `base.md` §10–§11 y **Apéndice A** |
 
 ---

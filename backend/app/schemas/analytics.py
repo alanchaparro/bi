@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, field_validator
 def _is_month(v: str) -> bool:
     if not isinstance(v, str):
         return False
-    parts = v.split('/')
+    parts = v.split("/")
     if len(parts) != 2:
         return False
     m, y = parts
@@ -23,25 +23,25 @@ class AnalyticsFilters(BaseModel):
     supervisor: list[str] = Field(default_factory=list)
     tramo: list[str] = Field(default_factory=list)
 
-    @field_validator('gestion_month', 'contract_month', 'close_month')
+    @field_validator("gestion_month", "contract_month", "close_month")
     @classmethod
     def validate_months(cls, values: list[str]):
         for v in values:
             if not _is_month(v):
-                raise ValueError(f'mes inválido: {v}')
+                raise ValueError(f"mes inválido: {v}")
         return values
 
-    @field_validator('anio')
+    @field_validator("anio")
     @classmethod
     def validate_years(cls, values: list[str]):
         for v in values:
             if not (str(v).isdigit() and len(str(v)) == 4):
-                raise ValueError(f'año inválido: {v}')
+                raise ValueError(f"año inválido: {v}")
         return values
 
 
 class ExportRequest(BaseModel):
-    format: str | None = Field(default=None, pattern='^(csv|pdf)$')
+    format: str | None = Field(default=None, pattern="^(csv|pdf)$")
     endpoint: str = Field(min_length=3, max_length=64)
     filters: AnalyticsFilters = Field(default_factory=AnalyticsFilters)
 
@@ -88,13 +88,13 @@ class CobranzasCohorteIn(BaseModel):
     categoria: list[str] = Field(default_factory=list)
     supervisor: list[str] = Field(default_factory=list)
 
-    @field_validator('cutoff_month')
+    @field_validator("cutoff_month")
     @classmethod
     def validate_cutoff_month(cls, value: str | None):
-        if value is None or value == '':
+        if value is None or value == "":
             return None
         if not _is_month(value):
-            raise ValueError(f'mes inválido: {value}')
+            raise ValueError(f"mes inválido: {value}")
         return value
 
 
@@ -111,38 +111,46 @@ class CobranzasCohorteFirstPaintIn(CobranzasCohorteIn):
 class CobranzasCohorteDetailIn(CobranzasCohorteIn):
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=24, ge=1, le=120)
-    sort_by: str = Field(default='sale_month', pattern='^(sale_month|cobrado|deberia|pagaron)$')
-    sort_dir: str = Field(default='asc', pattern='^(asc|desc)$')
+    sort_by: str = Field(
+        default="sale_month", pattern="^(sale_month|cobrado|deberia|pagaron)$"
+    )
+    sort_dir: str = Field(default="asc", pattern="^(asc|desc)$")
 
 
 class CobranzasCohorteOrphanDetailIn(CobranzasCohorteIn):
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=50, ge=1, le=500)
-    sort_by: str = Field(default='cobrado', pattern='^(cobrado|contract_id|transacciones|un)$')
-    sort_dir: str = Field(default='desc', pattern='^(asc|desc)$')
+    sort_by: str = Field(
+        default="cobrado", pattern="^(cobrado|contract_id|transacciones|un)$"
+    )
+    sort_dir: str = Field(default="desc", pattern="^(asc|desc)$")
 
 
 class EerrV2In(BaseModel):
     gestion_month: list[str] = Field(default_factory=list)
     eerr_block: list[str] = Field(default_factory=list)
     social_reason_id: list[str] = Field(default_factory=list)
+    exclude_tapo: bool = Field(
+        default=False,
+        description="Excluir tratamientos odontológicos financiados por TAPO",
+    )
 
-    @field_validator('gestion_month')
+    @field_validator("gestion_month")
     @classmethod
     def validate_gestion_months(cls, values: list[str]):
         for v in values:
             if not _is_month(v):
-                raise ValueError(f'mes inválido: {v}')
+                raise ValueError(f"mes inválido: {v}")
         return values
 
-    @field_validator('eerr_block')
+    @field_validator("eerr_block")
     @classmethod
     def validate_blocks(cls, values: list[str]):
-        allowed = {'ventas', 'costos', 'gastos'}
+        allowed = {"ventas", "costos", "gastos"}
         out: list[str] = []
         for v in values:
             n = str(v).strip().lower()
             if n not in allowed:
-                raise ValueError(f'bloque EERR inválido: {v}')
+                raise ValueError(f"bloque EERR inválido: {v}")
             out.append(n)
         return out

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Card, Table, Tabs } from '@heroui/react'
+import { Button, Card, Chip, Label, ListBox, Select, Slider, Table, Tabs } from '@heroui/react'
 import { ActiveFilterChips, type FilterChip } from '../../components/filters/ActiveFilterChips'
 import { MultiSelectFilter } from '../../components/filters/MultiSelectFilter'
 import {
@@ -7,7 +7,6 @@ import {
   ConfigurableUnFilter,
   ConfigurableViaFilter,
 } from '../../components/filters/ConfigurableAnalyticsFilters'
-import { STRING_SELECT_TRIGGER_ANALYTICS, StringSelect } from '../../components/filters/StringSelect'
 import { FloatingQuickFilters } from '../../components/filters/FloatingQuickFilters'
 import {
   DashboardFiltersLayout,
@@ -43,6 +42,12 @@ import {
 import { getApiErrorMessage } from '../../shared/apiErrors'
 import { sortMesGestionDesc } from '../../shared/sortMesGestionOptions'
 import { formatCount, formatGsFull } from '../../shared/formatters'
+import {
+  distinctYearsFromMonthOptions,
+  expandGestionForYears,
+  monthShortEs,
+  parseGestionMonth,
+} from '@/modules/eerr/eerrGestionRange'
 
 type Filters = {
   cutoffMonth: string
@@ -175,6 +180,154 @@ function CohorteKpiIcon({ icon }: { icon: CohorteKpiIconId }) {
 
 const pct = (v: number) => `${(Number(v || 0) * 100).toFixed(1)}%`
 
+/** Mes de corte más reciente (mm/yyyy) dentro del rectángulo año × mes calendario y opciones disponibles. */
+function resolveLatestCutoffInRectangle(
+  years: number[],
+  monthRange: [number, number],
+  cutoffOptions: string[],
+): string {
+  if (!cutoffOptions.length || !years.length) return ''
+  const expanded = expandGestionForYears(years, monthRange[0], monthRange[1])
+  const hit = expanded.filter((x) => cutoffOptions.includes(x))
+  if (!hit.length) return sortMesGestionDesc(cutoffOptions)[0] ?? ''
+  return sortMesGestionDesc(hit)[0] ?? ''
+}
+
+function CobranzasCohorteCutoffRangeControl({
+  cutoffOptions,
+  cohorteYears,
+  selectedYears,
+  onSelectedYearsChange,
+  monthRange,
+  onMonthRangeChange,
+}: {
+  cutoffOptions: string[]
+  cohorteYears: number[]
+  selectedYears: number[]
+  onSelectedYearsChange: (years: number[]) => void
+  monthRange: [number, number]
+  onMonthRangeChange: (r: [number, number]) => void
+}) {
+  const yearTriggerSummary = useMemo(() => {
+    const sorted = [...selectedYears].sort((a, b) => a - b)
+    const isAll =
+      cohorteYears.length > 0 &&
+      sorted.length === cohorteYears.length &&
+      cohorteYears.every((y) => sorted.includes(y))
+    return { sorted, isAll }
+  }, [selectedYears, cohorteYears])
+
+  if (!cutoffOptions.length) {
+    return <p className="text-sm text-[var(--color-text-muted)]" role="status">Sin meses de cobro disponibles.</p>
+  }
+
+  return (
+    <div className="eerr-gestion-range-wrap w-full min-w-0">
+      <p className="text-[11px] text-[var(--color-text-muted)] mb-3 leading-snug opacity-90">
+        Elegí uno o más años y el rango de mes calendario del corte. La consulta usa el mes de cobro{" "}
+        <strong>más reciente</strong> del rango que exista en datos (un solo corte por request, como la API v2).
+      </p>
+      <div className="flex flex-col gap-5 w-full min-w-0">
+        <Select
+          className="eerr-year-multi-select w-full min-w-0"
+          selectionMode="multiple"
+          variant="secondary"
+          fullWidth
+          placeholder={cohorteYears.length ? 'Seleccionar años' : 'Sin años en opciones'}
+          isDisabled={cohorteYears.length === 0}
+          value={selectedYears.map(String)}
+          onChange={(keys) => {
+            const raw = keys == null ? [] : [...keys]
+            const nums = raw
+              .map((k) => parseInt(String(k), 10))
+              .filter((n) => Number.isFinite(n) && cohorteYears.includes(n))
+            const next =
+              nums.length > 0 ? [...new Set(nums)].sort((a, b) => a - b) : [...cohorteYears]
+            onSelectedYearsChange(next)
+          }}
+          aria-label="Años del mes de cobro (multiselección)"
+        >
+          <Label className="text-sm font-medium">Año (uno o varios)</Label>
+          <Select.Trigger>
+            <Select.Value>
+              {({ isPlaceholder }) => {
+                if (isPlaceholder) return null
+                const { sorted, isAll } = yearTriggerSummary
+                if (sorted.length === 0) return null
+                if (isAll) {
+                  const lo = cohorteYears[0]
+                  const hi = cohorteYears[cohorteYears.length - 1]
+                  return (
+                    <span className="text-sm font-medium leading-snug">
+                      {lo === hi ? String(lo) : `Todos (${lo}–${hi})`}
+                    </span>
+                  )
+                }
+                if (sorted.length <= 4) {
+                  return sorted.map((y) => (
+                    <Chip key={y} size="sm" variant="soft" color="accent" className="text-xs font-medium">
+                      {y}
+                    </Chip>
+                  ))
+                }
+                return (
+                  <span className="text-sm leading-snug">
+                    {sorted.slice(0, 3).join(', ')}
+                    <span className="text-field-placeholder"> · +{sorted.length - 3}</span>
+                  </span>
+                )
+              }}
+            </Select.Value>
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover placement="bottom start" className="eerr-year-select-popover z-[200]">
+            <ListBox className="eerr-year-listbox">
+              {cohorteYears.map((y) => (
+                <ListBox.Item key={y} id={String(y)} textValue={String(y)}>
+                  <Label className="flex-1 text-sm font-normal tabular-nums">{y}</Label>
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
+        </Select>
+        <Slider
+          className="w-full min-w-0"
+          minValue={1}
+          maxValue={12}
+          step={1}
+          value={monthRange}
+          onChange={(v) => {
+            const raw = Array.isArray(v) ? v : [v, v]
+            const a = Math.round(Number(raw[0]))
+            const b = Math.round(Number(raw[1]))
+            const lo = Math.min(a, b)
+            const hi = Math.max(a, b)
+            onMonthRangeChange([lo, hi] as [number, number])
+          }}
+        >
+          <Label className="text-sm font-medium text-[var(--color-text)]">Mes de cobro (desde – hasta)</Label>
+          <Slider.Output className="text-sm text-[var(--color-text-muted)] mb-1">
+            {({ state }) =>
+              `${monthShortEs(Math.min(state.values[0], state.values[1]))} – ${monthShortEs(Math.max(state.values[0], state.values[1]))}`
+            }
+          </Slider.Output>
+          <Slider.Track>
+            {({ state }) => (
+              <>
+                <Slider.Fill />
+                {state.values.map((_, i) => (
+                  <Slider.Thumb key={i} index={i} />
+                ))}
+              </>
+            )}
+          </Slider.Track>
+        </Slider>
+      </div>
+    </div>
+  )
+}
+
 const monthMinusOne = (mmYYYY: string | undefined | null): string => {
   const value = String(mmYYYY || '').trim()
   const match = /^(\d{1,2})\/(\d{4})$/.exec(value)
@@ -204,6 +357,10 @@ export function AnalisisCobranzasCohorteView() {
   const [floatVias, setFloatVias] = useState<string[]>([])
   const [floatCategorias, setFloatCategorias] = useState<string[]>([])
   const [floatSupervisors, setFloatSupervisors] = useState<string[]>([])
+  const [cohorteCutoffYears, setCohorteCutoffYears] = useState<number[]>([])
+  const [cohorteCutoffMonthRange, setCohorteCutoffMonthRange] = useState<[number, number]>([1, 12])
+  const [floatCohorteYears, setFloatCohorteYears] = useState<number[]>([])
+  const [floatCohorteMonthRange, setFloatCohorteMonthRange] = useState<[number, number]>([1, 12])
   const [cohorteTab, setCohorteTab] = useState<CohorteMainTab>('principal')
   const [orphanDetail, setOrphanDetail] = useState<CobranzasCohorteOrphanDetailResponse | null>(null)
   const [loadingOrphan, setLoadingOrphan] = useState(false)
@@ -228,6 +385,32 @@ export function AnalisisCobranzasCohorteView() {
       // ignore storage failures
     }
   }, [kpiOrder])
+
+  const cohorteYears = useMemo(
+    () => distinctYearsFromMonthOptions(options.cutoffMonths),
+    [options.cutoffMonths],
+  )
+
+  useEffect(() => {
+    if (loadingOptions || !options.cutoffMonths.length || !cohorteCutoffYears.length) return
+    const next = resolveLatestCutoffInRectangle(
+      cohorteCutoffYears,
+      cohorteCutoffMonthRange,
+      options.cutoffMonths,
+    )
+    if (!next) return
+    setFilters((f) => (f.cutoffMonth === next ? f : { ...f, cutoffMonth: next }))
+  }, [cohorteCutoffYears, cohorteCutoffMonthRange, options.cutoffMonths, loadingOptions])
+
+  useEffect(() => {
+    if (!floatOpen || !options.cutoffMonths.length || !floatCohorteYears.length) return
+    const co = resolveLatestCutoffInRectangle(
+      floatCohorteYears,
+      floatCohorteMonthRange,
+      options.cutoffMonths,
+    )
+    if (co) setFloatCutoff(co)
+  }, [floatOpen, floatCohorteYears, floatCohorteMonthRange, options.cutoffMonths])
 
   const loadFirstPaint = useCallback(async (next: Filters, withLoader = false) => {
     if (withLoader) setLoadingSummary(true)
@@ -264,9 +447,16 @@ export function AnalisisCobranzasCohorteView() {
         const fp0 = cohorteFreshnessKey(opts.meta)
         if (fp0) lastCohorteFreshnessRef.current = fp0
 
-        const cutoff = opts.default_cutoff || nextOptions.cutoffMonths[0] || ''
+        const ys = distinctYearsFromMonthOptions(nextOptions.cutoffMonths)
+        const initYears = ys.length ? ys : []
+        const initRange: [number, number] = [1, 12]
+        const resolved =
+          resolveLatestCutoffInRectangle(initYears, initRange, nextOptions.cutoffMonths) ||
+          opts.default_cutoff ||
+          nextOptions.cutoffMonths[0] ||
+          ''
         const nextFilters: Filters = {
-          cutoffMonth: cutoff,
+          cutoffMonth: resolved,
           uns: [],
           vias: [],
           categorias: [],
@@ -274,6 +464,10 @@ export function AnalisisCobranzasCohorteView() {
         }
 
         setOptions(nextOptions)
+        setCohorteCutoffYears(initYears)
+        setCohorteCutoffMonthRange(initRange)
+        setFloatCohorteYears(initYears)
+        setFloatCohorteMonthRange(initRange)
         setFilters(nextFilters)
         setAppliedFilters(nextFilters)
         setApplying(true)
@@ -312,23 +506,22 @@ export function AnalisisCobranzasCohorteView() {
 
   const openFloatFilters = useCallback(() => {
     setFloatCutoff(filters.cutoffMonth)
+    setFloatCohorteYears([...cohorteCutoffYears])
+    setFloatCohorteMonthRange([cohorteCutoffMonthRange[0], cohorteCutoffMonthRange[1]])
     setFloatUns(filters.uns)
     setFloatVias(filters.vias)
     setFloatCategorias(filters.categorias)
     setFloatSupervisors(filters.supervisors)
     setFloatOpen(true)
   }, [
+    cohorteCutoffMonthRange,
+    cohorteCutoffYears,
     filters.categorias,
     filters.cutoffMonth,
     filters.supervisors,
     filters.uns,
     filters.vias,
   ])
-
-  const cutoffMonthItems = useMemo(
-    () => options.cutoffMonths.map((m) => ({ id: m, label: m })),
-    [options.cutoffMonths],
-  )
 
   const { doc: filterLayoutDoc } = useFilterLayoutConfig()
   const floatLayoutEff = useMemo(
@@ -342,20 +535,19 @@ export function AnalisisCobranzasCohorteView() {
           <label className="input-label" id="float-cutoff-month-label">
             Mes de cobro
           </label>
-          {cutoffMonthItems.length > 0 ? (
-            <StringSelect
-              ui="dropdown"
-              labelId="float-cutoff-month-label"
-              items={cutoffMonthItems}
-              selectedKey={floatCutoff}
-              onSelectionChange={setFloatCutoff}
-              triggerClassName={STRING_SELECT_TRIGGER_ANALYTICS}
-            />
-          ) : (
-            <p className="text-sm text-[var(--color-text-muted)]" role="status">
-              Sin meses de cobro.
+          <CobranzasCohorteCutoffRangeControl
+            cutoffOptions={options.cutoffMonths}
+            cohorteYears={cohorteYears}
+            selectedYears={floatCohorteYears}
+            onSelectedYearsChange={setFloatCohorteYears}
+            monthRange={floatCohorteMonthRange}
+            onMonthRangeChange={setFloatCohorteMonthRange}
+          />
+          {floatCutoff ? (
+            <p className="text-[11px] text-[var(--color-text-muted)] mt-2" aria-live="polite">
+              Corte efectivo: <strong className="text-[var(--color-text)]">{floatCutoff}</strong>
             </p>
-          )}
+          ) : null}
         </div>
       ),
       un: (
@@ -401,8 +593,11 @@ export function AnalisisCobranzasCohorteView() {
       ),
     }),
     [
-      cutoffMonthItems,
+      cohorteYears,
+      floatCohorteMonthRange,
+      floatCohorteYears,
       floatCutoff,
+      options.cutoffMonths,
       options.uns,
       options.vias,
       options.categorias,
@@ -420,9 +615,21 @@ export function AnalisisCobranzasCohorteView() {
 
   const applyFloatFilters = useCallback(async () => {
     const fl = floatLayoutEff.floating
+    const coFromFloat =
+      fl.includes('cobro_cutoff_month') && options.cutoffMonths.length
+        ? resolveLatestCutoffInRectangle(
+            floatCohorteYears,
+            floatCohorteMonthRange,
+            options.cutoffMonths,
+          ) || floatCutoff
+        : filters.cutoffMonth
+    if (fl.includes('cobro_cutoff_month')) {
+      setCohorteCutoffYears([...floatCohorteYears])
+      setCohorteCutoffMonthRange([floatCohorteMonthRange[0], floatCohorteMonthRange[1]])
+    }
     const next: Filters = {
       ...filters,
-      cutoffMonth: fl.includes('cobro_cutoff_month') ? floatCutoff : filters.cutoffMonth,
+      cutoffMonth: fl.includes('cobro_cutoff_month') ? coFromFloat : filters.cutoffMonth,
       uns: fl.includes('un') ? floatUns : filters.uns,
       vias: fl.includes('via_cobro') ? floatVias : filters.vias,
       categorias: fl.includes('categoria') ? floatCategorias : filters.categorias,
@@ -433,12 +640,15 @@ export function AnalisisCobranzasCohorteView() {
   }, [
     commitAndLoad,
     filters,
-    floatLayoutEff.floating,
+    floatCohorteMonthRange,
+    floatCohorteYears,
     floatCategorias,
     floatCutoff,
+    floatLayoutEff.floating,
     floatSupervisors,
     floatUns,
     floatVias,
+    options.cutoffMonths,
   ])
 
   const pickFloatDraft = useCallback(
@@ -540,9 +750,16 @@ export function AnalisisCobranzasCohorteView() {
   })
 
   const clearFilters = useCallback(() => {
+    const ys = distinctYearsFromMonthOptions(options.cutoffMonths)
+    const years = ys.length ? ys : []
+    const range: [number, number] = [1, 12]
+    setCohorteCutoffYears(years)
+    setCohorteCutoffMonthRange(range)
+    const co =
+      resolveLatestCutoffInRectangle(years, range, options.cutoffMonths) || options.cutoffMonths?.[0] || ''
     setFilters({
       ...EMPTY_FILTERS,
-      cutoffMonth: options.cutoffMonths?.[0] ?? '',
+      cutoffMonth: co,
     })
   }, [options.cutoffMonths])
 
@@ -550,8 +767,15 @@ export function AnalisisCobranzasCohorteView() {
     try {
       setApplying(true)
       setError(null)
+      const ys = distinctYearsFromMonthOptions(options.cutoffMonths)
+      const years = ys.length ? ys : []
+      const range: [number, number] = [1, 12]
+      const co =
+        resolveLatestCutoffInRectangle(years, range, options.cutoffMonths) || options.cutoffMonths[0] || ''
+      setCohorteCutoffYears(years)
+      setCohorteCutoffMonthRange(range)
       const resetFilters: Filters = {
-        cutoffMonth: options.cutoffMonths[0] || '',
+        cutoffMonth: co,
         uns: [],
         vias: [],
         categorias: [],
@@ -633,6 +857,11 @@ export function AnalisisCobranzasCohorteView() {
             const fallback =
               opts.default_cutoff || nextOptions.cutoffMonths[0] || ''
             nextAf = { ...nextAf, cutoffMonth: fallback }
+            const p = parseGestionMonth(fallback)
+            if (p) {
+              setCohorteCutoffYears([p.y])
+              setCohorteCutoffMonthRange([1, p.m])
+            }
             appliedFiltersRef.current = nextAf
             setFilters((f) => ({ ...f, cutoffMonth: fallback }))
             setAppliedFilters(nextAf)
@@ -918,18 +1147,19 @@ export function AnalisisCobranzasCohorteView() {
                 cobro_cutoff_month: (
                   <div className="analysis-filter-control">
                     <label className="input-label" id="cutoff-month-label">Mes de cobro</label>
-                    {cutoffMonthItems.length > 0 ? (
-                      <StringSelect
-                        ui="dropdown"
-                        labelId="cutoff-month-label"
-                        items={cutoffMonthItems}
-                        selectedKey={filters.cutoffMonth}
-                        onSelectionChange={(id) => setFilters((prev) => ({ ...prev, cutoffMonth: id }))}
-                        triggerClassName={STRING_SELECT_TRIGGER_ANALYTICS}
-                      />
-                    ) : (
-                      <p className="text-sm text-[var(--color-text-muted)]" role="status">Sin meses de cobro disponibles.</p>
-                    )}
+                    <CobranzasCohorteCutoffRangeControl
+                      cutoffOptions={options.cutoffMonths}
+                      cohorteYears={cohorteYears}
+                      selectedYears={cohorteCutoffYears}
+                      onSelectedYearsChange={setCohorteCutoffYears}
+                      monthRange={cohorteCutoffMonthRange}
+                      onMonthRangeChange={setCohorteCutoffMonthRange}
+                    />
+                    {filters.cutoffMonth ? (
+                      <p className="text-[11px] text-[var(--color-text-muted)] mt-2" aria-live="polite">
+                        Corte efectivo: <strong className="text-[var(--color-text)]">{filters.cutoffMonth}</strong>
+                      </p>
+                    ) : null}
                   </div>
                 ),
                 via_cobro: (
@@ -976,7 +1206,9 @@ export function AnalisisCobranzasCohorteView() {
               }}
             />
             <div className="rendimiento-filter-hints" role="note" aria-label="Ayuda de filtros">
-              <span className="rendimiento-filter-hint">Mes de cobro define el corte consultado.</span>
+              <span className="rendimiento-filter-hint">
+                Años y rango de mes calendario eligen el corte; se consulta el mes de cobro más reciente del rango con datos.
+              </span>
               <span className="rendimiento-filter-hint">La cartera efectiva se alinea a gestion operativa.</span>
               <span className="rendimiento-filter-hint">Vía de cobro y categoría segmentan la cohorte activa.</span>
             </div>

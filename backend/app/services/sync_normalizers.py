@@ -16,7 +16,15 @@ from app.domain import (
     tramo_from_cuotas_vencidas,
 )
 
-BUSINESS_KEY_FIELDS = ["domain", "contract_id", "gestion_month", "supervisor", "un", "via", "tramo"]
+BUSINESS_KEY_FIELDS = [
+    "domain",
+    "contract_id",
+    "gestion_month",
+    "supervisor",
+    "un",
+    "via",
+    "tramo",
+]
 
 
 def _to_float(value: object) -> float:
@@ -55,7 +63,13 @@ def parse_date_key(value: object) -> str:
     text = str(value).strip()
     if not text:
         return ""
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S"):
+    for fmt in (
+        "%Y-%m-%d",
+        "%Y/%m/%d",
+        "%d/%m/%Y",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y/%m/%d %H:%M:%S",
+    ):
         try:
             return datetime.strptime(text, fmt).strftime("%Y-%m-%d")
         except ValueError:
@@ -76,7 +90,9 @@ def parse_iso_date(value: object) -> date | None:
 def _coerce_calendar_month_year(row: dict) -> tuple[int, int] | None:
     """Mes/Año del extracto EERR (y similares): MySQL puede devolver int, Decimal o float ('3.0' no pasa isdigit)."""
     month_raw = normalize_key(row, "Mes", "mes", "month", "MONTH", "Month")
-    year_raw = normalize_key(row, "Año", "AÃ±o", "anio", "year", "Year", "YEAR", "ANO", "Ano")
+    year_raw = normalize_key(
+        row, "Año", "AÃ±o", "anio", "year", "Year", "YEAR", "ANO", "Ano"
+    )
     if not month_raw or not year_raw:
         return None
     try:
@@ -102,9 +118,19 @@ def parse_payment_date(row: dict) -> date | None:
 
 
 def normalize_record(domain: str, row: dict, seq: int) -> dict:
-    contract_id = normalize_key(row, "contract_id", "id_contrato", "id") or f"{domain}_{seq}"
-    close_date = parse_date_key(normalize_key(row, "fecha_cierre", "closed_date", "close_date"))
-    close_month = normalize_month(close_date) if close_date else normalize_month(normalize_key(row, "fecha_cierre", "closed_date", "close_date"))
+    contract_id = (
+        normalize_key(row, "contract_id", "id_contrato", "id") or f"{domain}_{seq}"
+    )
+    close_date = parse_date_key(
+        normalize_key(row, "fecha_cierre", "closed_date", "close_date")
+    )
+    close_month = (
+        normalize_month(close_date)
+        if close_date
+        else normalize_month(
+            normalize_key(row, "fecha_cierre", "closed_date", "close_date")
+        )
+    )
     raw_gestion_month = normalize_key(row, "gestion_month")
     gestion_month = normalize_month(raw_gestion_month)
     if not gestion_month:
@@ -120,7 +146,16 @@ def normalize_record(domain: str, row: dict, seq: int) -> dict:
         if domain == "cartera" and close_month:
             gestion_month = add_months(close_month, 1)
         if not gestion_month:
-            gestion_month = normalize_month(normalize_key(row, "from_date", "date", "fecha_contrato", "fecha_cierre", "Actualizado_al"))
+            gestion_month = normalize_month(
+                normalize_key(
+                    row,
+                    "from_date",
+                    "date",
+                    "fecha_contrato",
+                    "fecha_cierre",
+                    "Actualizado_al",
+                )
+            )
     if domain == "cartera" and close_month:
         parsed_raw = normalize_month(raw_gestion_month) if raw_gestion_month else ""
         if not raw_gestion_month or parsed_raw == close_month:
@@ -140,12 +175,17 @@ def normalize_record(domain: str, row: dict, seq: int) -> dict:
         pl = normalize_key(row, "accounting_plan_id")
         contract_id = f"eerr|{gestion_month}|{sr}|{pl}|{blk}"[:64]
 
-    supervisor = normalize_key(row, "supervisor", "Supervisor", "Gestor", "Vendedor").upper() or "S/D"
+    supervisor = (
+        normalize_key(row, "supervisor", "Supervisor", "Gestor", "Vendedor").upper()
+        or "S/D"
+    )
     un = normalize_key(row, "un", "UN").upper() or "S/D"
     via = normalize_key(row, "via", "via_cobro", "via_de_cobro", "VP").upper() or "S/D"
 
     if domain == "cartera":
-        tramo = tramo_from_cuotas_vencidas(normalize_key(row, "cuotas_vencidas", "quotas_expirations", "tramo"))
+        tramo = tramo_from_cuotas_vencidas(
+            normalize_key(row, "cuotas_vencidas", "quotas_expirations", "tramo")
+        )
     else:
         tramo = tramo_from_cuotas_vencidas(normalize_key(row, "tramo"))
 
@@ -162,12 +202,27 @@ def normalize_record(domain: str, row: dict, seq: int) -> dict:
     analytics_paid_total = 0.0
 
     if domain == "cobranzas":
-        source_row_id = normalize_key(row, "payment_way_id", "account_payment_way_id", "apw_id", "id")
+        source_row_id = normalize_key(
+            row, "payment_way_id", "account_payment_way_id", "apw_id", "id"
+        )
         parsed_payment_date = parse_payment_date(row)
-        payment_date = parsed_payment_date.strftime("%Y-%m-%d") if parsed_payment_date else ""
-        payment_month = normalize_month(parsed_payment_date.strftime("%Y-%m-%d") if parsed_payment_date else "") or gestion_month
-        payment_year = int(payment_month[-4:]) if payment_month else datetime.now(timezone.utc).year
-        payment_amount = _to_float(normalize_key(row, "monto", "amount", "payment_amount"))
+        payment_date = (
+            parsed_payment_date.strftime("%Y-%m-%d") if parsed_payment_date else ""
+        )
+        payment_month = (
+            normalize_month(
+                parsed_payment_date.strftime("%Y-%m-%d") if parsed_payment_date else ""
+            )
+            or gestion_month
+        )
+        payment_year = (
+            int(payment_month[-4:])
+            if payment_month
+            else datetime.now(timezone.utc).year
+        )
+        payment_amount = _to_float(
+            normalize_key(row, "monto", "amount", "payment_amount")
+        )
         payment_via_class = normalize_payment_via_class(via)
         signature = (
             f"{source_row_id}|{contract_id}|{gestion_month}|{payment_date}|{payment_amount}|"
@@ -188,9 +243,25 @@ def normalize_record(domain: str, row: dict, seq: int) -> dict:
         signature = f"{gestion_month}|{sr}|{pl}|{blk}|{debit}|{credit}|{mayor}|{cuenta}"
         source_hash = hashlib.sha256(signature.encode("utf-8")).hexdigest()
     elif domain == "analytics":
-        analytics_contracts_total = max(1, _to_int(row.get("contracts_total") or row.get("contracts") or row.get("cantidad_contratos") or 1, 1))
-        analytics_debt_total = _to_float(row.get("debt_total") or row.get("debt") or row.get("total_saldo") or row.get("deberia"))
-        analytics_paid_total = _to_float(row.get("paid_total") or row.get("paid") or row.get("cobrado"))
+        analytics_contracts_total = max(
+            1,
+            _to_int(
+                row.get("contracts_total")
+                or row.get("contracts")
+                or row.get("cantidad_contratos")
+                or 1,
+                1,
+            ),
+        )
+        analytics_debt_total = _to_float(
+            row.get("debt_total")
+            or row.get("debt")
+            or row.get("total_saldo")
+            or row.get("deberia")
+        )
+        analytics_paid_total = _to_float(
+            row.get("paid_total") or row.get("paid") or row.get("cobrado")
+        )
         signature = (
             f"{contract_id}|{gestion_month}|{supervisor}|{un}|{via}|{tramo}|"
             f"{analytics_contracts_total}|{analytics_debt_total}|{analytics_paid_total}"
@@ -241,8 +312,12 @@ def fact_row_from_normalized(domain: str, normalized: dict) -> dict:
     gestion_month = str(normalized.get("gestion_month") or "")
     close_month = str(normalized.get("close_month") or "")
     if not normalize_month(close_month):
-        close_month = normalize_month(normalized.get("close_date") or "") or gestion_month
-    close_year = int(close_month[-4:]) if close_month else datetime.now(timezone.utc).year
+        close_month = (
+            normalize_month(normalized.get("close_date") or "") or gestion_month
+        )
+    close_year = (
+        int(close_month[-4:]) if close_month else datetime.now(timezone.utc).year
+    )
     close_date = parse_iso_date(normalized.get("close_date"))
     if close_date is None:
         try:
@@ -267,11 +342,19 @@ def fact_row_from_normalized(domain: str, normalized: dict) -> dict:
     if domain == "cartera":
         mc_raw = payload_coalesce_numeric(payload, "monto_cuota", "cuota")
         cuota_amount = _to_float(mc_raw)
-        mv_raw = payload_coalesce_numeric(payload, "monto_vencido", "expired_amount", "capital_vencido")
+        mv_raw = payload_coalesce_numeric(
+            payload, "monto_vencido", "expired_amount", "capital_vencido"
+        )
         monto_vencido_raw = _to_float(mv_raw)
-        cv_raw = payload_coalesce_numeric(payload, "cuotas_vencidas", "quotas_expirations")
-        plazo_cuotas = payload_coalesce_numeric(payload, "periodo_cuotas", "quotas_amount")
-        monto_vencido = monto_vencido_para_monto_a_cobrar(cv_raw, monto_vencido_raw, cuota_amount, plazo_cuotas)
+        cv_raw = payload_coalesce_numeric(
+            payload, "cuotas_vencidas", "quotas_expirations"
+        )
+        plazo_cuotas = payload_coalesce_numeric(
+            payload, "periodo_cuotas", "quotas_amount"
+        )
+        monto_vencido = monto_vencido_para_monto_a_cobrar(
+            cv_raw, monto_vencido_raw, cuota_amount, plazo_cuotas
+        )
         _ = monto_a_cobrar(monto_vencido, cuota_amount)
         return {
             **base,
@@ -280,17 +363,34 @@ def fact_row_from_normalized(domain: str, normalized: dict) -> dict:
             "close_year": close_year,
             "contract_date": parse_iso_date(payload.get("fecha_contrato")),
             "contract_month": month_from_any(payload.get("fecha_contrato")) or "",
-            "culm_date": parse_iso_date(payload.get("fecha_culminacion") or payload.get("fecha_culminación") or payload.get("fecha_fin") or payload.get("fecha_terminacion")),
-            "culm_month": month_from_any(payload.get("fecha_culminacion") or payload.get("fecha_culminación") or payload.get("fecha_fin") or payload.get("fecha_terminacion")) or "",
+            "culm_date": parse_iso_date(
+                payload.get("fecha_culminacion")
+                or payload.get("fecha_culminación")
+                or payload.get("fecha_fin")
+                or payload.get("fecha_terminacion")
+            ),
+            "culm_month": month_from_any(
+                payload.get("fecha_culminacion")
+                or payload.get("fecha_culminación")
+                or payload.get("fecha_fin")
+                or payload.get("fecha_terminacion")
+            )
+            or "",
             "cuota_amount": cuota_amount,
             "via_cobro": normalized["via"],
             "tramo": tramo,
             "category": category,
             "contracts_total": max(1, _to_int(payload.get("contracts_total") or 1, 1)),
             "monto_vencido": monto_vencido,
-            "total_saldo": _to_float(payload.get("total_saldo") or payload.get("total_residue")),
-            "capital_saldo": _to_float(payload.get("capital_saldo") or payload.get("capital_amount_residue")),
-            "capital_vencido": _to_float(payload.get("capital_vencido") or payload.get("expired_capital_amount")),
+            "total_saldo": _to_float(
+                payload.get("total_saldo") or payload.get("total_residue")
+            ),
+            "capital_saldo": _to_float(
+                payload.get("capital_saldo") or payload.get("capital_amount_residue")
+            ),
+            "capital_vencido": _to_float(
+                payload.get("capital_vencido") or payload.get("expired_capital_amount")
+            ),
         }
     if domain == "analytics":
         return {
@@ -305,11 +405,18 @@ def fact_row_from_normalized(domain: str, normalized: dict) -> dict:
         payment_date = parse_iso_date(normalized.get("payment_date"))
         if payment_date is None:
             try:
-                payment_date = datetime.strptime(f"01/{gestion_month}", "%d/%m/%Y").date()
+                payment_date = datetime.strptime(
+                    f"01/{gestion_month}", "%d/%m/%Y"
+                ).date()
             except ValueError:
                 payment_date = datetime.now(timezone.utc).date()
         payment_month = str(normalized.get("payment_month") or gestion_month)[:7]
-        payment_year = int(normalized.get("payment_year") or (payment_month[-4:] if payment_month else datetime.now(timezone.utc).year))
+        payment_year = int(
+            normalized.get("payment_year")
+            or (
+                payment_month[-4:] if payment_month else datetime.now(timezone.utc).year
+            )
+        )
         return {
             **base,
             "via": normalized["via"],
@@ -318,8 +425,12 @@ def fact_row_from_normalized(domain: str, normalized: dict) -> dict:
             "payment_date": payment_date,
             "payment_month": payment_month,
             "payment_year": payment_year,
-            "payment_amount": _to_float(normalized.get("payment_amount") or payload.get("monto")),
-            "payment_via_class": normalize_payment_via_class(normalized.get("payment_via_class") or normalized["via"]),
+            "payment_amount": _to_float(
+                normalized.get("payment_amount") or payload.get("monto")
+            ),
+            "payment_via_class": normalize_payment_via_class(
+                normalized.get("payment_via_class") or normalized["via"]
+            ),
         }
     if domain == "eerr":
         blk = str(payload.get("eerr_block") or "").strip().lower()
@@ -329,6 +440,10 @@ def fact_row_from_normalized(domain: str, normalized: dict) -> dict:
         cy = 0
         if len(gm) >= 7 and gm[-4:].isdigit():
             cy = int(gm[-4:])
+        # is_tapo: identifica asientos de tratamientos odontológicos financiados por TAPO
+        # Valor 1 = TRUE (es TAPO), 0 o NULL = FALSE (no es TAPO)
+        is_tapo_raw = payload.get("is_tapo")
+        is_tapo = bool(_to_int(is_tapo_raw))
         return {
             "gestion_month": gm,
             "calendar_year": cy,
@@ -339,6 +454,7 @@ def fact_row_from_normalized(domain: str, normalized: dict) -> dict:
             "group_type": _to_int(payload.get("group_type")),
             "mayor": str(payload.get("Mayor") or "")[:256],
             "cuenta": str(payload.get("Cuenta") or "")[:512],
+            "is_tapo": is_tapo,
             "debit_total": _to_float(payload.get("debit")),
             "credit_total": _to_float(payload.get("credit")),
             "source_hash": normalized["source_hash"],
@@ -356,10 +472,15 @@ def fact_row_from_normalized(domain: str, normalized: dict) -> dict:
 def source_dedupe_key(normalized: dict) -> tuple:
     domain = str(normalized.get("domain") or "").strip().lower()
     if domain == "cartera":
-        close_date = normalized.get("close_date") or normalized.get("gestion_month") or ""
+        close_date = (
+            normalized.get("close_date") or normalized.get("gestion_month") or ""
+        )
         return (normalized.get("domain"), normalized.get("contract_id"), close_date)
     if domain == "cobranzas":
-        return (normalized.get("domain"), normalized.get("source_row_id") or normalized.get("source_hash"))
+        return (
+            normalized.get("domain"),
+            normalized.get("source_row_id") or normalized.get("source_hash"),
+        )
     if domain == "eerr":
         return (normalized.get("domain"), normalized.get("contract_id"))
     return tuple(normalized[k] for k in BUSINESS_KEY_FIELDS)

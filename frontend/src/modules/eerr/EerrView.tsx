@@ -1,5 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, Chip, Label, ListBox, Select, Slider, Tabs } from "@heroui/react";
+import {
+  Button,
+  Card,
+  Chip,
+  Label,
+  ListBox,
+  Select,
+  Slider,
+  Tabs,
+} from "@heroui/react";
 import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
 import { AnalyticsMetaBadges } from "@/components/analytics/AnalyticsMetaBadges";
 import { MetricExplainer } from "@/components/analytics/MetricExplainer";
@@ -10,6 +19,7 @@ import {
   EerrMargenEbitdaLineChart,
 } from "@/components/analytics/EerrDashboardCharts";
 import { MultiSelectFilter } from "@/components/filters/MultiSelectFilter";
+import { SegmentedControl } from "@/components/filters/SegmentedControl";
 import { AnalysisFiltersSkeleton } from "@/components/feedback/AnalysisFiltersSkeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
@@ -58,6 +68,8 @@ type Filters = {
   monthRange: [number, number];
   blocks: string[];
   socialReasonIds: string[];
+  /** 'all' = incluir todo, 'exclude' = excluir tratamientos TAPO */
+  tapoMode: "all" | "exclude";
 };
 
 function defaultFiltersForMonths(months: string[]): Filters {
@@ -66,6 +78,7 @@ function defaultFiltersForMonths(months: string[]): Filters {
     monthRange: [1, 12],
     blocks: [],
     socialReasonIds: [],
+    tapoMode: "all",
   };
 }
 
@@ -128,7 +141,12 @@ function CostoGastoMayorBreakdownList({
   return (
     <ul className="space-y-1 text-xs max-h-64 overflow-y-auto pr-0.5">
       {lines.map((l) => (
-        <CostoGastoMayorRow key={`${l.eerr_block}-${l.mayor}`} line={l} rows={rows} totalVentas={totalVentas} />
+        <CostoGastoMayorRow
+          key={`${l.eerr_block}-${l.mayor}`}
+          line={l}
+          rows={rows}
+          totalVentas={totalVentas}
+        />
       ))}
     </ul>
   );
@@ -159,17 +177,30 @@ function CostoGastoMayorRow({
           isIconOnly
           className="shrink-0 h-7 w-7 min-w-7"
           aria-expanded={cuentasOpen}
-          aria-label={cuentasOpen ? "Ocultar cuentas del mayor" : "Ver cuentas del mayor"}
+          aria-label={
+            cuentasOpen ? "Ocultar cuentas del mayor" : "Ver cuentas del mayor"
+          }
           onPress={() => setCuentasOpen((v) => !v)}
         >
-          <span className="text-sm font-semibold leading-none">{cuentasOpen ? "−" : "+"}</span>
+          <span className="text-sm font-semibold leading-none">
+            {cuentasOpen ? "−" : "+"}
+          </span>
         </Button>
-        <span className="truncate min-w-0 flex-1 text-[var(--color-text-muted)]" title={line.mayor}>
+        <span
+          className="truncate min-w-0 flex-1 text-[var(--color-text-muted)]"
+          title={line.mayor}
+        >
           {line.mayor}
         </span>
-        <EerrGlosarioInfo kind="mayor" label={line.mayor} eerrBlock={line.eerr_block} />
+        <EerrGlosarioInfo
+          kind="mayor"
+          label={line.mayor}
+          eerrBlock={line.eerr_block}
+        />
         <span className="flex flex-col items-end gap-0.5 shrink-0 text-right sm:flex-row sm:items-baseline sm:gap-2">
-          <span className="font-mono tabular-nums">{formatGsFull(line.net)}</span>
+          <span className="font-mono tabular-nums">
+            {formatGsFull(line.net)}
+          </span>
           <span className="font-mono tabular-nums text-[11px] text-[var(--color-text-muted)] whitespace-nowrap">
             {formatPctDeVentas(line.net, totalVentas)} ventas
           </span>
@@ -179,9 +210,15 @@ function CostoGastoMayorRow({
         <ul className="mt-2 ml-8 space-y-1 border-l border-[var(--color-border-subtle)] pl-2 max-h-40 overflow-y-auto">
           {cuentas.length ? (
             cuentas.map((c) => (
-              <li key={`${line.mayor}||${c.cuenta}`} className="flex justify-between gap-2 text-[11px] items-baseline">
+              <li
+                key={`${line.mayor}||${c.cuenta}`}
+                className="flex justify-between gap-2 text-[11px] items-baseline"
+              >
                 <span className="flex items-baseline gap-1 min-w-0 flex-1">
-                  <span className="truncate text-[var(--color-text-muted)] min-w-0" title={c.cuenta}>
+                  <span
+                    className="truncate text-[var(--color-text-muted)] min-w-0"
+                    title={c.cuenta}
+                  >
                     {c.cuenta}
                   </span>
                   <EerrGlosarioInfo
@@ -192,7 +229,9 @@ function CostoGastoMayorRow({
                   />
                 </span>
                 <span className="flex flex-col items-end gap-0.5 shrink-0 sm:flex-row sm:items-baseline sm:gap-2">
-                  <span className="font-mono tabular-nums">{formatGsFull(c.net)}</span>
+                  <span className="font-mono tabular-nums">
+                    {formatGsFull(c.net)}
+                  </span>
                   <span className="font-mono tabular-nums text-[var(--color-text-muted)] whitespace-nowrap">
                     {formatPctDeVentas(c.net, totalVentas)}
                   </span>
@@ -200,7 +239,9 @@ function CostoGastoMayorRow({
               </li>
             ))
           ) : (
-            <li className="text-[11px] text-[var(--color-text-muted)]">Sin cuentas en el detalle.</li>
+            <li className="text-[11px] text-[var(--color-text-muted)]">
+              Sin cuentas en el detalle.
+            </li>
           )}
         </ul>
       ) : null}
@@ -218,7 +259,10 @@ function VentaMayorRow({
   net: number;
 }) {
   const [cuentasOpen, setCuentasOpen] = useState(false);
-  const cuentas = useMemo(() => aggregateCuentaNetByMayorVentas(rows, mayor), [rows, mayor]);
+  const cuentas = useMemo(
+    () => aggregateCuentaNetByMayorVentas(rows, mayor),
+    [rows, mayor],
+  );
   return (
     <li className="border-b border-[var(--color-border-subtle)] border-opacity-60 pb-1.5 last:border-0 last:pb-0">
       <div className="flex items-baseline gap-1.5 min-w-0">
@@ -229,29 +273,48 @@ function VentaMayorRow({
           isIconOnly
           className="shrink-0 h-7 w-7 min-w-7"
           aria-expanded={cuentasOpen}
-          aria-label={cuentasOpen ? "Ocultar cuentas del mayor" : "Ver cuentas del mayor"}
+          aria-label={
+            cuentasOpen ? "Ocultar cuentas del mayor" : "Ver cuentas del mayor"
+          }
           onPress={() => setCuentasOpen((v) => !v)}
         >
-          <span className="text-sm font-semibold leading-none">{cuentasOpen ? "−" : "+"}</span>
+          <span className="text-sm font-semibold leading-none">
+            {cuentasOpen ? "−" : "+"}
+          </span>
         </Button>
-        <span className="truncate min-w-0 flex-1 text-[var(--color-text-muted)]" title={mayor}>
+        <span
+          className="truncate min-w-0 flex-1 text-[var(--color-text-muted)]"
+          title={mayor}
+        >
           {mayor}
         </span>
-        <span className="font-mono tabular-nums shrink-0 text-right">{formatGsFull(net)}</span>
+        <span className="font-mono tabular-nums shrink-0 text-right">
+          {formatGsFull(net)}
+        </span>
       </div>
       {cuentasOpen ? (
         <ul className="mt-2 ml-8 space-y-1 border-l border-[var(--color-border-subtle)] pl-2 max-h-36 overflow-y-auto">
           {cuentas.length ? (
             cuentas.map((c) => (
-              <li key={`${mayor}||${c.cuenta}`} className="flex justify-between gap-2 text-[11px]">
-                <span className="truncate text-[var(--color-text-muted)]" title={c.cuenta}>
+              <li
+                key={`${mayor}||${c.cuenta}`}
+                className="flex justify-between gap-2 text-[11px]"
+              >
+                <span
+                  className="truncate text-[var(--color-text-muted)]"
+                  title={c.cuenta}
+                >
                   {c.cuenta}
                 </span>
-                <span className="font-mono tabular-nums shrink-0">{formatGsFull(c.net)}</span>
+                <span className="font-mono tabular-nums shrink-0">
+                  {formatGsFull(c.net)}
+                </span>
               </li>
             ))
           ) : (
-            <li className="text-[11px] text-[var(--color-text-muted)]">Sin cuentas en el detalle.</li>
+            <li className="text-[11px] text-[var(--color-text-muted)]">
+              Sin cuentas en el detalle.
+            </li>
           )}
         </ul>
       ) : null}
@@ -321,7 +384,9 @@ function EerrDetalleArbolTable({ tree }: { tree: EerrDetalleEmpresaNode[] }) {
                           isIconOnly
                           className="shrink-0 h-7 w-7 min-w-7"
                           aria-expanded={empExpanded}
-                          aria-label={empExpanded ? "Ocultar mayores" : "Ver mayores"}
+                          aria-label={
+                            empExpanded ? "Ocultar mayores" : "Ver mayores"
+                          }
                           onPress={() => toggleEmp(e.empresa)}
                         >
                           <span className="text-sm font-semibold leading-none">
@@ -329,7 +394,10 @@ function EerrDetalleArbolTable({ tree }: { tree: EerrDetalleEmpresaNode[] }) {
                           </span>
                         </Button>
                       ) : (
-                        <span className="inline-block w-7 shrink-0" aria-hidden />
+                        <span
+                          className="inline-block w-7 shrink-0"
+                          aria-hidden
+                        />
                       )}
                       <span className="truncate font-medium" title={e.empresa}>
                         {e.empresa}
@@ -338,7 +406,9 @@ function EerrDetalleArbolTable({ tree }: { tree: EerrDetalleEmpresaNode[] }) {
                   </td>
                   <td className="p-2 text-[var(--color-text-muted)]">—</td>
                   <td className="p-2 text-[var(--color-text-muted)]">—</td>
-                  <td className="p-2 text-right font-mono tabular-nums align-middle">{formatGsFull(e.saldo)}</td>
+                  <td className="p-2 text-right font-mono tabular-nums align-middle">
+                    {formatGsFull(e.saldo)}
+                  </td>
                 </tr>
                 {empExpanded
                   ? e.mayores.map((m) => {
@@ -359,7 +429,9 @@ function EerrDetalleArbolTable({ tree }: { tree: EerrDetalleEmpresaNode[] }) {
                                     isIconOnly
                                     className="shrink-0 h-7 w-7 min-w-7"
                                     aria-expanded={mExp}
-                                    aria-label={mExp ? "Ocultar cuentas" : "Ver cuentas"}
+                                    aria-label={
+                                      mExp ? "Ocultar cuentas" : "Ver cuentas"
+                                    }
                                     onPress={() => toggleMayor(mk)}
                                   >
                                     <span className="text-sm font-semibold leading-none">
@@ -367,29 +439,44 @@ function EerrDetalleArbolTable({ tree }: { tree: EerrDetalleEmpresaNode[] }) {
                                     </span>
                                   </Button>
                                 ) : (
-                                  <span className="inline-block w-7 shrink-0" aria-hidden />
+                                  <span
+                                    className="inline-block w-7 shrink-0"
+                                    aria-hidden
+                                  />
                                 )}
                                 <span className="flex items-center gap-1 min-w-0">
                                   <span className="truncate" title={m.mayor}>
                                     {m.mayor}
                                   </span>
-                                  <EerrGlosarioInfo kind="mayor" label={m.mayor} eerrBlock={null} />
+                                  <EerrGlosarioInfo
+                                    kind="mayor"
+                                    label={m.mayor}
+                                    eerrBlock={null}
+                                  />
                                 </span>
                               </div>
                             </td>
-                            <td className="p-2 text-[var(--color-text-muted)]">—</td>
+                            <td className="p-2 text-[var(--color-text-muted)]">
+                              —
+                            </td>
                             <td className="p-2 text-right font-mono tabular-nums align-middle">
                               {formatGsFull(m.saldo)}
                             </td>
                           </tr>
                           {mExp
                             ? m.cuentas.map((c) => (
-                                <tr key={`${mk}||${c.cuenta}`} className="eerr-detalle-row-cuenta">
+                                <tr
+                                  key={`${mk}||${c.cuenta}`}
+                                  className="eerr-detalle-row-cuenta"
+                                >
                                   <td className="p-2" />
                                   <td className="p-2" />
                                   <td className="p-2 align-middle">
                                     <div className="pl-6 ml-3 border-l border-[var(--color-border-subtle)] flex items-center gap-1 min-w-0">
-                                      <span className="text-xs truncate block min-w-0 flex-1" title={c.cuenta}>
+                                      <span
+                                        className="text-xs truncate block min-w-0 flex-1"
+                                        title={c.cuenta}
+                                      >
                                         {c.cuenta}
                                       </span>
                                       <EerrGlosarioInfo
@@ -432,7 +519,12 @@ function VentasMayorBreakdownList({ rows }: { rows: EerrV2SummaryRow[] }) {
   return (
     <ul className="space-y-1 text-xs max-h-64 overflow-y-auto pr-0.5">
       {lines.map((l) => (
-        <VentaMayorRow key={`ventas-${l.mayor}`} rows={rows} mayor={l.mayor} net={l.net} />
+        <VentaMayorRow
+          key={`ventas-${l.mayor}`}
+          rows={rows}
+          mayor={l.mayor}
+          net={l.net}
+        />
       ))}
     </ul>
   );
@@ -481,15 +573,21 @@ function KpiMayorExpandCard({
             size="sm"
             isIconOnly
             aria-expanded={open}
-            aria-label={open ? "Ocultar mayorización" : "Ver desglose por mayor"}
+            aria-label={
+              open ? "Ocultar mayorización" : "Ver desglose por mayor"
+            }
             className="shrink-0"
             onPress={() => setOpen((v) => !v)}
           >
-            <span className="text-base font-semibold leading-none w-4 text-center">{open ? "−" : "+"}</span>
+            <span className="text-base font-semibold leading-none w-4 text-center">
+              {open ? "−" : "+"}
+            </span>
           </Button>
         </div>
         {open ? (
-          <div className="mt-3 pt-3 border-t border-[var(--color-border-subtle)]">{expandSummary}</div>
+          <div className="mt-3 pt-3 border-t border-[var(--color-border-subtle)]">
+            {expandSummary}
+          </div>
         ) : null}
       </Card.Content>
     </Card>
@@ -517,7 +615,9 @@ function usePctDerived(kpis: EerrV2SummaryResponse["kpis"] | undefined) {
   }, [kpis]);
 }
 
-function monthlySeriesFromSummary(summary: EerrV2SummaryResponse | null): EerrMonthAgg[] {
+function monthlySeriesFromSummary(
+  summary: EerrV2SummaryResponse | null,
+): EerrMonthAgg[] {
   const cs = summary?.chart_series;
   if (cs?.length) {
     return cs.map((p) => ({
@@ -583,7 +683,9 @@ function EerrCompareColumn({
 
   const onSocialDisplayChange = useCallback(
     (values: string[]) => {
-      const ids = values.map((v) => String(v).split(" — ")[0]?.trim() || "").filter(Boolean);
+      const ids = values
+        .map((v) => String(v).split(" — ")[0]?.trim() || "")
+        .filter(Boolean);
       setFilters((prev) => ({ ...prev, socialReasonIds: ids }));
     },
     [setFilters],
@@ -600,7 +702,10 @@ function EerrCompareColumn({
     totalVentasOperativo > 0 && kpis
       ? `${formatPctDeVentas(Number(kpis.gastos_operativo), totalVentasOperativo)} del total de ventas`
       : undefined;
-  const monthlySeries = useMemo(() => monthlySeriesFromSummary(summary), [summary]);
+  const monthlySeries = useMemo(
+    () => monthlySeriesFromSummary(summary),
+    [summary],
+  );
 
   const yearTriggerSummary = useMemo(() => {
     const sorted = [...filters.selectedYears].sort((a, b) => a - b);
@@ -619,7 +724,10 @@ function EerrCompareColumn({
     () => aggregateMayorNetByBlock(summary?.rows ?? [], "gastos"),
     [summary?.rows],
   );
-  const detalleTree = useMemo(() => buildEerrDetalleTree(summary?.rows ?? []), [summary?.rows]);
+  const detalleTree = useMemo(
+    () => buildEerrDetalleTree(summary?.rows ?? []),
+    [summary?.rows],
+  );
   const eerrTruncated = Boolean(summary?.meta?.eerr_detail_truncated);
 
   return (
@@ -632,8 +740,9 @@ function EerrCompareColumn({
             Mes de gestión (rango)
           </p>
           <p className="text-[11px] text-[var(--color-text-muted)] mb-3 leading-snug opacity-90">
-            Elegí uno o más años de la lista y un rango de mes calendario; solo cuentan combinaciones
-            presentes en datos ({gestionDataBounds.minY}–{gestionDataBounds.maxY} según extracto).
+            Elegí uno o más años de la lista y un rango de mes calendario; solo
+            cuentan combinaciones presentes en datos ({gestionDataBounds.minY}–
+            {gestionDataBounds.maxY} según extracto).
           </p>
           <div className="flex flex-col gap-5 w-full min-w-0">
             <Select
@@ -641,16 +750,24 @@ function EerrCompareColumn({
               selectionMode="multiple"
               variant="secondary"
               fullWidth
-              placeholder={gestionYears.length ? "Seleccionar años" : "Sin años en opciones"}
+              placeholder={
+                gestionYears.length
+                  ? "Seleccionar años"
+                  : "Sin años en opciones"
+              }
               isDisabled={gestionYears.length === 0}
               value={filters.selectedYears.map(String)}
               onChange={(keys) => {
                 const raw = keys == null ? [] : [...keys];
                 const nums = raw
                   .map((k) => parseInt(String(k), 10))
-                  .filter((n) => Number.isFinite(n) && gestionYears.includes(n));
+                  .filter(
+                    (n) => Number.isFinite(n) && gestionYears.includes(n),
+                  );
                 const next =
-                  nums.length > 0 ? [...new Set(nums)].sort((a, b) => a - b) : [...gestionYears];
+                  nums.length > 0
+                    ? [...new Set(nums)].sort((a, b) => a - b)
+                    : [...gestionYears];
                 setFilters((p) => ({ ...p, selectedYears: next }));
               }}
               aria-label="Años de gestión (multiselección)"
@@ -673,7 +790,13 @@ function EerrCompareColumn({
                     }
                     if (sorted.length <= 4) {
                       return sorted.map((y) => (
-                        <Chip key={y} size="sm" variant="soft" color="accent" className="text-xs font-medium">
+                        <Chip
+                          key={y}
+                          size="sm"
+                          variant="soft"
+                          color="accent"
+                          className="text-xs font-medium"
+                        >
                           {y}
                         </Chip>
                       ));
@@ -681,18 +804,26 @@ function EerrCompareColumn({
                     return (
                       <span className="text-sm leading-snug">
                         {sorted.slice(0, 3).join(", ")}
-                        <span className="text-field-placeholder"> · +{sorted.length - 3}</span>
+                        <span className="text-field-placeholder">
+                          {" "}
+                          · +{sorted.length - 3}
+                        </span>
                       </span>
                     );
                   }}
                 </Select.Value>
                 <Select.Indicator />
               </Select.Trigger>
-              <Select.Popover placement="bottom start" className="eerr-year-select-popover z-[200]">
+              <Select.Popover
+                placement="bottom start"
+                className="eerr-year-select-popover z-[200]"
+              >
                 <ListBox className="eerr-year-listbox">
                   {gestionYears.map((y) => (
                     <ListBox.Item key={y} id={String(y)} textValue={String(y)}>
-                      <Label className="flex-1 text-sm font-normal tabular-nums">{y}</Label>
+                      <Label className="flex-1 text-sm font-normal tabular-nums">
+                        {y}
+                      </Label>
                       <ListBox.ItemIndicator />
                     </ListBox.Item>
                   ))}
@@ -711,10 +842,15 @@ function EerrCompareColumn({
                 const b = Math.round(Number(raw[1]));
                 const lo = Math.min(a, b);
                 const hi = Math.max(a, b);
-                setFilters((p) => ({ ...p, monthRange: [lo, hi] as [number, number] }));
+                setFilters((p) => ({
+                  ...p,
+                  monthRange: [lo, hi] as [number, number],
+                }));
               }}
             >
-              <Label className="text-sm font-medium text-[var(--color-text)]">Mes (desde – hasta)</Label>
+              <Label className="text-sm font-medium text-[var(--color-text)]">
+                Mes (desde – hasta)
+              </Label>
               <Slider.Output className="text-sm text-[var(--color-text-muted)] mb-1">
                 {({ state }) =>
                   `${monthShortEs(Math.min(state.values[0], state.values[1]))} – ${monthShortEs(Math.max(state.values[0], state.values[1]))}`
@@ -740,7 +876,9 @@ function EerrCompareColumn({
             options={blocks.map((b) => BLOCK_LABELS[b] || b)}
             selected={filters.blocks.map((b) => BLOCK_LABELS[b] || b)}
             onChange={(values) => {
-              const rev = Object.fromEntries(Object.entries(BLOCK_LABELS).map(([k, v]) => [v, k]));
+              const rev = Object.fromEntries(
+                Object.entries(BLOCK_LABELS).map(([k, v]) => [v, k]),
+              );
               const keys = values.map((v) => rev[v] || v.toLowerCase());
               setFilters((p) => ({ ...p, blocks: keys }));
             }}
@@ -754,12 +892,37 @@ function EerrCompareColumn({
             onChange={onSocialDisplayChange}
             placeholder="Todas"
           />
+          <SegmentedControl
+            label="Trat. financiado TAPO"
+            options={[
+              { value: "all", label: "Todos" },
+              { value: "exclude", label: "Sin TAPO" },
+            ]}
+            value={filters.tapoMode}
+            onChange={(v) =>
+              setFilters((p) => ({
+                ...p,
+                tapoMode: v as "all" | "exclude",
+              }))
+            }
+            className="analysis-filter-control min-w-0"
+          />
         </div>
         <div className="analysis-actions-row analysis-actions flex flex-wrap gap-2">
-          <Button variant="primary" size="sm" onPress={() => void onApply()} isDisabled={applying}>
+          <Button
+            variant="primary"
+            size="sm"
+            onPress={() => void onApply()}
+            isDisabled={applying}
+          >
             {applying ? "Aplicando…" : "Aplicar"}
           </Button>
-          <Button variant="outline" size="sm" onPress={onClear} isDisabled={applying}>
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={onClear}
+            isDisabled={applying}
+          >
             Limpiar
           </Button>
         </div>
@@ -767,7 +930,11 @@ function EerrCompareColumn({
 
       {error ? (
         <div className="mb-3">
-          <ErrorState message={error} onRetry={onApply} retryLabel="Reintentar" />
+          <ErrorState
+            message={error}
+            onRetry={onApply}
+            retryLabel="Reintentar"
+          />
         </div>
       ) : null}
 
@@ -777,13 +944,41 @@ function EerrCompareColumn({
         <>
           {eerrTab === "resumen" && kpis ? (
             <div className="eerr-kpi-stack">
-              <KpiHeroCard title="Ventas (operativo)" value={formatGsFull(kpis.ingresos_operativo)} chip="Ingresos" />
-              <KpiHeroCard title="Costos (operativo)" value={formatGsFull(kpis.costos_operativo)} chip="Costos" />
-              <KpiHeroCard title="Margen" value={formatGsFull(kpis.margen)} chip="M = I−C" />
-              <KpiHeroCard title="% Margen" value={formatPercent(pctMargen)} chip="M / Ventas" />
-              <KpiHeroCard title="Gastos (operativo)" value={formatGsFull(kpis.gastos_operativo)} chip="Gastos" />
-              <KpiHeroCard title="EBITDA" value={formatGsFull(kpis.ebitda)} chip="M−G" />
-              <KpiHeroCard title="% EBITDA" value={formatPercent(pctEbitda)} chip="EBITDA / Ventas" />
+              <KpiHeroCard
+                title="Ventas (operativo)"
+                value={formatGsFull(kpis.ingresos_operativo)}
+                chip="Ingresos"
+              />
+              <KpiHeroCard
+                title="Costos (operativo)"
+                value={formatGsFull(kpis.costos_operativo)}
+                chip="Costos"
+              />
+              <KpiHeroCard
+                title="Margen"
+                value={formatGsFull(kpis.margen)}
+                chip="M = I−C"
+              />
+              <KpiHeroCard
+                title="% Margen"
+                value={formatPercent(pctMargen)}
+                chip="M / Ventas"
+              />
+              <KpiHeroCard
+                title="Gastos (operativo)"
+                value={formatGsFull(kpis.gastos_operativo)}
+                chip="Gastos"
+              />
+              <KpiHeroCard
+                title="EBITDA"
+                value={formatGsFull(kpis.ebitda)}
+                chip="M−G"
+              />
+              <KpiHeroCard
+                title="% EBITDA"
+                value={formatPercent(pctEbitda)}
+                chip="EBITDA / Ventas"
+              />
             </div>
           ) : null}
 
@@ -791,11 +986,13 @@ function EerrCompareColumn({
             <div className="eerr-kpi-stack">
               {eerrTruncated ? (
                 <p className="text-xs rounded-lg border border-amber-500/35 bg-amber-500/10 px-2.5 py-2 text-[var(--color-text)] leading-snug">
-                  El detalle mostrado está <strong>capado a 50.000 filas</strong>
+                  El detalle mostrado está{" "}
+                  <strong>capado a 50.000 filas</strong>
                   {summary?.meta?.eerr_rows_total != null
                     ? ` (${formatCount(summary.meta.eerr_rows_total)} filas en hechos con este filtro).`
                     : "."}{" "}
-                  Los subtotales por mayor suman solo esas filas y pueden diferir del total del KPI.
+                  Los subtotales por mayor suman solo esas filas y pueden
+                  diferir del total del KPI.
                 </p>
               ) : null}
               <KpiMayorExpandCard
@@ -805,8 +1002,8 @@ function EerrCompareColumn({
                 expandSummary={
                   <>
                     <p className="text-[11px] text-[var(--color-text-muted)] mb-2 leading-snug">
-                      Saldo por <strong>mayor</strong> (débito − haber). Cada mayor tiene <strong>+</strong> para ver
-                      cuentas.
+                      Saldo por <strong>mayor</strong> (débito − haber). Cada
+                      mayor tiene <strong>+</strong> para ver cuentas.
                     </p>
                     <VentasMayorBreakdownList rows={summary?.rows ?? []} />
                   </>
@@ -820,8 +1017,9 @@ function EerrCompareColumn({
                 expandSummary={
                   <>
                     <p className="text-[11px] text-[var(--color-text-muted)] mb-2 leading-snug">
-                      Neto por mayor (débito − crédito). Cada ítem muestra <strong>% del total de ventas</strong>{" "}
-                      (operativo); <strong>+</strong> despliega subcuentas.
+                      Neto por mayor (débito − crédito). Cada ítem muestra{" "}
+                      <strong>% del total de ventas</strong> (operativo);{" "}
+                      <strong>+</strong> despliega subcuentas.
                     </p>
                     <CostoGastoMayorBreakdownList
                       lines={costosMayor}
@@ -838,7 +1036,8 @@ function EerrCompareColumn({
                 expandSummary={
                   <>
                     <p className="text-[11px] text-[var(--color-text-muted)] mb-2 leading-snug">
-                      Composición desde bloques operativos: ventas netas y costos netos por mayor.
+                      Composición desde bloques operativos: ventas netas y
+                      costos netos por mayor.
                     </p>
                     <p className="text-xs font-semibold mb-1">Ventas</p>
                     <VentasMayorBreakdownList rows={summary?.rows ?? []} />
@@ -857,9 +1056,14 @@ function EerrCompareColumn({
                 chip="M / Ventas"
                 expandSummary={
                   <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
-                    Porcentaje derivado del <strong className="text-[var(--color-text)]">margen</strong> sobre{" "}
-                    <strong className="text-[var(--color-text)]">ventas operativas</strong>. El desglose contable por
-                    mayor está en las tarjetas Ventas y Costos de esta misma vista.
+                    Porcentaje derivado del{" "}
+                    <strong className="text-[var(--color-text)]">margen</strong>{" "}
+                    sobre{" "}
+                    <strong className="text-[var(--color-text)]">
+                      ventas operativas
+                    </strong>
+                    . El desglose contable por mayor está en las tarjetas Ventas
+                    y Costos de esta misma vista.
                   </p>
                 }
               />
@@ -871,8 +1075,9 @@ function EerrCompareColumn({
                 expandSummary={
                   <>
                     <p className="text-[11px] text-[var(--color-text-muted)] mb-2 leading-snug">
-                      Neto por mayor (débito − crédito). % respecto a <strong>ventas operativas</strong>;{" "}
-                      <strong>+</strong> subcuentas.
+                      Neto por mayor (débito − crédito). % respecto a{" "}
+                      <strong>ventas operativas</strong>; <strong>+</strong>{" "}
+                      subcuentas.
                     </p>
                     <CostoGastoMayorBreakdownList
                       lines={gastosMayor}
@@ -889,8 +1094,9 @@ function EerrCompareColumn({
                 expandSummary={
                   <>
                     <p className="text-[11px] text-[var(--color-text-muted)] mb-2 leading-snug">
-                      El total coincide con el resumen; el desglose muestra <strong>gastos</strong> por mayor (componente
-                      restado al margen).
+                      El total coincide con el resumen; el desglose muestra{" "}
+                      <strong>gastos</strong> por mayor (componente restado al
+                      margen).
                     </p>
                     <CostoGastoMayorBreakdownList
                       lines={gastosMayor}
@@ -906,8 +1112,10 @@ function EerrCompareColumn({
                 chip="EBITDA / Ventas"
                 expandSummary={
                   <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
-                    Porcentaje derivado del <strong className="text-[var(--color-text)]">EBITDA</strong> sobre ventas
-                    operativas. Para ver cómo se arma el resultado por cuentas mayores usá Ventas, Costos y Gastos arriba.
+                    Porcentaje derivado del{" "}
+                    <strong className="text-[var(--color-text)]">EBITDA</strong>{" "}
+                    sobre ventas operativas. Para ver cómo se arma el resultado
+                    por cuentas mayores usá Ventas, Costos y Gastos arriba.
                   </p>
                 }
               />
@@ -918,19 +1126,26 @@ function EerrCompareColumn({
             <div className="eerr-charts-grid eerr-charts-grid--compare">
               <Card className="eerr-chart-card" variant="secondary">
                 <Card.Header>
-                  <Card.Title className="text-sm font-semibold">Bloques por mes de gestión</Card.Title>
+                  <Card.Title className="text-sm font-semibold">
+                    Bloques por mes de gestión
+                  </Card.Title>
                   <Card.Description className="text-xs text-[var(--color-text-muted)]">
                     Serie agregada en servidor para este criterio.
                   </Card.Description>
                 </Card.Header>
                 <Card.Content className="eerr-chart-card-body">
-                  <EerrGroupedBlockChart data={monthlySeries} isLight={isLight} />
+                  <EerrGroupedBlockChart
+                    data={monthlySeries}
+                    isLight={isLight}
+                  />
                 </Card.Content>
               </Card>
               <Card className="eerr-chart-card" variant="secondary">
                 <Card.Header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <Card.Title className="text-sm font-semibold">Tendencia</Card.Title>
+                    <Card.Title className="text-sm font-semibold">
+                      Tendencia
+                    </Card.Title>
                     <Card.Description className="text-xs text-[var(--color-text-muted)]">
                       Margen o EBITDA por mes.
                     </Card.Description>
@@ -953,7 +1168,11 @@ function EerrCompareColumn({
                   </div>
                 </Card.Header>
                 <Card.Content className="eerr-chart-card-body">
-                  <EerrMargenEbitdaLineChart data={monthlySeries} mode={trendMode} isLight={isLight} />
+                  <EerrMargenEbitdaLineChart
+                    data={monthlySeries}
+                    mode={trendMode}
+                    isLight={isLight}
+                  />
                 </Card.Content>
               </Card>
             </div>
@@ -964,17 +1183,20 @@ function EerrCompareColumn({
               <div className="space-y-2">
                 {eerrTruncated ? (
                   <p className="text-xs rounded-lg border border-amber-500/35 bg-amber-500/10 px-2.5 py-2 text-[var(--color-text)] leading-snug">
-                    El detalle de la API está <strong>capado a 50.000 filas</strong>
+                    El detalle de la API está{" "}
+                    <strong>capado a 50.000 filas</strong>
                     {summary?.meta?.eerr_rows_total != null
                       ? ` (${formatCount(summary.meta.eerr_rows_total)} filas en hechos con este filtro).`
                       : "."}{" "}
-                    Esta vista resume solo esas filas; el saldo puede diferir de los KPIs si faltan movimientos.
+                    Esta vista resume solo esas filas; el saldo puede diferir de
+                    los KPIs si faltan movimientos.
                   </p>
                 ) : null}
                 <p className="text-[11px] text-[var(--color-text-muted)] leading-snug">
-                  Resumen por <strong>empresa</strong>, <strong>mayor</strong> y <strong>cuenta</strong> (suma del rango y
-                  bloques filtrados). <strong>Saldo</strong>: ventas débito−haber; costos y gastos débito−crédito. Usá{" "}
-                  <strong>+</strong> para desplegar.
+                  Resumen por <strong>empresa</strong>, <strong>mayor</strong> y{" "}
+                  <strong>cuenta</strong> (suma del rango y bloques filtrados).{" "}
+                  <strong>Saldo</strong>: ventas débito−haber; costos y gastos
+                  débito−crédito. Usá <strong>+</strong> para desplegar.
                 </p>
                 <EerrDetalleArbolTable tree={detalleTree} />
                 <p className="text-xs text-[var(--color-text-muted)]">
@@ -1002,13 +1224,23 @@ export function EerrView() {
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const [months, setMonths] = useState<string[]>([]);
   const [blocks, setBlocks] = useState<string[]>([]);
-  const [socialRows, setSocialRows] = useState<Array<{ id: string; label: string }>>([]);
+  const [socialRows, setSocialRows] = useState<
+    Array<{ id: string; label: string }>
+  >([]);
   const [bootstrapped, setBootstrapped] = useState(false);
 
-  const [filtersL, setFiltersL] = useState<Filters>(() => defaultFiltersForMonths([]));
-  const [filtersR, setFiltersR] = useState<Filters>(() => defaultFiltersForMonths([]));
-  const [appliedL, setAppliedL] = useState<Filters>(() => defaultFiltersForMonths([]));
-  const [appliedR, setAppliedR] = useState<Filters>(() => defaultFiltersForMonths([]));
+  const [filtersL, setFiltersL] = useState<Filters>(() =>
+    defaultFiltersForMonths([]),
+  );
+  const [filtersR, setFiltersR] = useState<Filters>(() =>
+    defaultFiltersForMonths([]),
+  );
+  const [appliedL, setAppliedL] = useState<Filters>(() =>
+    defaultFiltersForMonths([]),
+  );
+  const [appliedR, setAppliedR] = useState<Filters>(() =>
+    defaultFiltersForMonths([]),
+  );
   const [summaryL, setSummaryL] = useState<EerrV2SummaryResponse | null>(null);
   const [summaryR, setSummaryR] = useState<EerrV2SummaryResponse | null>(null);
   const [loadingL, setLoadingL] = useState(false);
@@ -1023,30 +1255,36 @@ export function EerrView() {
     [socialRows],
   );
 
-  const loadSummaryOne = useCallback(async (side: CompareSide, f: Filters) => {
-    const setLoading = side === "L" ? setLoadingL : setLoadingR;
-    const setSummary = side === "L" ? setSummaryL : setSummaryR;
-    const setApplied = side === "L" ? setAppliedL : setAppliedR;
-    const setErr = side === "L" ? setErrorL : setErrorR;
+  const loadSummaryOne = useCallback(
+    async (side: CompareSide, f: Filters) => {
+      const setLoading = side === "L" ? setLoadingL : setLoadingR;
+      const setSummary = side === "L" ? setSummaryL : setSummaryR;
+      const setApplied = side === "L" ? setAppliedL : setAppliedR;
+      const setErr = side === "L" ? setErrorL : setErrorR;
 
-    setLoading(true);
-    setErr(null);
-    try {
-      const gm = gestionMonthsForApi(f.selectedYears, f.monthRange, months);
-      const data = await getEerrV2Summary({
-        gestion_month: gm,
-        eerr_block: f.blocks.length ? f.blocks : undefined,
-        social_reason_id: f.socialReasonIds.length ? f.socialReasonIds : undefined,
-      });
-      setSummary(data);
-      setApplied(f);
-    } catch (e: unknown) {
-      setErr(getApiErrorMessage(e));
-      setSummary(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [months]);
+      setLoading(true);
+      setErr(null);
+      try {
+        const gm = gestionMonthsForApi(f.selectedYears, f.monthRange, months);
+        const data = await getEerrV2Summary({
+          gestion_month: gm,
+          eerr_block: f.blocks.length ? f.blocks : undefined,
+          social_reason_id: f.socialReasonIds.length
+            ? f.socialReasonIds
+            : undefined,
+          exclude_tapo: f.tapoMode === "exclude",
+        });
+        setSummary(data);
+        setApplied(f);
+      } catch (e: unknown) {
+        setErr(getApiErrorMessage(e));
+        setSummary(null);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [months],
+  );
 
   const loadOptions = useCallback(async () => {
     setLoadingOptions(true);
@@ -1074,17 +1312,35 @@ export function EerrView() {
     const initial = defaultFiltersForMonths(months);
     setFiltersL(initial);
     setFiltersR(initial);
-    void Promise.all([loadSummaryOne("L", initial), loadSummaryOne("R", initial)]);
+    void Promise.all([
+      loadSummaryOne("L", initial),
+      loadSummaryOne("R", initial),
+    ]);
   }, [loadingOptions, bootstrapped, loadSummaryOne]);
 
   useEffect(() => {
-    const busy = applyingL || applyingR || loadingL || loadingR || loadingOptions;
+    const busy =
+      applyingL || applyingR || loadingL || loadingR || loadingOptions;
     if (!summaryL || !summaryR || busy) return;
     void markPerfReady("eerr");
-  }, [applyingL, applyingR, loadingL, loadingR, loadingOptions, summaryL, summaryR]);
+  }, [
+    applyingL,
+    applyingR,
+    loadingL,
+    loadingR,
+    loadingOptions,
+    summaryL,
+    summaryR,
+  ]);
 
-  const gestionDataBounds = useMemo(() => boundsFromMonthOptions(months), [months]);
-  const gestionYears = useMemo(() => distinctYearsFromMonthOptions(months), [months]);
+  const gestionDataBounds = useMemo(
+    () => boundsFromMonthOptions(months),
+    [months],
+  );
+  const gestionYears = useMemo(
+    () => distinctYearsFromMonthOptions(months),
+    [months],
+  );
 
   const onApplyL = useCallback(async () => {
     setApplyingL(true);
@@ -1107,7 +1363,10 @@ export function EerrView() {
   }, [months]);
 
   const onRefreshBoth = useCallback(async () => {
-    await Promise.all([loadSummaryOne("L", appliedL), loadSummaryOne("R", appliedR)]);
+    await Promise.all([
+      loadSummaryOne("L", appliedL),
+      loadSummaryOne("R", appliedR),
+    ]);
   }, [appliedL, appliedR, loadSummaryOne]);
 
   const headerMeta = summaryL?.meta || summaryR?.meta;
@@ -1161,17 +1420,27 @@ export function EerrView() {
         }
       />
 
-      {summaryL?.meta?.data_freshness_at || summaryR?.meta?.data_freshness_at ? (
+      {summaryL?.meta?.data_freshness_at ||
+      summaryR?.meta?.data_freshness_at ? (
         <p className="analysis-subtitle text-sm opacity-80 px-1 mb-2">
           {summaryL?.meta?.data_freshness_at ? (
             <>
-              Izq. actualizado: {formatAnalyticsTimestampForDisplay(summaryL.meta.data_freshness_at)}
+              Izq. actualizado:{" "}
+              {formatAnalyticsTimestampForDisplay(
+                summaryL.meta.data_freshness_at,
+              )}
             </>
           ) : null}
-          {summaryL?.meta?.data_freshness_at && summaryR?.meta?.data_freshness_at ? " · " : null}
+          {summaryL?.meta?.data_freshness_at &&
+          summaryR?.meta?.data_freshness_at
+            ? " · "
+            : null}
           {summaryR?.meta?.data_freshness_at ? (
             <>
-              Der. actualizado: {formatAnalyticsTimestampForDisplay(summaryR.meta.data_freshness_at)}
+              Der. actualizado:{" "}
+              {formatAnalyticsTimestampForDisplay(
+                summaryR.meta.data_freshness_at,
+              )}
             </>
           ) : null}
         </p>
@@ -1180,7 +1449,9 @@ export function EerrView() {
       <div className="eerr-dash-toolbar">
         <Tabs
           selectedKey={eerrTab}
-          onSelectionChange={(key) => key != null && setEerrTab(String(key) as EerrTab)}
+          onSelectionChange={(key) =>
+            key != null && setEerrTab(String(key) as EerrTab)
+          }
           className="eerr-tabs"
           aria-label="Vistas EERR"
         >

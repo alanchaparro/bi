@@ -15,6 +15,7 @@ Todo cambio de codigo/SQL debe validarse contra este documento antes de mergear.
 - La biblioteca de componentes UI del frontend nuevo (**HeroUI**, `@heroui/react`) y la migración incremental se rigen por `docs/heroui/README.md` y `docs/heroui/PLAN-MIGRACION.md`.
 - Si el cambio introduce o altera botones, **menús desplegable (dropdown)**, **select/combobox** de datos, campos de formulario, modales, feedback tipo toast o primitivos equivalentes en el frontend nuevo, validar obligatoriamente contra esos documentos además del spec analytics.
 - El inventario de tablas MySQL de extracción, JOINs alineados a los SQL del repo y capas Postgres de sync/analytics se rige por `docs/base.md`.
+- Las consultas MySQL para identificar facturación de tratamientos odontológicos financiados por TAPO y sus asientos contables se documentan en `docs/agents/guiamysql.md`. Este archivo es referencia obligatoria para consultas relacionadas con facturación TAPO, vouchers, métodos de pago y asientos contables.
 - El Markdown **no canónico** (planes, runbooks históricos, specs de apoyo, etc.) vive bajo `archive-md-no-canonico/`; ver `archive-md-no-canonico/README.md`. No sustituye a los puntos anteriores ni a los canónicos de seguimiento.
 
 ## Canonicos operativos de seguimiento (obligatorios)
