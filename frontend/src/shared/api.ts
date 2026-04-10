@@ -1906,7 +1906,7 @@ export async function getEerrV2Summary(payload: {
   gestion_month?: string[];
   eerr_block?: string[];
   social_reason_id?: string[];
-  exclude_tapo?: boolean;
+  tapo_filter?: string;
 }): Promise<EerrV2SummaryResponse> {
   return cachedAnalyticsPost<EerrV2SummaryResponse>(
     "/analytics/eerr-v2/summary",

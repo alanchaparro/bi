@@ -7,7 +7,6 @@ import {
   ListBox,
   Select,
   Slider,
-  Switch,
   Tabs,
 } from "@heroui/react";
 import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
@@ -20,6 +19,7 @@ import {
   EerrMargenEbitdaLineChart,
 } from "@/components/analytics/EerrDashboardCharts";
 import { MultiSelectFilter } from "@/components/filters/MultiSelectFilter";
+import { SegmentedControl } from "@/components/filters/SegmentedControl";
 import { AnalysisFiltersSkeleton } from "@/components/feedback/AnalysisFiltersSkeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
@@ -68,8 +68,8 @@ type Filters = {
   monthRange: [number, number];
   blocks: string[];
   socialReasonIds: string[];
-  /** Cuando es true, excluye asientos de tratamientos TAPO del EERR. */
-  excludeTapo: boolean;
+  /** 'all' = incluir todo, 'exclude' = sin TAPO, 'only' = solo TAPO */
+  tapoMode: "all" | "exclude" | "only";
 };
 
 function defaultFiltersForMonths(months: string[]): Filters {
@@ -78,7 +78,7 @@ function defaultFiltersForMonths(months: string[]): Filters {
     monthRange: [1, 12],
     blocks: [],
     socialReasonIds: [],
-    excludeTapo: false,
+    tapoMode: "all",
   };
 }
 
@@ -892,33 +892,22 @@ function EerrCompareColumn({
             onChange={onSocialDisplayChange}
             placeholder="Todas"
           />
-          <div className="flex items-center gap-2 mt-1">
-            <Switch
-              size="sm"
-              isSelected={filters.excludeTapo}
-              onChange={() =>
-                setFilters((prev) => ({
-                  ...prev,
-                  excludeTapo: !prev.excludeTapo,
-                }))
-              }
-            >
-              <span className="text-xs text-[var(--color-text-muted)]">
-                Sin TAPO
-              </span>
-            </Switch>
-            <MetricExplainer
-              title="Sin TAPO"
-              intro="Al activar, se omiten del EERR los movimientos contables originados por contratos de tratamiento financiados (TAPO). La línea de Tratamientos Odontológicos sigue visible con sus ingresos/costos no-TAPO."
-              items={[
-                {
-                  label: "Sin TAPO",
-                  formula:
-                    "Excluye asientos de tratamientos odontológicos financiados por TAPO (is_tapo = 0)",
-                },
-              ]}
-            />
-          </div>
+          <SegmentedControl
+            label="Trat. financiado TAPO"
+            options={[
+              { value: "all", label: "Todos" },
+              { value: "exclude", label: "Sin TAPO" },
+              { value: "only", label: "Solo TAPO" },
+            ]}
+            value={filters.tapoMode}
+            onChange={(v) =>
+              setFilters((p) => ({
+                ...p,
+                tapoMode: v as "all" | "exclude" | "only",
+              }))
+            }
+            className="analysis-filter-control min-w-0"
+          />
         </div>
         <div className="analysis-actions-row analysis-actions flex flex-wrap gap-2">
           <Button
@@ -1284,7 +1273,7 @@ export function EerrView() {
           social_reason_id: f.socialReasonIds.length
             ? f.socialReasonIds
             : undefined,
-          exclude_tapo: f.excludeTapo || undefined,
+          tapo_filter: f.tapoMode !== "all" ? f.tapoMode : undefined,
         });
         setSummary(data);
         setApplied(f);

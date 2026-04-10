@@ -5098,7 +5098,9 @@ class AnalyticsService:
             t = str(s).strip()
             if t.isdigit():
                 sr_ids.append(int(t))
-        exclude_tapo = bool(getattr(filters, "exclude_tapo", False))
+        tapo_filter = (
+            str(getattr(filters, "tapo_filter", "all") or "all").strip().lower()
+        )
 
         def _apply_fact_filters(qf):
             if gm:
@@ -5107,8 +5109,10 @@ class AnalyticsService:
                 qf = qf.filter(EerrFact.eerr_block.in_(blocks))
             if sr_ids:
                 qf = qf.filter(EerrFact.social_reason_id.in_(sr_ids))
-            if exclude_tapo:
+            if tapo_filter == "exclude":
                 qf = qf.filter(EerrFact.is_tapo == False)
+            elif tapo_filter == "only":
+                qf = qf.filter(EerrFact.is_tapo == True)
             return qf
 
         q = _apply_fact_filters(db.query(EerrFact))
@@ -5187,9 +5191,9 @@ class AnalyticsService:
                 qa = qa.filter(EerrMonthlyAgg.social_reason_id.in_(sr_ids))
             return qa
 
-        # Si exclude_tapo está activo, usar EerrFact directamente para totales,
+        # Si tapo_filter está activo, usar EerrFact directamente para totales,
         # ya que EerrMonthlyAgg no tiene la columna is_tapo para filtrar.
-        if exclude_tapo:
+        if tapo_filter in ("exclude", "only"):
             q_fb = _apply_fact_filters(
                 db.query(
                     EerrFact.eerr_block,

@@ -130,9 +130,10 @@ class EerrV2In(BaseModel):
     gestion_month: list[str] = Field(default_factory=list)
     eerr_block: list[str] = Field(default_factory=list)
     social_reason_id: list[str] = Field(default_factory=list)
-    exclude_tapo: bool = Field(
-        default=False,
-        description="Excluir tratamientos odontológicos financiados por TAPO",
+    tapo_filter: str = Field(
+        default="all",
+        pattern="^(all|exclude|only)$",
+        description="Filtro TAPO: 'all' = incluir todo, 'exclude' = sin TAPO, 'only' = solo TAPO",
     )
 
     @field_validator("gestion_month")
