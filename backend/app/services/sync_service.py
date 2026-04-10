@@ -1461,6 +1461,7 @@ def _fact_business_key_tuple(record: dict, domain: str) -> tuple:
             int(record.get("social_reason_id") or 0),
             int(record.get("accounting_plan_id") or 0),
             str(record.get("eerr_block") or ""),
+            bool(record.get("is_tapo")),
         )
     return (
         str(record.get("contract_id") or ""),
@@ -1491,6 +1492,7 @@ def _filter_rows_changed_vs_postgres(
                 "social_reason_id",
                 "accounting_plan_id",
                 "eerr_block",
+                "is_tapo",
             ]
         else:
             key_cols = [

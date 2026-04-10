@@ -173,7 +173,8 @@ def normalize_record(domain: str, row: dict, seq: int) -> dict:
             blk = "ventas"
         sr = normalize_key(row, "social_reason_id")
         pl = normalize_key(row, "accounting_plan_id")
-        contract_id = f"eerr|{gestion_month}|{sr}|{pl}|{blk}"[:64]
+        tapo_flag = "1" if _to_int(row.get("is_tapo")) else "0"
+        contract_id = f"eerr|{gestion_month}|{sr}|{pl}|{blk}|t{tapo_flag}"[:64]
 
     supervisor = (
         normalize_key(row, "supervisor", "Supervisor", "Gestor", "Vendedor").upper()
@@ -240,7 +241,8 @@ def normalize_record(domain: str, row: dict, seq: int) -> dict:
         credit = _to_float(row.get("credit"))
         mayor = normalize_key(row, "Mayor", "mayor")
         cuenta = normalize_key(row, "Cuenta", "cuenta")
-        signature = f"{gestion_month}|{sr}|{pl}|{blk}|{debit}|{credit}|{mayor}|{cuenta}"
+        tapo_sig = "1" if bool(_to_int(row.get("is_tapo"))) else "0"
+        signature = f"{gestion_month}|{sr}|{pl}|{blk}|{tapo_sig}|{debit}|{credit}|{mayor}|{cuenta}"
         source_hash = hashlib.sha256(signature.encode("utf-8")).hexdigest()
     elif domain == "analytics":
         analytics_contracts_total = max(
