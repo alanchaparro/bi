@@ -1,6 +1,6 @@
 """eerr_fact: agregar is_tapo a unique key para permitir filas TAPO y no-TAPO por cuenta
 
-Revision ID: 0028_eerr_fact_unique_key_is_tapo
+Revision ID: 0028_eerr_fact_uk_is_tapo
 Revises: 0027_eerr_fact_is_tapo
 Create Date: 2025-01-09
 
@@ -19,7 +19,7 @@ cuenta, mes y razón social.
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "0028_eerr_fact_unique_key_is_tapo"
+revision = "0028_eerr_fact_uk_is_tapo"
 down_revision = "0027_eerr_fact_is_tapo"
 branch_labels = None
 depends_on = None
