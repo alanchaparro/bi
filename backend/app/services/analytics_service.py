@@ -2393,6 +2393,7 @@ class AnalyticsService:
     def _cohorte_preagg_rollup(
         db: Session,
         cutoff_month: str,
+        sale_month_range: list[str] | None,
         un_filter: set[str],
         supervisor_filter: set[str],
         via_filter: set[str],
@@ -2401,6 +2402,8 @@ class AnalyticsService:
         q = db.query(CobranzasCohorteAgg).filter(
             CobranzasCohorteAgg.cutoff_month == cutoff_month
         )
+        if sale_month_range:
+            q = q.filter(CobranzasCohorteAgg.sale_month.in_(sale_month_range))
         if un_filter:
             q = q.filter(CobranzasCohorteAgg.un.in_(un_filter))
         if supervisor_filter:
@@ -2504,15 +2507,22 @@ class AnalyticsService:
     def fetch_cobranzas_cohorte_first_paint_v2(
         db: Session, filters: CobranzasCohorteFirstPaintIn
     ) -> dict:
-        resolved_cutoff = str(filters.cutoff_month or "").strip()
-        if not resolved_cutoff:
-            cutoff_months = [
-                str(v[0]).strip()
-                for v in db.query(CobranzasCohorteAgg.cutoff_month).distinct().all()
-                if _month_serial(str(v[0] or "").strip()) > 0
-            ]
-            resolved_cutoff = _latest_month(cutoff_months)
-        if not resolved_cutoff:
+        # Acepta rango de meses acumulado
+        explicit_months = [str(m).strip() for m in (filters.cutoff_months or []) if _month_serial(str(m).strip()) > 0]
+        if explicit_months:
+            resolved_months = explicit_months
+            resolved_cutoff = _latest_month(explicit_months)
+        else:
+            resolved_cutoff = str(filters.cutoff_month or "").strip()
+            if not resolved_cutoff:
+                available_months = [
+                    str(v[0]).strip()
+                    for v in db.query(CobranzasCohorteAgg.cutoff_month).distinct().all()
+                    if _month_serial(str(v[0] or "").strip()) > 0
+                ]
+                resolved_cutoff = _latest_month(available_months)
+            resolved_months = [resolved_cutoff] if resolved_cutoff else []
+        if not resolved_months:
             return {
                 "cutoff_month": "",
                 "effective_cartera_month": "",
@@ -2541,6 +2551,7 @@ class AnalyticsService:
             AnalyticsService._cohorte_preagg_rollup(
                 db,
                 resolved_cutoff,
+                resolved_months,
                 un_filter,
                 supervisor_filter,
                 via_filter,
@@ -2550,7 +2561,10 @@ class AnalyticsService:
         if int(stats.get("rows_count") or 0) <= 0:
             # Controlled fallback for sparse aggregate scenarios.
             fallback = AnalyticsService.fetch_cobranzas_cohorte_summary_v1(
-                db, CobranzasCohorteIn(**filters.model_dump())
+                db, CobranzasCohorteIn(cutoff_month=resolved_cutoff, **{
+                    k: v for k, v in filters.model_dump().items()
+                    if k not in {"cutoff_month", "top_n_sale_months", "cutoff_months"}
+                })
             )
             rows = list(fallback.get("by_sale_month") or [])
             top_n = min(max(int(filters.top_n_sale_months or 12), 1), 36)
@@ -2577,6 +2591,7 @@ class AnalyticsService:
         effective_cartera_month = _effective_cartera_month_for_cutoff(
             db, resolved_cutoff
         )
+        # Para acumulado, usamos el último mes como effective cartera month para simplificar
         by_tramo_out = AnalyticsService._cohorte_by_tramo_live(
             db,
             resolved_cutoff,
@@ -2867,7 +2882,8 @@ class AnalyticsService:
     def _portfolio_rolo_load_prev_curr_maps(
         db: Session, filters: AnalyticsFilters
     ) -> dict:
-        """Carga filas de cartera_fact para cierre anterior y cierre analizado. `_valid_pair` False si no hay par comparable."""
+        """Carga filas de cartera_fact para todos los meses de cierre seleccionados (o el ultimo disponible).
+        En modo acumulado (rango > 1 mes) devuelve `all_rows` indexado por close_month para iterar par por par."""
         close_month_filter = sorted(
             {
                 str(v).strip()
@@ -2897,12 +2913,24 @@ class AnalyticsService:
             "resolved_gestion_month": None,
             "prev_rows": {},
             "curr_rows": {},
+            "all_rows": {},
             "year_filter": year_filter,
+            "close_month_filter": close_month_filter,
         }
         if close_serial <= 1:
             return out
 
-        previous_close_month = _month_from_serial(close_serial - 1)
+        # Meses a cargar: rango completo (desde primero hasta ultimo) mas anterior al primero
+        if len(close_month_filter) >= 2:
+            first_serial = _month_serial(close_month_filter[0])
+            last_serial = _month_serial(close_month_filter[-1])
+            previous_close_month = _month_from_serial(first_serial - 1) if first_serial > 1 else ""
+            months_to_load = _standard_calendar_months(close_month_filter[0], close_month_filter[-1])
+            if previous_close_month and previous_close_month not in months_to_load:
+                months_to_load.insert(0, previous_close_month)
+        else:
+            previous_close_month = _month_from_serial(close_serial - 1)
+            months_to_load = [previous_close_month, resolved_close_month]
         resolved_gestion_month = _month_from_serial(close_serial + 1)
         un_filter = _normalize_str_set(filters.un)
         supervisor_filter = _normalize_str_set(filters.supervisor)
@@ -2919,9 +2947,7 @@ class AnalyticsService:
             CarteraFact.via_cobro,
             CarteraFact.tramo,
             CarteraFact.category,
-        ).filter(
-            CarteraFact.close_month.in_([previous_close_month, resolved_close_month])
-        )
+        ).filter(CarteraFact.close_month.in_(months_to_load))
 
         if un_filter:
             q = q.filter(
@@ -2942,8 +2968,7 @@ class AnalyticsService:
                 )
             )
 
-        prev_rows: dict[str, dict] = {}
-        curr_rows: dict[str, dict] = {}
+        all_rows: dict[str, dict[str, dict]] = {mm: {} for mm in months_to_load}
         for row in q.yield_per(2000):
             contract_id = _normalize_contract_id_for_lookup(row.contract_id)
             if not contract_id:
@@ -2960,17 +2985,21 @@ class AnalyticsService:
                 "tramo": int(row.tramo or 0),
                 "category": str(row.category or "").strip().upper(),
             }
-            if item["close_month"] == previous_close_month:
-                prev_rows[contract_id] = item
-            elif item["close_month"] == resolved_close_month:
-                curr_rows[contract_id] = item
+            mm = item["close_month"]
+            if mm in all_rows:
+                all_rows[mm][contract_id] = item
 
-        out["_valid_pair"] = True
+        # Para compatibilidad con callers que usan prev_rows / curr_rows (modo single)
+        prev_rows: dict[str, dict] = all_rows.get(previous_close_month, {})
+        curr_rows: dict[str, dict] = all_rows.get(resolved_close_month, {})
+
+        out["_valid_pair"] = bool(prev_rows or curr_rows)
         out["resolved_close_month"] = str(resolved_close_month).strip()
         out["previous_close_month"] = previous_close_month
         out["resolved_gestion_month"] = resolved_gestion_month
         out["prev_rows"] = prev_rows
         out["curr_rows"] = curr_rows
+        out["all_rows"] = all_rows
         return out
 
     @staticmethod
@@ -3004,9 +3033,9 @@ class AnalyticsService:
         resolved_close_month = str(ctx["resolved_close_month"] or "").strip()
         previous_close_month = str(ctx["previous_close_month"] or "").strip()
         resolved_gestion_month = str(ctx["resolved_gestion_month"] or "").strip()
-        prev_rows: dict[str, dict] = ctx["prev_rows"]
-        curr_rows: dict[str, dict] = ctx["curr_rows"]
         year_filter = ctx["year_filter"]
+        close_month_filter = ctx.get("close_month_filter", [])
+        all_rows: dict[str, dict[str, dict]] = ctx.get("all_rows", {})
 
         def _is_vigente(row: dict | None) -> bool:
             if not row:
@@ -3026,6 +3055,19 @@ class AnalyticsService:
                 return ""
             return sale_month[-4:]
 
+        # Determine the chain of month-pairs to process
+        if len(close_month_filter) >= 2:
+            # Acumulado: cadena completa del rango (todos los meses calendario entre primero y ultimo)
+            # incluyendo el mes anterior al primero como punto de partida
+            first_serial = _month_serial(close_month_filter[0])
+            prev_first = _month_from_serial(first_serial - 1) if first_serial > 1 else ""
+            chain = _standard_calendar_months(close_month_filter[0], close_month_filter[-1])
+            if prev_first and prev_first not in chain:
+                chain.insert(0, prev_first)
+        else:
+            # Single: solo un par
+            chain = [previous_close_month, resolved_close_month]
+
         by_un: dict[str, dict[str, int | str]] = {}
         vigente_inicial = 0
         vigente_final = 0
@@ -3033,59 +3075,67 @@ class AnalyticsService:
         recuperados = 0
         culminados_vigentes = 0
         caidos_a_moroso = 0
+        total_pairs = 0
 
-        contract_ids = sorted(set(prev_rows.keys()) | set(curr_rows.keys()))
-        for contract_id in contract_ids:
-            prev_row = prev_rows.get(contract_id)
-            curr_row = curr_rows.get(contract_id)
-            reference = curr_row or prev_row
-            if not reference:
+        for i in range(len(chain) - 1):
+            prev_mm = chain[i]
+            curr_mm = chain[i + 1]
+            prev_rows = all_rows.get(prev_mm, {})
+            curr_rows = all_rows.get(curr_mm, {})
+            if not prev_rows and not curr_rows:
                 continue
-            if year_filter and _sale_year(reference) not in year_filter:
-                continue
+            total_pairs += 1
 
-            un = str(reference.get("un") or "S/D")
-            bucket = by_un.setdefault(
-                un,
-                {
-                    "un": un,
-                    "vigente_inicial": 0,
-                    "ventas_nuevas": 0,
-                    "recuperados_a_vigente": 0,
-                    "culminados_vigentes": 0,
-                    "caidos_a_moroso": 0,
-                    "neto_rolo": 0,
-                    "vigente_final": 0,
-                },
-            )
+            contract_ids = sorted(set(prev_rows.keys()) | set(curr_rows.keys()))
+            for contract_id in contract_ids:
+                prev_row = prev_rows.get(contract_id)
+                curr_row = curr_rows.get(contract_id)
+                reference = curr_row or prev_row
+                if not reference:
+                    continue
+                if year_filter and _sale_year(reference) not in year_filter:
+                    continue
 
-            prev_vig = _is_vigente(prev_row)
-            prev_mor = _is_moroso(prev_row)
-            curr_vig = _is_vigente(curr_row)
-            curr_mor = _is_moroso(curr_row)
-            sale_month = str(reference.get("sale_month") or "").strip()
-            culm_month = str(reference.get("culm_month") or "").strip()
-
-            if prev_vig:
-                vigente_inicial += 1
-                bucket["vigente_inicial"] = int(bucket["vigente_inicial"]) + 1
-            if curr_vig:
-                vigente_final += 1
-                bucket["vigente_final"] = int(bucket["vigente_final"]) + 1
-            if sale_month == resolved_close_month:
-                ventas_nuevas += 1
-                bucket["ventas_nuevas"] = int(bucket["ventas_nuevas"]) + 1
-            if prev_mor and curr_vig:
-                recuperados += 1
-                bucket["recuperados_a_vigente"] = (
-                    int(bucket["recuperados_a_vigente"]) + 1
+                un = str(reference.get("un") or "S/D")
+                bucket = by_un.setdefault(
+                    un,
+                    {
+                        "un": un,
+                        "vigente_inicial": 0,
+                        "ventas_nuevas": 0,
+                        "recuperados_a_vigente": 0,
+                        "culminados_vigentes": 0,
+                        "caidos_a_moroso": 0,
+                        "neto_rolo": 0,
+                        "vigente_final": 0,
+                    },
                 )
-            if prev_vig and culm_month == resolved_close_month:
-                culminados_vigentes += 1
-                bucket["culminados_vigentes"] = int(bucket["culminados_vigentes"]) + 1
-            if prev_vig and curr_mor:
-                caidos_a_moroso += 1
-                bucket["caidos_a_moroso"] = int(bucket["caidos_a_moroso"]) + 1
+
+                prev_vig = _is_vigente(prev_row)
+                prev_mor = _is_moroso(prev_row)
+                curr_vig = _is_vigente(curr_row)
+                curr_mor = _is_moroso(curr_row)
+                sale_month = str(reference.get("sale_month") or "").strip()
+                culm_month = str(reference.get("culm_month") or "").strip()
+
+                if prev_vig:
+                    vigente_inicial += 1
+                    bucket["vigente_inicial"] = int(bucket["vigente_inicial"]) + 1
+                if curr_vig:
+                    vigente_final += 1
+                    bucket["vigente_final"] = int(bucket["vigente_final"]) + 1
+                if sale_month == curr_mm:
+                    ventas_nuevas += 1
+                    bucket["ventas_nuevas"] = int(bucket["ventas_nuevas"]) + 1
+                if prev_mor and curr_vig:
+                    recuperados += 1
+                    bucket["recuperados_a_vigente"] = int(bucket["recuperados_a_vigente"]) + 1
+                if prev_vig and culm_month == curr_mm:
+                    culminados_vigentes += 1
+                    bucket["culminados_vigentes"] = int(bucket["culminados_vigentes"]) + 1
+                if prev_vig and curr_mor:
+                    caidos_a_moroso += 1
+                    bucket["caidos_a_moroso"] = int(bucket["caidos_a_moroso"]) + 1
 
         rows: list[dict[str, str | int]] = []
         for row in by_un.values():

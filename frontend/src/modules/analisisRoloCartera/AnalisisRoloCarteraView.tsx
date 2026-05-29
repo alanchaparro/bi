@@ -274,15 +274,13 @@ export function AnalisisRoloCarteraView() {
   );
   const floatSlots = useMemo<Partial<Record<AnalyticsFilterId, React.ReactNode>>>(
     () => ({
-      close_month: (
+          close_month: (
         <MultiSelectFilter
           className="analysis-filter-control"
-          label="Mes de cierre"
+          label="Mes de cierre (acumulado si seleccionás varios)"
           options={closeMonthOptions}
           selected={floatingCloseMonths}
-          onChange={(closeMonths) =>
-            setFloatingCloseMonths(closeMonths.length ? [closeMonths[closeMonths.length - 1]] : [])
-          }
+          onChange={setFloatingCloseMonths}
         />
       ),
       un: (
@@ -356,9 +354,7 @@ export function AnalisisRoloCarteraView() {
     const fl = floatLayoutEff.floating;
     const nextFilters: Filters = { ...filters };
     if (fl.includes("close_month")) {
-      nextFilters.closeMonths = floatingCloseMonths.length
-        ? [floatingCloseMonths[floatingCloseMonths.length - 1]]
-        : [];
+      nextFilters.closeMonths = floatingCloseMonths;
     }
     if (fl.includes("un")) nextFilters.uns = floatingUns;
     if (fl.includes("via_cobro")) nextFilters.vias = floatingVias;
@@ -595,10 +591,7 @@ export function AnalisisRoloCarteraView() {
                   options={closeMonthOptions}
                   selected={filters.closeMonths}
                   onChange={(closeMonths) =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      closeMonths: closeMonths.length ? [closeMonths[closeMonths.length - 1]] : [],
-                    }))
+                    setFilters((prev) => ({ ...prev, closeMonths }))
                   }
                 />
               ),

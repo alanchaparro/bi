@@ -1781,6 +1781,7 @@ export async function getCobranzasCohorteSummary(payload: {
 
 export async function getCobranzasCohorteFirstPaint(payload: {
   cutoff_month?: string;
+  cutoff_months?: string[];
   un?: string[];
   via_cobro?: string[];
   categoria?: string[];
@@ -1798,6 +1799,7 @@ export async function getCobranzasCohorteFirstPaint(payload: {
 
 export async function getCobranzasCohorteDetail(payload: {
   cutoff_month?: string;
+  cutoff_months?: string[];
   un?: string[];
   via_cobro?: string[];
   categoria?: string[];

@@ -18,7 +18,7 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         'sync_runs',
-        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('id', sa.Integer(), nullable=False, autoincrement=True),
         sa.Column('job_id', sa.String(length=64), nullable=False),
         sa.Column('domain', sa.String(length=32), nullable=False),
         sa.Column('mode', sa.String(length=32), nullable=False),
@@ -45,7 +45,7 @@ def upgrade() -> None:
 
     op.create_table(
         'sync_records',
-        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('id', sa.Integer(), nullable=False, autoincrement=True),
         sa.Column('domain', sa.String(length=32), nullable=False),
         sa.Column('contract_id', sa.String(length=64), nullable=False),
         sa.Column('gestion_month', sa.String(length=7), nullable=False),

@@ -83,6 +83,7 @@ class PortfolioRoloOtrosAjustesOut(BaseModel):
 
 class CobranzasCohorteIn(BaseModel):
     cutoff_month: str | None = None
+    cutoff_months: list[str] = Field(default_factory=list)
     un: list[str] = Field(default_factory=list)
     via_cobro: list[str] = Field(default_factory=list)
     categoria: list[str] = Field(default_factory=list)
@@ -96,6 +97,14 @@ class CobranzasCohorteIn(BaseModel):
         if not _is_month(value):
             raise ValueError(f"mes inválido: {value}")
         return value
+
+    @field_validator("cutoff_months")
+    @classmethod
+    def validate_cutoff_months(cls, values: list[str]):
+        for v in values:
+            if not _is_month(v):
+                raise ValueError(f"mes inválido: {v}")
+        return values
 
 
 class CobranzasCohorteOptionsOut(BaseModel):

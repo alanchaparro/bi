@@ -121,7 +121,7 @@ def _upgrade_sqlite() -> None:
 
     op.create_table(
         'cartera_fact',
-        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('id', sa.Integer(), nullable=False, autoincrement=True),
         sa.Column('contract_id', sa.String(length=64), nullable=False),
         sa.Column('close_date', sa.Date(), nullable=False),
         sa.Column('close_month', sa.String(length=7), nullable=False),
@@ -160,7 +160,7 @@ def _upgrade_sqlite() -> None:
         ('gestores_fact', False),
     ]:
         cols = [
-            sa.Column('id', sa.Integer(), nullable=False),
+            sa.Column('id', sa.Integer(), nullable=False, autoincrement=True),
             sa.Column('contract_id', sa.String(length=64), nullable=False),
             sa.Column('gestion_month', sa.String(length=7), nullable=False),
             sa.Column('supervisor', sa.String(length=128), nullable=False, server_default='S/D'),

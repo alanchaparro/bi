@@ -18,7 +18,7 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         'user_preferences',
-        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('id', sa.Integer(), nullable=False, autoincrement=True),
         sa.Column('username', sa.String(length=128), nullable=False),
         sa.Column('pref_key', sa.String(length=64), nullable=False),
         sa.Column('value_json', sa.Text(), nullable=False, server_default='{}'),

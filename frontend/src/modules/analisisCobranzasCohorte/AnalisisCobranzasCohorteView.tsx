@@ -51,6 +51,7 @@ import {
 
 type Filters = {
   cutoffMonth: string
+  cutoffMonths?: string[]
   uns: string[]
   vias: string[]
   categorias: string[]
@@ -391,15 +392,17 @@ export function AnalisisCobranzasCohorteView() {
     [options.cutoffMonths],
   )
 
+  // Resuelve la lista completa de meses del rectangulo, no solo el mas reciente
   useEffect(() => {
     if (loadingOptions || !options.cutoffMonths.length || !cohorteCutoffYears.length) return
-    const next = resolveLatestCutoffInRectangle(
-      cohorteCutoffYears,
-      cohorteCutoffMonthRange,
-      options.cutoffMonths,
-    )
+    const expanded = expandGestionForYears(cohorteCutoffYears, cohorteCutoffMonthRange[0], cohorteCutoffMonthRange[1])
+    const hit = sortMesGestionDesc(expanded.filter((x) => options.cutoffMonths.includes(x)))
+    const next = hit[0] ?? ''
     if (!next) return
-    setFilters((f) => (f.cutoffMonth === next ? f : { ...f, cutoffMonth: next }))
+    setFilters((f) => {
+      if (f.cutoffMonth === next && f.cutoffMonths?.join(',') === hit.join(',')) return f
+      return { ...f, cutoffMonth: next, cutoffMonths: hit }
+    })
   }, [cohorteCutoffYears, cohorteCutoffMonthRange, options.cutoffMonths, loadingOptions])
 
   useEffect(() => {
@@ -415,14 +418,20 @@ export function AnalisisCobranzasCohorteView() {
   const loadFirstPaint = useCallback(async (next: Filters, withLoader = false) => {
     if (withLoader) setLoadingSummary(true)
     try {
-      const data = await getCobranzasCohorteFirstPaint({
-        cutoff_month: next.cutoffMonth || undefined,
+      const payload: Parameters<typeof getCobranzasCohorteFirstPaint>[0] = {
         un: next.uns,
         via_cobro: next.vias,
         categoria: next.categorias,
         supervisor: next.supervisors,
         top_n_sale_months: 12,
-      })
+      }
+      // Si hay cutoffMonths (rango), envialo como cutoff_months para acumulado
+      if (next.cutoffMonths && next.cutoffMonths.length > 1) {
+        payload.cutoff_months = next.cutoffMonths
+      } else {
+        payload.cutoff_month = next.cutoffMonth || undefined
+      }
+      const data = await getCobranzasCohorteFirstPaint(payload)
       setSummary(data)
     } finally {
       if (withLoader) setLoadingSummary(false)
@@ -986,7 +995,7 @@ export function AnalisisCobranzasCohorteView() {
     ]
 
     return blocks.flatMap((block) =>
-      filters[block.key].map((value) => ({ key: block.key, label: block.label, value })),
+      (filters[block.key] || []).map((value) => ({ key: block.key, label: block.label, value })),
     )
   }, [filters])
 

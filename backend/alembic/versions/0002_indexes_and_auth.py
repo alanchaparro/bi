@@ -18,7 +18,7 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         'auth_sessions',
-        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('id', sa.Integer(), nullable=False, autoincrement=True),
         sa.Column('username', sa.String(length=128), nullable=False),
         sa.Column('refresh_token_hash', sa.String(length=255), nullable=False),
         sa.Column('revoked', sa.Boolean(), nullable=False, server_default=sa.text('false')),
@@ -33,7 +33,7 @@ def upgrade() -> None:
 
     op.create_table(
         'auth_user_state',
-        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('id', sa.Integer(), nullable=False, autoincrement=True),
         sa.Column('username', sa.String(length=128), nullable=False),
         sa.Column('failed_attempts', sa.Integer(), nullable=False, server_default='0'),
         sa.Column('blocked_until', sa.DateTime(), nullable=True),
@@ -44,7 +44,7 @@ def upgrade() -> None:
 
     op.create_table(
         'analytics_contract_snapshot',
-        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('id', sa.Integer(), nullable=False, autoincrement=True),
         sa.Column('contract_id', sa.String(length=32), nullable=False),
         sa.Column('sale_month', sa.String(length=7), nullable=False),
         sa.Column('close_month', sa.String(length=7), nullable=False),
