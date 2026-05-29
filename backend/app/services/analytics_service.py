@@ -1545,20 +1545,21 @@ class AnalyticsService:
         return orphan_cobrado, orphan_tx, orphan_pagaron
 
     @staticmethod
-    def _cohorte_align_totals_deberia_with_by_tramo(
+    def _cohorte_align_totals_with_by_tramo(
         totals: dict, by_tramo: dict[str, dict]
     ) -> dict:
         """
-        Las tarjetas/KPIs tomaban `deberia` del preagg (cobranzas_cohorte_agg), que suma
-        columna `monto_vencido` aunque el extracto aún no se haya refrescado.
-        La tabla por tramo recalcula con AGENTS 5.1 (`deberia_cartera_from_payload`).
-        Alinear totales de cabecera con la suma de by_tramo para mismos filtros.
+        Alinear TODOS los totales de cabecera/KPI con la suma de by_tramo calculado en vivo.
+        El agregado pre-calculado (cobranzas_cohorte_agg) puede tener datos desactualizados
+        o corruptos; el cálculo live desde cartera_fact + cobranzas_fact es la fuente de verdad.
         """
         if not by_tramo:
             return totals
-        live = sum(float(v.get("deberia") or 0.0) for v in by_tramo.values())
         out = dict(totals)
-        out["deberia"] = live
+        out["activos"] = sum(int(v.get("activos") or 0) for v in by_tramo.values())
+        out["pagaron"] = sum(int(v.get("pagaron") or 0) for v in by_tramo.values())
+        out["deberia"] = sum(float(v.get("deberia") or 0.0) for v in by_tramo.values())
+        out["cobrado"] = sum(float(v.get("cobrado") or 0.0) for v in by_tramo.values())
         return out
 
     @staticmethod
@@ -2073,7 +2074,7 @@ class AnalyticsService:
                     category_filter,
                 )
                 totals_cards = (
-                    AnalyticsService._cohorte_align_totals_deberia_with_by_tramo(
+                    AnalyticsService._cohorte_align_totals_with_by_tramo(
                         totals, by_tramo_out
                     )
                 )
@@ -2601,7 +2602,7 @@ class AnalyticsService:
             via_filter,
             category_filter,
         )
-        totals_cards = AnalyticsService._cohorte_align_totals_deberia_with_by_tramo(
+        totals_cards = AnalyticsService._cohorte_align_totals_with_by_tramo(
             totals, by_tramo_out
         )
         top_n = min(max(int(filters.top_n_sale_months or 12), 1), 36)
