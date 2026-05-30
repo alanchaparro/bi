@@ -2393,16 +2393,18 @@ class AnalyticsService:
     @staticmethod
     def _cohorte_preagg_rollup(
         db: Session,
-        cutoff_month: str,
+        cutoff_month: str | list[str],
         sale_month_range: list[str] | None,
         un_filter: set[str],
         supervisor_filter: set[str],
         via_filter: set[str],
         category_filter: set[str],
     ) -> tuple[dict, list[dict], dict[str, dict], dict[str, object]]:
-        q = db.query(CobranzasCohorteAgg).filter(
-            CobranzasCohorteAgg.cutoff_month == cutoff_month
-        )
+        q = db.query(CobranzasCohorteAgg)
+        if isinstance(cutoff_month, list) and len(cutoff_month) > 0:
+            q = q.filter(CobranzasCohorteAgg.cutoff_month.in_(cutoff_month))
+        else:
+            q = q.filter(CobranzasCohorteAgg.cutoff_month == cutoff_month)
         if sale_month_range:
             q = q.filter(CobranzasCohorteAgg.sale_month.in_(sale_month_range))
         if un_filter:
@@ -2414,6 +2416,8 @@ class AnalyticsService:
         if category_filter:
             q = q.filter(CobranzasCohorteAgg.categoria.in_(category_filter))
         preagg_rows = q.all()
+        is_acumulado = isinstance(cutoff_month, list) and len(cutoff_month) > 1
+        last_cutoff = _latest_month(list(cutoff_month)) if is_acumulado else str(cutoff_month)
         totals = {
             "activos": 0,
             "pagaron": 0,
@@ -2425,6 +2429,7 @@ class AnalyticsService:
         by_year: dict[str, dict[str, float | int]] = {}
         for row in preagg_rows:
             sale_month = str(row.sale_month or "")
+            row_cutoff = str(row.cutoff_month or "").strip()
             activos = int(row.activos or 0)
             pagaron = int(row.pagaron or 0)
             deberia = float(row.deberia or 0.0)
@@ -2440,24 +2445,62 @@ class AnalyticsService:
                     "transacciones": 0,
                 },
             )
-            bucket["activos"] = int(bucket["activos"]) + activos
-            bucket["pagaron"] = int(bucket["pagaron"]) + pagaron
-            bucket["deberia"] = float(bucket["deberia"]) + deberia
-            bucket["cobrado"] = float(bucket["cobrado"]) + cobrado
-            bucket["transacciones"] = int(bucket["transacciones"]) + transacciones
+            if is_acumulado:
+                # Acumulado: cobrado/transacciones suman todos los meses;
+                # activos/pagaron/deberia son stock al ultimo mes (la cartera evoluciona)
+                bucket["cobrado"] = float(bucket["cobrado"]) + cobrado
+                bucket["transacciones"] = int(bucket["transacciones"]) + transacciones
+                if row_cutoff == last_cutoff:
+                    bucket["activos"] = activos
+                    bucket["pagaron"] = pagaron
+                    bucket["deberia"] = deberia
+                elif bucket["activos"] == 0:
+                    # fallback: si el ultimo mes no tiene este sale_month
+                    bucket["activos"] = activos
+                    bucket["pagaron"] = pagaron
+                    bucket["deberia"] = deberia
+            else:
+                bucket["activos"] = int(bucket["activos"]) + activos
+                bucket["pagaron"] = int(bucket["pagaron"]) + pagaron
+                bucket["deberia"] = float(bucket["deberia"]) + deberia
+                bucket["cobrado"] = float(bucket["cobrado"]) + cobrado
+                bucket["transacciones"] = int(bucket["transacciones"]) + transacciones
             year = sale_month.split("/")[1] if "/" in sale_month else "S/D"
             yb = by_year.setdefault(
                 year, {"activos": 0, "pagaron": 0, "deberia": 0.0, "cobrado": 0.0}
             )
-            yb["activos"] = int(yb["activos"]) + activos
-            yb["pagaron"] = int(yb["pagaron"]) + pagaron
-            yb["deberia"] = float(yb["deberia"]) + deberia
-            yb["cobrado"] = float(yb["cobrado"]) + cobrado
-            totals["activos"] += activos
-            totals["pagaron"] += pagaron
-            totals["deberia"] += deberia
-            totals["cobrado"] += cobrado
-            totals["transacciones"] += transacciones
+            if is_acumulado:
+                yb["cobrado"] = float(yb["cobrado"]) + cobrado
+                if row_cutoff == last_cutoff:
+                    yb["activos"] = activos
+                    yb["pagaron"] = pagaron
+                    yb["deberia"] = deberia
+                elif yb["activos"] == 0:
+                    yb["activos"] = activos
+                    yb["pagaron"] = pagaron
+                    yb["deberia"] = deberia
+            else:
+                yb["activos"] = int(yb["activos"]) + activos
+                yb["pagaron"] = int(yb["pagaron"]) + pagaron
+                yb["deberia"] = float(yb["deberia"]) + deberia
+                yb["cobrado"] = float(yb["cobrado"]) + cobrado
+            if is_acumulado:
+                totals["cobrado"] += cobrado
+                totals["transacciones"] += transacciones
+                if row_cutoff == last_cutoff:
+                    totals["activos"] = activos
+                    totals["pagaron"] = pagaron
+                    totals["deberia"] = deberia
+                elif totals["activos"] == 0:
+                    totals["activos"] = activos
+                    totals["pagaron"] = pagaron
+                    totals["deberia"] = deberia
+            else:
+                totals["activos"] += activos
+                totals["pagaron"] += pagaron
+                totals["deberia"] += deberia
+                totals["cobrado"] += cobrado
+                totals["transacciones"] += transacciones
 
         by_sale_month_rows: list[dict] = []
         for sale_month, values in sorted(
@@ -2551,8 +2594,8 @@ class AnalyticsService:
         totals, by_sale_month_rows, by_year_out, stats = (
             AnalyticsService._cohorte_preagg_rollup(
                 db,
-                resolved_cutoff,
                 resolved_months,
+                None,
                 un_filter,
                 supervisor_filter,
                 via_filter,
