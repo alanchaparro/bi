@@ -451,8 +451,6 @@ export function AnalisisCobranzasCohorteView() {
         setOptions(nextOptions)
         setCohorteCutoffYears(initYears)
         setCohorteCutoffMonthRange(initRange)
-        setFloatCohorteYears(initYears)
-        setFloatCohorteMonthRange(initRange)
         setFilters(nextFilters)
         setAppliedFilters(nextFilters)
         setApplying(true)
