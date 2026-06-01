@@ -254,7 +254,14 @@ export function buildEffectiveFilterLayout(
     raw.floating === undefined
       ? filterRow([...(base.floating ?? [])])
       : filterRow(raw.floating);
-  const used = new Set([...macro, ...micro, ...floating]);
+
+  // Fallback: si el doc persistido filtra todo, usar el layout canónico del código
+  // para que la vista nunca quede sin filtros por un doc corrupto de otra sección.
+  const effectiveMacro = macro.length > 0 ? macro : [...base.macro];
+  const effectiveMicro = micro.length > 0 ? micro : [...base.micro];
+  const effectiveFloating = floating.length > 0 || raw?.floating !== undefined ? floating : [...(base.floating ?? [])];
+
+  const used = new Set([...effectiveMacro, ...effectiveMicro, ...effectiveFloating]);
   const slot_styles = raw.slot_styles ?? {};
   const slotStyles: Partial<Record<AnalyticsFilterId, FilterSlotStyle>> = {};
   const scales: FilterControlScale[] = ["compact", "default", "comfortable"];
@@ -303,7 +310,7 @@ export function buildEffectiveFilterLayout(
     gridClassByTierFromServer.micro = raw.grid_class_micro.trim();
   }
 
-  return { macro, micro, floating, slotStyles, gridClassByTierFromServer };
+  return { macro: effectiveMacro, micro: effectiveMicro, floating: effectiveFloating, slotStyles, gridClassByTierFromServer };
 }
 
 /**
