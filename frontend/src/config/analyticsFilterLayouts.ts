@@ -70,6 +70,7 @@ export const ANALYTICS_FILTER_LAYOUTS = {
       "un",
     ],
     micro: [],
+    floating: [],
   },
 } as const satisfies Record<string, DashboardFiltersLayout>;
 
