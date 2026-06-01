@@ -1557,9 +1557,13 @@ class AnalyticsService:
             return totals
         out = dict(totals)
         out["activos"] = sum(int(v.get("activos") or 0) for v in by_tramo.values())
-        out["pagaron"] = sum(int(v.get("pagaron") or 0) for v in by_tramo.values())
         out["deberia"] = sum(float(v.get("deberia") or 0.0) for v in by_tramo.values())
-        out["cobrado"] = sum(float(v.get("cobrado") or 0.0) for v in by_tramo.values())
+        # pagaron y cobrado pueden incluir órfanos (contratos que pagaron pero no están
+        # en cartera del cierre) que no aparecen en by_tramo; no sobreescribir hacia abajo.
+        tramo_pagaron = sum(int(v.get("pagaron") or 0) for v in by_tramo.values())
+        tramo_cobrado = sum(float(v.get("cobrado") or 0.0) for v in by_tramo.values())
+        out["pagaron"] = max(int(out.get("pagaron") or 0), tramo_pagaron)
+        out["cobrado"] = max(float(out.get("cobrado") or 0.0), tramo_cobrado)
         return out
 
     @staticmethod
@@ -2648,6 +2652,21 @@ class AnalyticsService:
         totals_cards = AnalyticsService._cohorte_align_totals_with_by_tramo(
             totals, by_tramo_out
         )
+        # Incluir cobranzas del mes de corte que no tienen cartera con esa fecha de gestión.
+        orphan_cobrado, orphan_tx, orphan_pagaron = (
+            AnalyticsService._cohorte_orphan_cobranzas(
+                db,
+                resolved_cutoff,
+                effective_cartera_month or resolved_cutoff,
+                un_filter,
+                supervisor_filter,
+                via_filter,
+                category_filter,
+            )
+        )
+        totals_cards["cobrado"] += orphan_cobrado
+        totals_cards["transacciones"] += orphan_tx
+        totals_cards["pagaron"] += orphan_pagaron
         top_n = min(max(int(filters.top_n_sale_months or 12), 1), 36)
         top_rows = sorted(
             by_sale_month_rows,
