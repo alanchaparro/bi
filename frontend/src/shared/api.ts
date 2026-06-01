@@ -1011,6 +1011,18 @@ export type CobranzasCohorteSummaryResponse = {
       pct_cobertura_monto: number;
     }
   >;
+  by_cutoff_month?: Record<
+    string,
+    {
+      activos: number;
+      pagaron: number;
+      deberia: number;
+      cobrado: number;
+      transacciones: number;
+      pct_pago_contratos: number;
+      pct_cobertura_monto: number;
+    }
+  >;
   meta?: AnalyticsMeta;
 };
 
@@ -1019,6 +1031,7 @@ export type CobranzasCohorteFirstPaintResponse = {
   effective_cartera_month?: string;
   totals: CobranzasCohorteSummaryResponse["totals"];
   by_year: CobranzasCohorteSummaryResponse["by_year"];
+  by_cutoff_month?: CobranzasCohorteSummaryResponse["by_cutoff_month"];
   by_tramo?: CobranzasCohorteSummaryResponse["by_tramo"];
   top_sale_months: CobranzasCohorteSummaryResponse["by_sale_month"];
   meta?: AnalyticsMeta;

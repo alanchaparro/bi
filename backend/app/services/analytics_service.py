@@ -2399,7 +2399,7 @@ class AnalyticsService:
         supervisor_filter: set[str],
         via_filter: set[str],
         category_filter: set[str],
-    ) -> tuple[dict, list[dict], dict[str, dict], dict[str, object]]:
+    ) -> tuple[dict, list[dict], dict[str, dict], dict[str, dict], dict[str, object]]:
         q = db.query(CobranzasCohorteAgg)
         if isinstance(cutoff_month, list) and len(cutoff_month) > 0:
             q = q.filter(CobranzasCohorteAgg.cutoff_month.in_(cutoff_month))
@@ -2427,6 +2427,7 @@ class AnalyticsService:
         }
         by_sale_month: dict[str, dict[str, float | int]] = {}
         by_year: dict[str, dict[str, float | int]] = {}
+        by_cutoff_month: dict[str, dict[str, float | int]] = {}
         for row in preagg_rows:
             sale_month = str(row.sale_month or "")
             row_cutoff = str(row.cutoff_month or "").strip()
@@ -2445,6 +2446,22 @@ class AnalyticsService:
                     "transacciones": 0,
                 },
             )
+            # Agregar a by_cutoff_month siempre (agrupado por mes de cobro; acumula cobrado/transacciones)
+            cb = by_cutoff_month.setdefault(
+                row_cutoff,
+                {
+                    "activos": 0,
+                    "pagaron": 0,
+                    "deberia": 0.0,
+                    "cobrado": 0.0,
+                    "transacciones": 0,
+                },
+            )
+            cb["cobrado"] = float(cb["cobrado"]) + cobrado
+            cb["transacciones"] = int(cb["transacciones"]) + transacciones
+            cb["activos"] = int(cb["activos"]) + activos
+            cb["pagaron"] = int(cb["pagaron"]) + pagaron
+            cb["deberia"] = float(cb["deberia"]) + deberia
             if is_acumulado:
                 # Acumulado: cobrado/transacciones suman todos los meses;
                 # activos/pagaron/deberia son stock al ultimo mes (la cartera evoluciona)
@@ -2545,7 +2562,27 @@ class AnalyticsService:
                     (cobrado / deberia) if deberia > 0 else 0.0, 6
                 ),
             }
-        return totals, by_sale_month_rows, by_year_out, {"rows_count": len(preagg_rows)}
+
+        by_cutoff_month_out: dict[str, dict] = {}
+        for cm, values in by_cutoff_month.items():
+            activos = int(values["activos"] or 0)
+            pagaron = int(values["pagaron"] or 0)
+            deberia = float(values["deberia"] or 0.0)
+            cobrado = float(values["cobrado"] or 0.0)
+            by_cutoff_month_out[cm] = {
+                "activos": activos,
+                "pagaron": pagaron,
+                "deberia": round(deberia, 2),
+                "cobrado": round(cobrado, 2),
+                "transacciones": int(values.get("transacciones") or 0),
+                "pct_pago_contratos": round(
+                    (pagaron / activos) if activos > 0 else 0.0, 6
+                ),
+                "pct_cobertura_monto": round(
+                    (cobrado / deberia) if deberia > 0 else 0.0, 6
+                ),
+            }
+        return totals, by_sale_month_rows, by_year_out, by_cutoff_month_out, {"rows_count": len(preagg_rows)}
 
     @staticmethod
     def fetch_cobranzas_cohorte_first_paint_v2(
@@ -2578,6 +2615,7 @@ class AnalyticsService:
                     "transacciones": 0,
                 },
                 "by_year": {},
+                "by_cutoff_month": {},
                 "by_tramo": {},
                 "top_sale_months": [],
                 "meta": {
@@ -2591,7 +2629,7 @@ class AnalyticsService:
         supervisor_filter = _normalize_str_set(filters.supervisor)
         via_filter = _normalize_str_set(filters.via_cobro)
         category_filter = _normalize_str_set(filters.categoria)
-        totals, by_sale_month_rows, by_year_out, stats = (
+        totals, by_sale_month_rows, by_year_out, by_cutoff_month_out, stats = (
             AnalyticsService._cohorte_preagg_rollup(
                 db,
                 resolved_months,
@@ -2621,6 +2659,7 @@ class AnalyticsService:
                 or resolved_cutoff,
                 "totals": fallback.get("totals") or totals,
                 "by_year": fallback.get("by_year") or {},
+                "by_cutoff_month": {},
                 "by_tramo": fallback.get("by_tramo") or {},
                 "top_sale_months": top_rows,
                 "meta": {
@@ -2645,9 +2684,21 @@ class AnalyticsService:
             via_filter,
             category_filter,
         )
-        totals_cards = AnalyticsService._cohorte_align_totals_with_by_tramo(
-            totals, by_tramo_out
-        )
+        # Si es acumulado (múltiples meses), cobrado/transacciones ya vienen acumulados del preagg.
+        # Solo alineamos activos/pagaron/deberia con el tramo del último mes (stock actual).
+        # Si es un solo mes, alineamos todo como antes.
+        if len(resolved_months) > 1 and by_tramo_out:
+            totals_cards = {
+                "activos": sum(int(v.get("activos") or 0) for v in by_tramo_out.values()),
+                "pagaron": sum(int(v.get("pagaron") or 0) for v in by_tramo_out.values()),
+                "deberia": sum(float(v.get("deberia") or 0.0) for v in by_tramo_out.values()),
+                "cobrado": totals["cobrado"],
+                "transacciones": totals["transacciones"],
+            }
+        else:
+            totals_cards = AnalyticsService._cohorte_align_totals_with_by_tramo(
+                totals, by_tramo_out
+            )
         top_n = min(max(int(filters.top_n_sale_months or 12), 1), 36)
         top_rows = sorted(
             by_sale_month_rows,
@@ -2677,6 +2728,7 @@ class AnalyticsService:
                 ),
             },
             "by_year": by_year_out,
+            "by_cutoff_month": by_cutoff_month_out,
             "by_tramo": by_tramo_out,
             "top_sale_months": top_rows,
             "meta": {
