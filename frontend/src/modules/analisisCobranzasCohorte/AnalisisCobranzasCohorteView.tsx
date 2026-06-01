@@ -7,18 +7,11 @@ import {
   ConfigurableUnFilter,
   ConfigurableViaFilter,
 } from '../../components/filters/ConfigurableAnalyticsFilters'
-import { FloatingQuickFilters } from '../../components/filters/FloatingQuickFilters'
 import {
   DashboardFiltersLayout,
-  DashboardFloatingFiltersLayout,
   useDashboardMainFilterAutoApply,
 } from '@/components/filters/DashboardFiltersLayout'
 import { useFilterLayoutConfig } from '@/components/filters/FilterLayoutConfigContext'
-import {
-  buildEffectiveFilterLayout,
-  snapshotFloatingFilterValues,
-  type AnalyticsFilterId,
-} from '@/config/analyticsFilterLayouts'
 import { VIA_DEBITO_COBRADOR_ABBREV_OPTIONS } from '../../components/filters/analyticsAbbrev'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
 import { AnalyticsMetaBadges } from '../../components/analytics/AnalyticsMetaBadges'
@@ -352,16 +345,8 @@ export function AnalisisCobranzasCohorteView() {
   const [kpiOrder, setKpiOrder] = useState<KpiId[]>(() => readStoredOrder(DEFAULT_KPI_ORDER))
   const [draggingKpi, setDraggingKpi] = useState<KpiId | null>(null)
   const [dragOverKpi, setDragOverKpi] = useState<KpiId | null>(null)
-  const [floatOpen, setFloatOpen] = useState(false)
-  const [floatCutoff, setFloatCutoff] = useState('')
-  const [floatUns, setFloatUns] = useState<string[]>([])
-  const [floatVias, setFloatVias] = useState<string[]>([])
-  const [floatCategorias, setFloatCategorias] = useState<string[]>([])
-  const [floatSupervisors, setFloatSupervisors] = useState<string[]>([])
   const [cohorteCutoffYears, setCohorteCutoffYears] = useState<number[]>([])
   const [cohorteCutoffMonthRange, setCohorteCutoffMonthRange] = useState<[number, number]>([1, 12])
-  const [floatCohorteYears, setFloatCohorteYears] = useState<number[]>([])
-  const [floatCohorteMonthRange, setFloatCohorteMonthRange] = useState<[number, number]>([1, 12])
   const [cohorteTab, setCohorteTab] = useState<CohorteMainTab>('principal')
   const [orphanDetail, setOrphanDetail] = useState<CobranzasCohorteOrphanDetailResponse | null>(null)
   const [loadingOrphan, setLoadingOrphan] = useState(false)
@@ -405,15 +390,6 @@ export function AnalisisCobranzasCohorteView() {
     })
   }, [cohorteCutoffYears, cohorteCutoffMonthRange, options.cutoffMonths, loadingOptions])
 
-  useEffect(() => {
-    if (!floatOpen || !options.cutoffMonths.length || !floatCohorteYears.length) return
-    const co = resolveLatestCutoffInRectangle(
-      floatCohorteYears,
-      floatCohorteMonthRange,
-      options.cutoffMonths,
-    )
-    if (co) setFloatCutoff(co)
-  }, [floatOpen, floatCohorteYears, floatCohorteMonthRange, options.cutoffMonths])
 
   const loadFirstPaint = useCallback(async (next: Filters, withLoader = false) => {
     if (withLoader) setLoadingSummary(true)
@@ -513,202 +489,6 @@ export function AnalisisCobranzasCohorteView() {
 
   const onApply = useCallback(() => void commitAndLoad(filters), [commitAndLoad, filters])
 
-  const openFloatFilters = useCallback(() => {
-    setFloatCutoff(filters.cutoffMonth)
-    setFloatCohorteYears([...cohorteCutoffYears])
-    setFloatCohorteMonthRange([cohorteCutoffMonthRange[0], cohorteCutoffMonthRange[1]])
-    setFloatUns(filters.uns)
-    setFloatVias(filters.vias)
-    setFloatCategorias(filters.categorias)
-    setFloatSupervisors(filters.supervisors)
-    setFloatOpen(true)
-  }, [
-    cohorteCutoffMonthRange,
-    cohorteCutoffYears,
-    filters.categorias,
-    filters.cutoffMonth,
-    filters.supervisors,
-    filters.uns,
-    filters.vias,
-  ])
-
-  const { doc: filterLayoutDoc } = useFilterLayoutConfig()
-  const floatLayoutEff = useMemo(
-    () => buildEffectiveFilterLayout('analisisCobranzaCohorte', [], filterLayoutDoc),
-    [filterLayoutDoc],
-  )
-  const floatSlots = useMemo<Partial<Record<AnalyticsFilterId, React.ReactNode>>>(
-    () => ({
-      cobro_cutoff_month: (
-        <div className="analysis-filter-control">
-          <label className="input-label" id="float-cutoff-month-label">
-            Mes de cobro
-          </label>
-          <CobranzasCohorteCutoffRangeControl
-            cutoffOptions={options.cutoffMonths}
-            cohorteYears={cohorteYears}
-            selectedYears={floatCohorteYears}
-            onSelectedYearsChange={setFloatCohorteYears}
-            monthRange={floatCohorteMonthRange}
-            onMonthRangeChange={setFloatCohorteMonthRange}
-          />
-          {floatCutoff ? (
-            <p className="text-[11px] text-[var(--color-text-muted)] mt-2" aria-live="polite">
-              Corte efectivo: <strong className="text-[var(--color-text)]">{floatCutoff}</strong>
-            </p>
-          ) : null}
-        </div>
-      ),
-      un: (
-        <ConfigurableUnFilter
-          sectionId="analisisCobranzaCohorte"
-          className="analysis-filter-control"
-          label="UN"
-          options={options.uns}
-          selected={floatUns}
-          onChange={setFloatUns}
-        />
-      ),
-      via_cobro: (
-        <ConfigurableViaFilter
-          sectionId="analisisCobranzaCohorte"
-          viaId="via_cobro"
-          className="analysis-filter-control"
-          label="Vía de cobro"
-          options={options.vias}
-          selected={floatVias}
-          onChange={setFloatVias}
-          fixedAbbrevOptions={VIA_DEBITO_COBRADOR_ABBREV_OPTIONS}
-        />
-      ),
-      categoria: (
-        <ConfigurableCategoriaFilter
-          sectionId="analisisCobranzaCohorte"
-          className="analysis-filter-control"
-          categoryOptions={options.categorias}
-          selected={floatCategorias}
-          onChange={setFloatCategorias}
-        />
-      ),
-      supervisor: (
-        <MultiSelectFilter
-          className="analysis-filter-control"
-          label="Supervisor"
-          options={options.supervisors}
-          selected={floatSupervisors}
-          onChange={setFloatSupervisors}
-          placeholder="Todos"
-        />
-      ),
-    }),
-    [
-      cohorteYears,
-      floatCohorteMonthRange,
-      floatCohorteYears,
-      floatCutoff,
-      options.cutoffMonths,
-      options.uns,
-      options.vias,
-      options.categorias,
-      options.supervisors,
-      floatUns,
-      floatVias,
-      floatCategorias,
-      floatSupervisors,
-    ],
-  )
-  const showFloatingFilters = useMemo(
-    () => floatLayoutEff.floating.some((id) => floatSlots[id] != null),
-    [floatLayoutEff.floating, floatSlots],
-  )
-
-  const applyFloatFilters = useCallback(async () => {
-    const fl = floatLayoutEff.floating
-    const coFromFloat =
-      fl.includes('cobro_cutoff_month') && options.cutoffMonths.length
-        ? resolveLatestCutoffInRectangle(
-            floatCohorteYears,
-            floatCohorteMonthRange,
-            options.cutoffMonths,
-          ) || floatCutoff
-        : filters.cutoffMonth
-    if (fl.includes('cobro_cutoff_month')) {
-      setCohorteCutoffYears([...floatCohorteYears])
-      setCohorteCutoffMonthRange([floatCohorteMonthRange[0], floatCohorteMonthRange[1]])
-    }
-    const next: Filters = {
-      ...filters,
-      cutoffMonth: fl.includes('cobro_cutoff_month') ? coFromFloat : filters.cutoffMonth,
-      uns: fl.includes('un') ? floatUns : filters.uns,
-      vias: fl.includes('via_cobro') ? floatVias : filters.vias,
-      categorias: fl.includes('categoria') ? floatCategorias : filters.categorias,
-      supervisors: fl.includes('supervisor') ? floatSupervisors : filters.supervisors,
-    }
-    await commitAndLoad(next)
-    setFloatOpen(false)
-  }, [
-    commitAndLoad,
-    filters,
-    floatCohorteMonthRange,
-    floatCohorteYears,
-    floatCategorias,
-    floatCutoff,
-    floatLayoutEff.floating,
-    floatSupervisors,
-    floatUns,
-    floatVias,
-    options.cutoffMonths,
-  ])
-
-  const pickFloatDraft = useCallback(
-    (id: string): readonly string[] => {
-      switch (id) {
-        case 'cobro_cutoff_month':
-          return floatCutoff ? [floatCutoff] : []
-        case 'un':
-          return floatUns
-        case 'via_cobro':
-          return floatVias
-        case 'categoria':
-          return floatCategorias
-        case 'supervisor':
-          return floatSupervisors
-        default:
-          return []
-      }
-    },
-    [floatCutoff, floatUns, floatVias, floatCategorias, floatSupervisors],
-  )
-
-  const pickFloatApplied = useCallback(
-    (id: string): readonly string[] => {
-      switch (id) {
-        case 'cobro_cutoff_month':
-          return appliedFilters.cutoffMonth ? [appliedFilters.cutoffMonth] : []
-        case 'un':
-          return appliedFilters.uns
-        case 'via_cobro':
-          return appliedFilters.vias
-        case 'categoria':
-          return appliedFilters.categorias
-        case 'supervisor':
-          return appliedFilters.supervisors
-        default:
-          return []
-      }
-    },
-    [appliedFilters],
-  )
-
-  const floatDraftActivityKey = useMemo(
-    () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatDraft),
-    [floatLayoutEff.floating, pickFloatDraft],
-  )
-
-  const floatAppliedActivityKey = useMemo(
-    () => snapshotFloatingFilterValues(floatLayoutEff.floating, pickFloatApplied),
-    [floatLayoutEff.floating, pickFloatApplied],
-  )
 
   const pickMainDraft = useCallback(
     (id: string): readonly string[] => {
@@ -748,15 +528,7 @@ export function AnalisisCobranzasCohorteView() {
     },
     [appliedFilters],
   )
-  useDashboardMainFilterAutoApply({
-    effective: floatLayoutEff,
-    pickDraft: pickMainDraft,
-    pickApplied: pickMainApplied,
-    onApply: () => void commitAndLoad(filters),
-    floatSidebarOpen: floatOpen,
-    applyDisabled: applying,
-    applying,
-  })
+
 
   const clearFilters = useCallback(() => {
     const ys = distinctYearsFromMonthOptions(options.cutoffMonths)
@@ -1541,29 +1313,6 @@ export function AnalisisCobranzasCohorteView() {
         </>
       ) : null}
       </Card>
-
-      {!loadingOptions && showFloatingFilters ? (
-        <FloatingQuickFilters
-          isOpen={floatOpen}
-          onOpen={openFloatFilters}
-          onCollapse={() => setFloatOpen(false)}
-          onApply={() => void applyFloatFilters()}
-          floatDraftActivityKey={floatDraftActivityKey}
-          floatAppliedActivityKey={floatAppliedActivityKey}
-          applyDisabled={
-            applying ||
-            loadingSummary ||
-            noCohorteData ||
-            (floatLayoutEff.floating.includes('cobro_cutoff_month') && !floatCutoff)
-          }
-          applying={applying || loadingSummary}
-        >
-          <DashboardFloatingFiltersLayout
-            sectionId="analisisCobranzaCohorte"
-            slots={floatSlots}
-          />
-        </FloatingQuickFilters>
-      ) : null}
     </section>
   )
 }

@@ -70,7 +70,6 @@ export const ANALYTICS_FILTER_LAYOUTS = {
       "un",
     ],
     micro: [],
-    floating: ["cobro_cutoff_month", "un", "via_cobro", "categoria"],
   },
 } as const satisfies Record<string, DashboardFiltersLayout>;
 
