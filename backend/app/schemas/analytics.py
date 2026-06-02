@@ -89,6 +89,7 @@ class CobranzasCohorteIn(BaseModel):
     via_cobro: list[str] = Field(default_factory=list)
     categoria: list[str] = Field(default_factory=list)
     supervisor: list[str] = Field(default_factory=list)
+    gestor: list[str] = Field(default_factory=list)
 
     @field_validator("cutoff_month")
     @classmethod

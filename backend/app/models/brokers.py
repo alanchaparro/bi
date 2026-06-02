@@ -324,6 +324,7 @@ class CarteraFact(Base):
     culm_month = Column(String(7), nullable=False, default="", index=True)
     gestion_month = Column(String(7), nullable=False, index=True)
     supervisor = Column(String(128), nullable=False, default="S/D")
+    gestor = Column(String(128), nullable=False, default="S/D")
     un = Column(String(128), nullable=False, default="S/D")
     via_cobro = Column(String(32), nullable=False, default="S/D")
     tramo = Column(Integer, nullable=False, default=0)
@@ -505,6 +506,7 @@ class CobranzasCohorteAgg(Base):
     sale_year = Column(Integer, nullable=False, index=True)
     un = Column(String(128), nullable=False, default="S/D")
     supervisor = Column(String(128), nullable=False, default="S/D")
+    gestor = Column(String(128), nullable=False, default="S/D")
     via_cobro = Column(String(32), nullable=False, default="S/D")
     categoria = Column(String(16), nullable=False, default="VIGENTE")
     activos = Column(Integer, nullable=False, default=0)
@@ -721,6 +723,7 @@ class MvOptionsCohorte(Base):
     cutoff_month = Column(String(7), nullable=False, index=True)
     un = Column(String(128), nullable=False, default="S/D", index=True)
     supervisor = Column(String(128), nullable=False, default="S/D", index=True)
+    gestor = Column(String(128), nullable=False, default="S/D", index=True)
     via_cobro = Column(String(32), nullable=False, default="DEBITO", index=True)
     categoria = Column(String(16), nullable=False, default="VIGENTE", index=True)
     updated_at = Column(

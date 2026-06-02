@@ -177,7 +177,11 @@ def normalize_record(domain: str, row: dict, seq: int) -> dict:
         contract_id = f"eerr|{gestion_month}|{sr}|{pl}|{blk}|t{tapo_flag}"[:64]
 
     supervisor = (
-        normalize_key(row, "supervisor", "Supervisor", "Gestor", "Vendedor").upper()
+        normalize_key(row, "supervisor", "Supervisor", "Vendedor").upper()
+        or "S/D"
+    )
+    gestor = (
+        normalize_key(row, "gestor", "Gestor", "GESTOR", "manager", "collection_manager").upper()
         or "S/D"
     )
     un = normalize_key(row, "un", "UN").upper() or "S/D"
@@ -278,6 +282,7 @@ def normalize_record(domain: str, row: dict, seq: int) -> dict:
         "contract_id": str(contract_id)[:64],
         "gestion_month": str(gestion_month)[:7],
         "supervisor": str(supervisor)[:128],
+        "gestor": str(gestor)[:128],
         "un": str(un)[:128],
         "via": str(via)[:32],
         "tramo": tramo,
@@ -334,6 +339,7 @@ def fact_row_from_normalized(domain: str, normalized: dict) -> dict:
         "contract_id": normalized["contract_id"],
         "gestion_month": gestion_month,
         "supervisor": normalized["supervisor"],
+        "gestor": normalized["gestor"],
         "un": normalized["un"],
         "source_hash": normalized["source_hash"],
         "payload_json": normalized["payload_json"],

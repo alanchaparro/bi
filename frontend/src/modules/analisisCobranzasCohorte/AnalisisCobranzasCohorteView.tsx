@@ -49,6 +49,7 @@ type Filters = {
   vias: string[]
   categorias: string[]
   supervisors: string[]
+  gestores: string[]
 }
 type MultiValueFilterKey = Exclude<keyof Filters, 'cutoffMonth'>
 type KpiId =
@@ -67,6 +68,7 @@ type Options = {
   vias: string[]
   categorias: string[]
   supervisors: string[]
+  gestores: string[]
 }
 
 const EMPTY_OPTIONS: Options = {
@@ -75,6 +77,7 @@ const EMPTY_OPTIONS: Options = {
   vias: [],
   categorias: [],
   supervisors: [],
+  gestores: [],
 }
 
 const EMPTY_FILTERS: Filters = {
@@ -83,6 +86,7 @@ const EMPTY_FILTERS: Filters = {
   vias: [],
   categorias: [],
   supervisors: [],
+  gestores: [],
 }
 
 /** Tope canónico de tramo (cuotas_vencidas ≥ 7 → 7); la tabla debe listar siempre 0..7. */
@@ -399,6 +403,7 @@ export function AnalisisCobranzasCohorteView() {
         via_cobro: next.vias,
         categoria: next.categorias,
         supervisor: next.supervisors,
+        gestor: next.gestores,
         top_n_sale_months: 12,
       }
       // Si hay cutoffMonths (rango), envialo como cutoff_months para acumulado
@@ -427,6 +432,7 @@ export function AnalisisCobranzasCohorteView() {
           vias: opts.options.vias || [],
           categorias: opts.options.categories || [],
           supervisors: opts.options.supervisors || [],
+          gestores: opts.options.gestores || [],
         }
 
         const fp0 = cohorteFreshnessKey(opts.meta)
@@ -581,6 +587,7 @@ export function AnalisisCobranzasCohorteView() {
         via_cobro: filtersIn.vias,
         categoria: filtersIn.categorias,
         supervisor: filtersIn.supervisors,
+        gestor: filtersIn.gestores,
         page,
         page_size: 50,
         sort_by: 'cobrado',
@@ -628,6 +635,7 @@ export function AnalisisCobranzasCohorteView() {
             vias: opts.options.vias || [],
             categorias: opts.options.categories || [],
             supervisors: opts.options.supervisors || [],
+          gestores: opts.options.gestores || [],
           }
           setOptions(nextOptions)
 
@@ -762,6 +770,7 @@ export function AnalisisCobranzasCohorteView() {
       { key: 'vias', label: 'Via de cobro' },
       { key: 'categorias', label: 'Categoria' },
       { key: 'supervisors', label: 'Supervisor' },
+      { key: 'gestores', label: 'Gestor' },
     ]
 
     return blocks.flatMap((block) =>
@@ -963,6 +972,16 @@ export function AnalisisCobranzasCohorteView() {
                     placeholder="Todos"
                   />
                 ),
+                gestor: (
+                  <MultiSelectFilter
+                    className="analysis-filter-control"
+                    label="Gestor"
+                    options={options.gestores}
+                    selected={filters.gestores}
+                    onChange={(values) => setFilters((prev) => ({ ...prev, gestores: values }))}
+                    placeholder="Todos"
+                  />
+                ),
                 categoria: (
                   <ConfigurableCategoriaFilter
                     sectionId="analisisCobranzaCohorte"
@@ -1016,6 +1035,7 @@ export function AnalisisCobranzasCohorteView() {
               { label: "Vía de cobro", value: appliedFilters.vias.length ? appliedFilters.vias.join(", ") : "Todas" },
               { label: "Categoría", value: appliedFilters.categorias.length ? appliedFilters.categorias.join(", ") : "Todas" },
               { label: "Supervisor", value: appliedFilters.supervisors.length ? appliedFilters.supervisors.join(", ") : "Todos" },
+              { label: "Gestor", value: appliedFilters.gestores.length ? appliedFilters.gestores.join(", ") : "Todos" },
             ]}
           />
 

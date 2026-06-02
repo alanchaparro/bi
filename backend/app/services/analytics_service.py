@@ -1468,6 +1468,7 @@ class AnalyticsService:
         contract_ids_in_cartera: set[str],
         un_filter: set[str],
         supervisor_filter: set[str],
+        gestor_filter: set[str],
         via_filter: set[str],
         category_filter: set[str],
     ):
@@ -1489,6 +1490,12 @@ class AnalyticsService:
                     list(supervisor_filter)
                 )
             )
+        if gestor_filter:
+            q = q.filter(
+                func.upper(func.coalesce(CobranzasFact.gestor, "")).in_(
+                    list(gestor_filter)
+                )
+            )
         if via_filter:
             q = q.filter(
                 func.upper(func.coalesce(CobranzasFact.via, "")).in_(list(via_filter))
@@ -1506,6 +1513,7 @@ class AnalyticsService:
         effective_cartera_month: str,
         un_filter: set[str],
         supervisor_filter: set[str],
+        gestor_filter: set[str],
         via_filter: set[str],
         category_filter: set[str],
     ) -> tuple[float, int, int]:
@@ -1524,6 +1532,7 @@ class AnalyticsService:
                 cids,
                 un_filter,
                 supervisor_filter,
+                gestor_filter,
                 via_filter,
                 category_filter,
             )
@@ -1571,6 +1580,7 @@ class AnalyticsService:
         effective_cartera_month: str,
         un_filter: set[str],
         supervisor_filter: set[str],
+        gestor_filter: set[str],
         via_filter: set[str],
         category_filter: set[str],
     ) -> dict[str, dict]:
@@ -1604,6 +1614,7 @@ class AnalyticsService:
             monto_cuota_expr.label("monto_cuota"),
             CarteraFact.un.label("un"),
             CarteraFact.supervisor.label("supervisor"),
+            CarteraFact.gestor.label("gestor"),
             via_expr.label("via"),
             category_expr.label("category"),
         ).filter(CarteraFact.gestion_month == effective_cartera_month)
@@ -1650,11 +1661,14 @@ class AnalyticsService:
                 continue
             un = str(row.un or "S/D").strip().upper()
             supervisor = str(row.supervisor or "S/D").strip().upper()
+            gestor = str(row.gestor or "S/D").strip().upper()
             via = str(row.via or "DEBITO").strip().upper()
             category = str(row.category or "VIGENTE").strip().upper()
             if un_filter and un not in un_filter:
                 continue
             if supervisor_filter and supervisor not in supervisor_filter:
+                continue
+            if gestor_filter and gestor not in gestor_filter:
                 continue
             if via_filter and via not in via_filter:
                 continue
@@ -1707,6 +1721,7 @@ class AnalyticsService:
         q = db.query(MvOptionsCohorte)
         un_filter = _normalize_str_set(filters.un)
         supervisor_filter = _normalize_str_set(filters.supervisor)
+        gestor_filter = _normalize_str_set(filters.gestor)
         via_filter = _normalize_str_set(filters.via_cobro)
         categoria_filter = _normalize_str_set(filters.categoria)
         cutoff_filter = (
@@ -1720,6 +1735,8 @@ class AnalyticsService:
             q = q.filter(MvOptionsCohorte.un.in_(un_filter))
         if supervisor_filter:
             q = q.filter(MvOptionsCohorte.supervisor.in_(supervisor_filter))
+        if gestor_filter:
+            q = q.filter(MvOptionsCohorte.gestor.in_(gestor_filter))
         if via_filter:
             q = q.filter(MvOptionsCohorte.via_cobro.in_(via_filter))
         if categoria_filter:
@@ -1763,6 +1780,15 @@ class AnalyticsService:
                         {
                             str(v[0]).strip().upper()
                             for v in q.with_entities(MvOptionsCohorte.supervisor)
+                            .distinct()
+                            .all()
+                            if str(v[0] or "").strip()
+                        }
+                    ),
+                    "gestores": sorted(
+                        {
+                            str(v[0]).strip().upper()
+                            for v in q.with_entities(MvOptionsCohorte.gestor)
                             .distinct()
                             .all()
                             if str(v[0] or "").strip()
@@ -2010,6 +2036,7 @@ class AnalyticsService:
                     effective_cartera_month,
                     un_filter,
                     supervisor_filter,
+                    set(),
                     via_filter,
                     category_filter,
                 )
@@ -2072,6 +2099,7 @@ class AnalyticsService:
                     effective_cartera_month,
                     un_filter,
                     supervisor_filter,
+                    set(),
                     via_filter,
                     category_filter,
                 )
@@ -2287,6 +2315,7 @@ class AnalyticsService:
                 effective_cartera_month,
                 un_filter,
                 supervisor_filter,
+                set(),
                 via_filter,
                 category_filter,
             )
@@ -2399,6 +2428,7 @@ class AnalyticsService:
         sale_month_range: list[str] | None,
         un_filter: set[str],
         supervisor_filter: set[str],
+        gestor_filter: set[str],
         via_filter: set[str],
         category_filter: set[str],
     ) -> tuple[dict, list[dict], dict[str, dict], dict[str, dict], dict[str, object]]:
@@ -2413,6 +2443,8 @@ class AnalyticsService:
             q = q.filter(CobranzasCohorteAgg.un.in_(un_filter))
         if supervisor_filter:
             q = q.filter(CobranzasCohorteAgg.supervisor.in_(supervisor_filter))
+        if gestor_filter:
+            q = q.filter(CobranzasCohorteAgg.gestor.in_(gestor_filter))
         if via_filter:
             q = q.filter(CobranzasCohorteAgg.via_cobro.in_(via_filter))
         if category_filter:
@@ -2629,6 +2661,7 @@ class AnalyticsService:
 
         un_filter = _normalize_str_set(filters.un)
         supervisor_filter = _normalize_str_set(filters.supervisor)
+        gestor_filter = _normalize_str_set(filters.gestor)
         via_filter = _normalize_str_set(filters.via_cobro)
         category_filter = _normalize_str_set(filters.categoria)
         totals, by_sale_month_rows, by_year_out, by_cutoff_month_out, stats = (
@@ -2638,6 +2671,7 @@ class AnalyticsService:
                 None,
                 un_filter,
                 supervisor_filter,
+                gestor_filter,
                 via_filter,
                 category_filter,
             )
@@ -2683,6 +2717,7 @@ class AnalyticsService:
             effective_cartera_month or resolved_cutoff,
             un_filter,
             supervisor_filter,
+            gestor_filter,
             via_filter,
             category_filter,
         )
@@ -2709,6 +2744,7 @@ class AnalyticsService:
                     effective_cartera_month or resolved_cutoff,
                     un_filter,
                     supervisor_filter,
+                    set(),
                     via_filter,
                     category_filter,
                 )

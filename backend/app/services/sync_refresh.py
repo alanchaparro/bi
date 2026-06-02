@@ -679,6 +679,7 @@ def refresh_cobranzas_cohorte_agg(
                 sale_month_expr.label("sale_month"),
                 func.upper(func.coalesce(CarteraFact.un, "S/D")).label("un"),
                 func.upper(func.coalesce(CarteraFact.supervisor, "S/D")).label("supervisor"),
+                func.upper(func.coalesce(CarteraFact.gestor, "S/D")).label("gestor"),
                 via_expr.label("via"),
                 categoria_expr.label("categoria"),
                 func.count().label("activos"),
@@ -696,6 +697,7 @@ def refresh_cobranzas_cohorte_agg(
                 sale_month_expr,
                 func.upper(func.coalesce(CarteraFact.un, "S/D")),
                 func.upper(func.coalesce(CarteraFact.supervisor, "S/D")),
+                func.upper(func.coalesce(CarteraFact.gestor, "S/D")),
                 via_expr,
                 categoria_expr,
             )
@@ -714,6 +716,7 @@ def refresh_cobranzas_cohorte_agg(
                     "sale_year": int(sale_month[-4:]) if sale_serial > 0 else 0,
                     "un": _normalize_dim(row.un, "S/D"),
                     "supervisor": _normalize_dim(row.supervisor, "S/D"),
+                    "gestor": _normalize_dim(row.gestor, "S/D"),
                     "via_cobro": _normalize_dim(row.via, "DEBITO"),
                     "categoria": _normalize_dim(row.categoria, "VIGENTE"),
                     "activos": int(row.activos or 0),
@@ -887,6 +890,7 @@ def refresh_mv_options_tables(db: Session, affected_months: set[str], month_seri
             CobranzasCohorteAgg.cutoff_month,
             CobranzasCohorteAgg.un,
             CobranzasCohorteAgg.supervisor,
+            CobranzasCohorteAgg.gestor,
             CobranzasCohorteAgg.via_cobro,
             CobranzasCohorteAgg.categoria,
         )
@@ -895,6 +899,7 @@ def refresh_mv_options_tables(db: Session, affected_months: set[str], month_seri
             CobranzasCohorteAgg.cutoff_month,
             CobranzasCohorteAgg.un,
             CobranzasCohorteAgg.supervisor,
+            CobranzasCohorteAgg.gestor,
             CobranzasCohorteAgg.via_cobro,
             CobranzasCohorteAgg.categoria,
         )
@@ -905,6 +910,7 @@ def refresh_mv_options_tables(db: Session, affected_months: set[str], month_seri
             "cutoff_month": str(r.cutoff_month or "").strip(),
             "un": _normalize_dim(r.un, "S/D"),
             "supervisor": _normalize_dim(r.supervisor, "S/D"),
+            "gestor": _normalize_dim(r.gestor, "S/D"),
             "via_cobro": _normalize_dim(r.via_cobro, "DEBITO"),
             "categoria": _normalize_dim(r.categoria, "VIGENTE"),
             "updated_at": now,
