@@ -2906,6 +2906,7 @@ class AnalyticsService:
 
         un_filter = _normalize_str_set(filters.un)
         supervisor_filter = _normalize_str_set(filters.supervisor)
+        gestor_filter = _normalize_str_set(filters.gestor)
         via_filter = _normalize_str_set(filters.via_cobro)
         category_filter = _normalize_str_set(filters.categoria)
         cids = AnalyticsService._contract_ids_in_cartera_for_month(
@@ -2917,6 +2918,7 @@ class AnalyticsService:
             cids,
             un_filter,
             supervisor_filter,
+            gestor_filter,
             via_filter,
             category_filter,
         )
