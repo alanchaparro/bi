@@ -3134,8 +3134,9 @@ class AnalyticsService:
                     "esperado_final": 0,
                     "otros_ajustes": 0,
                 },
-                "charts": {"by_un_neto": {}},
+                "charts": {"by_un_neto": {}, "composition": {}},
                 "rows": [],
+                "rows_by_month": [],
                 "meta": {
                     "source": "api-v1",
                     "source_table": "cartera_fact",
