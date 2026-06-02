@@ -41,6 +41,7 @@ import {
   downloadRoloOtrosAjustesXls,
 } from "../../shared/roloOtrosAjustesExport";
 import { sortMesGestionDesc } from "../../shared/sortMesGestionOptions";
+import { RoloMonthlyTrendChart } from "../../components/analytics/RoloMonthlyTrendChart";
 
 type Filters = {
   closeMonths: string[];
@@ -718,7 +719,16 @@ export function AnalisisRoloCarteraView() {
                     />
                   ) : (
                     <>
-                      <p className="table-scroll-hint">
+                      <div className="chart-card mt-3">
+                        <div className="chart-card-header">
+                          <h3 className="analysis-chart-title">Tendencia mensual</h3>
+                        </div>
+                        <RoloMonthlyTrendChart
+                          data={summaryData.rows_by_month}
+                          isLight={isLightTheme}
+                        />
+                      </div>
+                      <p className="table-scroll-hint mt-4">
                         Movimiento del rolo de cartera mes a mes para los periodos analizados.
                       </p>
                       <div className="table-wrap">
