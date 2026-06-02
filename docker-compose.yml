@@ -143,6 +143,7 @@ services:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
     ports:
       - "${FRONTEND_PROD_PORT:-8080}:80"
+    restart: unless-stopped
     profiles: ["prod"]
 
   frontend-prod-lan:
@@ -153,6 +154,7 @@ services:
         # Siempre mismo origen vía nginx (LAN). No usar ${NEXT_PUBLIC_API_BASE_URL} del .env:
         # suele ser http://localhost:8000/... y rompe acceso por IP (CORS + localhost = PC del usuario).
         NEXT_PUBLIC_API_BASE_URL: /api/v1
+    restart: unless-stopped
     profiles: ["prod-lan"]
 
   reverse-proxy:
