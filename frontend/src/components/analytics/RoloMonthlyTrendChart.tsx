@@ -73,7 +73,7 @@ export function RoloMonthlyTrendChart({ data, isLight }: Props) {
 
   const n = data.length;
   if (n === 0) {
-    return <p className="analysis-chart-empty">Sin datos para la tendencia mensual.</p>;
+    return <p className="eerr-chart-empty">Sin datos para la tendencia mensual.</p>;
   }
 
   const padding = { top: 16, right: 16, bottom: 64, left: 56 };
@@ -91,8 +91,8 @@ export function RoloMonthlyTrendChart({ data, isLight }: Props) {
   const legendBtn = `analysis-legend-btn min-w-0 w-auto p-0 ${isLight ? "analysis-legend-btn--light" : ""}`.trim();
 
   return (
-    <div className="analysis-chart-wrap">
-      <div className="analysis-stack-legend analysis-chart-legend">
+    <div className="eerr-chart-wrap">
+      <div className="analysis-stack-legend eerr-chart-legend">
         {SERIES_CONFIG.map((s) => (
           <Button
             key={s.key}
@@ -111,42 +111,34 @@ export function RoloMonthlyTrendChart({ data, isLight }: Props) {
         <svg
           width={svgW}
           height={svgH}
-          className="analysis-chart-svg"
+          className="eerr-chart-svg"
           overflow="visible"
           role="img"
           aria-label="Tendencia mensual del rolo de cartera"
         >
-          {/* Grid horizontal */}
+          {/* Grid horizontal + labels eje Y */}
           {yTicks.map((t) => {
             const y = yAt(t);
             return (
-              <line
-                key={`grid-${t}`}
-                x1={padding.left}
-                x2={svgW - padding.right}
-                y1={y}
-                y2={y}
-                stroke="var(--chart-grid)"
-                strokeWidth={1}
-                strokeDasharray="3 3"
-              />
+              <g key={`grid-${t}`}>
+                <line
+                  x1={padding.left}
+                  x2={svgW - padding.right}
+                  y1={y}
+                  y2={y}
+                  className="eerr-chart-gridline"
+                />
+                <text
+                  x={padding.left - 6}
+                  y={y + 4}
+                  textAnchor="end"
+                  className="eerr-chart-axis"
+                >
+                  {formatCount(t)}
+                </text>
+              </g>
             );
           })}
-
-          {/* Eje Y labels */}
-          {yTicks.map((t) => (
-            <text
-              key={`ylabel-${t}`}
-              x={padding.left - 8}
-              y={yAt(t)}
-              textAnchor="end"
-              dominantBaseline="middle"
-              className="analysis-chart-ylabel"
-              fontSize={11}
-            >
-              {formatCount(t)}
-            </text>
-          ))}
 
           {/* Líneas de series */}
           {visibleSeries.map((s) => {
@@ -170,7 +162,7 @@ export function RoloMonthlyTrendChart({ data, isLight }: Props) {
                       cy={yAt(v)}
                       r={4}
                       fill={s.color}
-                      className="analysis-chart-dot"
+                      className="eerr-line-dot"
                     >
                       <title>{`${s.label} — ${d.mes}: ${formatCount(v)}`}</title>
                     </circle>
@@ -185,26 +177,23 @@ export function RoloMonthlyTrendChart({ data, isLight }: Props) {
             <text
               key={`xlabel-${i}`}
               x={xAt(i)}
-              y={svgH - 12}
+              y={baseline + 18}
               textAnchor="middle"
-              dominantBaseline="middle"
-              className="analysis-chart-xlabel"
-              fontSize={11}
-              transform={`rotate(-45 ${xAt(i)} ${svgH - 12})`}
+              className="eerr-chart-xlabel"
+              transform={`rotate(-45 ${xAt(i)} ${baseline + 18})`}
             >
               {d.mes}
             </text>
           ))}
 
-          {/* Línea base cero si está dentro del rango */}
+          {/* Línea base */}
           {minY <= 0 && maxY >= 0 && (
             <line
               x1={padding.left}
               x2={svgW - padding.right}
               y1={yAt(0)}
               y2={yAt(0)}
-              stroke="var(--color-text-muted)"
-              strokeWidth={1}
+              className="eerr-chart-baseline"
             />
           )}
         </svg>
