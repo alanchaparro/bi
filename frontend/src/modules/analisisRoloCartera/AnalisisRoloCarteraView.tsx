@@ -58,7 +58,7 @@ const DEFAULT_FILTERS: Filters = {
   years: [],
 };
 
-type RoloMainTab = "resumen" | "otros_ajustes";
+type RoloMainTab = "resumen" | "por_mes" | "otros_ajustes";
 
 function RoloContributionChart({
   rows,
@@ -672,6 +672,7 @@ export function AnalisisRoloCarteraView() {
                   <Tabs.ListContainer>
                     <Tabs.List>
                       <Tabs.Tab id="resumen">Resumen</Tabs.Tab>
+                      <Tabs.Tab id="por_mes">Por mes</Tabs.Tab>
                       <Tabs.Tab id="otros_ajustes">Otros ajustes</Tabs.Tab>
                     </Tabs.List>
                   </Tabs.ListContainer>
@@ -703,6 +704,54 @@ export function AnalisisRoloCarteraView() {
                           </div>
                           <RoloCompositionChart kpis={kpis} isLight={isLightTheme} />
                         </article>
+                      </div>
+                    </>
+                  )
+                ) : null}
+
+                {roloTab === "por_mes" ? (
+                  !summaryData?.rows_by_month?.length ? (
+                    <EmptyState
+                      message="No hay datos por mes para la seleccion actual."
+                      suggestion="Prueba con un rango de meses o otro mes de cierre."
+                      className="analysis-empty"
+                    />
+                  ) : (
+                    <>
+                      <p className="table-scroll-hint">
+                        Movimiento del rolo de cartera mes a mes para los periodos analizados.
+                      </p>
+                      <div className="table-wrap">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Mes</th>
+                              <th className="text-end">Vig. inicial</th>
+                              <th className="text-end">Ventas nuevas</th>
+                              <th className="text-end">Recuperados</th>
+                              <th className="text-end">Culminados</th>
+                              <th className="text-end">Caídos a moroso</th>
+                              <th className="text-end">Neto</th>
+                              <th className="text-end">Vig. final</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {summaryData.rows_by_month.map((row) => (
+                              <tr key={row.mes}>
+                                <td>{row.mes}</td>
+                                <td className="text-end tabular-nums">{formatCount(row.vigente_inicial)}</td>
+                                <td className="text-end tabular-nums">{formatCount(row.ventas_nuevas)}</td>
+                                <td className="text-end tabular-nums">{formatCount(row.recuperados_a_vigente)}</td>
+                                <td className="text-end tabular-nums">{formatCount(row.culminados_vigentes)}</td>
+                                <td className="text-end tabular-nums">{formatCount(row.caidos_a_moroso)}</td>
+                                <td className="text-end tabular-nums">
+                                  <SignedCount value={row.neto_rolo} />
+                                </td>
+                                <td className="text-end tabular-nums">{formatCount(row.vigente_final)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     </>
                   )

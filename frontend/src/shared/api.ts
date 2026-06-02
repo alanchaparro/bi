@@ -923,6 +923,16 @@ export type PortfolioRoloSummaryResponse = {
     neto_rolo: number;
     vigente_final: number;
   }>;
+  rows_by_month?: Array<{
+    mes: string;
+    vigente_inicial: number;
+    vigente_final: number;
+    ventas_nuevas: number;
+    recuperados_a_vigente: number;
+    culminados_vigentes: number;
+    caidos_a_moroso: number;
+    neto_rolo: number;
+  }>;
   meta?: AnalyticsMeta;
 };
 

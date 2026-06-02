@@ -3189,6 +3189,8 @@ class AnalyticsService:
         culminados_vigentes = 0
         caidos_a_moroso = 0
         total_pairs = 0
+        # Nueva métrica por mes (curr_mm)
+        by_month: dict[str, dict] = {}
 
         for i in range(len(chain) - 1):
             prev_mm = chain[i]
@@ -3198,6 +3200,20 @@ class AnalyticsService:
             if not prev_rows and not curr_rows:
                 continue
             total_pairs += 1
+
+            month_bucket = by_month.setdefault(
+                curr_mm,
+                {
+                    "mes": curr_mm,
+                    "vigente_inicial": 0,
+                    "vigente_final": 0,
+                    "ventas_nuevas": 0,
+                    "recuperados_a_vigente": 0,
+                    "culminados_vigentes": 0,
+                    "caidos_a_moroso": 0,
+                    "neto_rolo": 0,
+                },
+            )
 
             contract_ids = sorted(set(prev_rows.keys()) | set(curr_rows.keys()))
             for contract_id in contract_ids:
@@ -3234,21 +3250,27 @@ class AnalyticsService:
                 if prev_vig:
                     vigente_inicial += 1
                     bucket["vigente_inicial"] = int(bucket["vigente_inicial"]) + 1
+                    month_bucket["vigente_inicial"] = int(month_bucket["vigente_inicial"]) + 1
                 if curr_vig:
                     vigente_final += 1
                     bucket["vigente_final"] = int(bucket["vigente_final"]) + 1
+                    month_bucket["vigente_final"] = int(month_bucket["vigente_final"]) + 1
                 if sale_month == curr_mm:
                     ventas_nuevas += 1
                     bucket["ventas_nuevas"] = int(bucket["ventas_nuevas"]) + 1
+                    month_bucket["ventas_nuevas"] = int(month_bucket["ventas_nuevas"]) + 1
                 if prev_mor and curr_vig:
                     recuperados += 1
                     bucket["recuperados_a_vigente"] = int(bucket["recuperados_a_vigente"]) + 1
+                    month_bucket["recuperados_a_vigente"] = int(month_bucket["recuperados_a_vigente"]) + 1
                 if prev_vig and culm_month == curr_mm:
                     culminados_vigentes += 1
                     bucket["culminados_vigentes"] = int(bucket["culminados_vigentes"]) + 1
+                    month_bucket["culminados_vigentes"] = int(month_bucket["culminados_vigentes"]) + 1
                 if prev_vig and curr_mor:
                     caidos_a_moroso += 1
                     bucket["caidos_a_moroso"] = int(bucket["caidos_a_moroso"]) + 1
+                    month_bucket["caidos_a_moroso"] = int(month_bucket["caidos_a_moroso"]) + 1
 
         rows: list[dict[str, str | int]] = []
         for row in by_un.values():
@@ -3261,6 +3283,19 @@ class AnalyticsService:
             row["neto_rolo"] = neto_un
             rows.append(row)
         rows.sort(key=lambda item: (-abs(int(item["neto_rolo"])), str(item["un"])))
+
+        # Calcular neto por mes
+        by_month_list: list[dict[str, str | int]] = []
+        for row_m in by_month.values():
+            neto_m = (
+                int(row_m["ventas_nuevas"])
+                + int(row_m["recuperados_a_vigente"])
+                - int(row_m["culminados_vigentes"])
+                - int(row_m["caidos_a_moroso"])
+            )
+            row_m["neto_rolo"] = neto_m
+            by_month_list.append(row_m)
+        by_month_list.sort(key=lambda item: _month_serial(str(item["mes"])))
 
         neto_rolo = ventas_nuevas + recuperados - culminados_vigentes - caidos_a_moroso
         esperado_final = vigente_inicial + neto_rolo
@@ -3293,6 +3328,7 @@ class AnalyticsService:
                 },
             },
             "rows": rows,
+            "rows_by_month": by_month_list,
             "meta": {
                 "source": "api-v1",
                 "source_table": "cartera_fact",
