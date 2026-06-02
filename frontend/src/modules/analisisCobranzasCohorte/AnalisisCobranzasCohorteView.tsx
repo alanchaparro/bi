@@ -452,6 +452,7 @@ export function AnalisisCobranzasCohorteView() {
           vias: [],
           categorias: [],
           supervisors: [],
+          gestores: [],
         }
 
         setOptions(nextOptions)
@@ -565,6 +566,7 @@ export function AnalisisCobranzasCohorteView() {
         vias: [],
         categorias: [],
         supervisors: [],
+          gestores: [],
       }
       setFilters(resetFilters)
       setAppliedFilters(resetFilters)

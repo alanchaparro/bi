@@ -20,6 +20,7 @@ export type AnalyticsFilterId =
   | "categoria"
   | "tramo"
   | "supervisor"
+  | "gestor"
   | "gestion_month"
   | "close_month"
   | "contract_year"
@@ -66,6 +67,7 @@ export const ANALYTICS_FILTER_LAYOUTS = {
       "cobro_cutoff_month",
       "via_cobro",
       "supervisor",
+      "gestor",
       "categoria",
       "un",
     ],

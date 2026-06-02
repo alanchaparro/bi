@@ -971,6 +971,7 @@ export type CobranzasCohorteOptionsResponse = {
     cutoff_months?: string[];
     uns?: string[];
     supervisors?: string[];
+    gestores?: string[];
     vias?: string[];
     categories?: string[];
   };
@@ -1749,6 +1750,7 @@ export async function getCobranzasCohorteOptions(payload: {
   via_cobro?: string[];
   categoria?: string[];
   supervisor?: string[];
+  gestor?: string[];
 }): Promise<CobranzasCohorteOptionsResponse> {
   return cachedAnalyticsPost<CobranzasCohorteOptionsResponse>(
     "/analytics/cobranzas-cohorte-v2/options",
@@ -1767,6 +1769,7 @@ export async function peekCobranzasCohorteOptionsUncached(
     via_cobro?: string[];
     categoria?: string[];
     supervisor?: string[];
+    gestor?: string[];
   } = {},
 ): Promise<CobranzasCohorteOptionsResponse> {
   return analyticsPostWithTransientRetry<CobranzasCohorteOptionsResponse>(
@@ -1809,6 +1812,7 @@ export async function getCobranzasCohorteFirstPaint(payload: {
   via_cobro?: string[];
   categoria?: string[];
   supervisor?: string[];
+  gestor?: string[];
   top_n_sale_months?: number;
 }): Promise<CobranzasCohorteFirstPaintResponse> {
   return cachedAnalyticsPost<CobranzasCohorteFirstPaintResponse>(
@@ -1827,6 +1831,7 @@ export async function getCobranzasCohorteDetail(payload: {
   via_cobro?: string[];
   categoria?: string[];
   supervisor?: string[];
+  gestor?: string[];
   page?: number;
   page_size?: number;
   sort_by?: "sale_month" | "cobrado" | "deberia" | "pagaron";
@@ -1847,6 +1852,7 @@ export async function getCobranzasCohorteOrphanDetail(payload: {
   via_cobro?: string[];
   categoria?: string[];
   supervisor?: string[];
+  gestor?: string[];
   page?: number;
   page_size?: number;
   sort_by?: "cobrado" | "contract_id" | "transacciones" | "un";

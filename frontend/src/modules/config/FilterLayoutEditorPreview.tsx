@@ -34,6 +34,7 @@ const FILTER_LABELS: Record<AnalyticsFilterId, string> = {
   categoria: "Categoría",
   tramo: "Tramo",
   supervisor: "Supervisor",
+  gestor: "Gestor",
   gestion_month: "Mes de gestión",
   close_month: "Mes de cierre",
   contract_year: "Año de contrato",
