@@ -53,6 +53,7 @@ services:
       - .:/app
     environment:
       - PYTHONUNBUFFERED=1
+      - SYNC_QUERY_VARIANT_COBRANZAS=v2
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,6 +73,7 @@ services:
       - .:/app
     environment:
       - PYTHONUNBUFFERED=1
+      - SYNC_QUERY_VARIANT_COBRANZAS=v2
     depends_on:
       postgres:
         condition: service_healthy
@@ -91,6 +93,7 @@ services:
       - .:/app
     environment:
       - PYTHONUNBUFFERED=1
+      - SYNC_QUERY_VARIANT_COBRANZAS=v2
     depends_on:
       postgres:
         condition: service_healthy
@@ -110,6 +113,7 @@ services:
       - .:/app
     environment:
       - PYTHONUNBUFFERED=1
+      - SYNC_QUERY_VARIANT_COBRANZAS=v2
     depends_on:
       postgres:
         condition: service_healthy
