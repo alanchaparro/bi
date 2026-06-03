@@ -314,19 +314,26 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   const router = useRouter()
   const searchParams = useSearchParams()
   const permissions = auth?.permissions ?? []
+  const permissionsSnapshotRef = useRef<string[] | null>(null)
+  useEffect(() => {
+    if (permissions.length > 0) {
+      permissionsSnapshotRef.current = permissions
+    }
+  }, [permissions])
+  const stablePermissions = permissionsSnapshotRef.current ?? permissions
   const sessionUsername = useMemo(() => usernameFromAccessToken(auth?.access_token), [auth?.access_token])
   const canManageRoleNav = useMemo(
     () => permissions.includes('brokers:write_config'),
-    [permissions],
+    [stablePermissions],
   )
   const canSeeConfigTab = useCallback(
     (s: ConfigSection): boolean => {
       const nav = CONFIG_SECTION_NAV_PERM[s]
-      if (!permissions.includes(nav)) return false
+      if (!stablePermissions.includes(nav)) return false
       if (s === 'rolesMenus' || s === 'layoutsFiltros') return canManageRoleNav
       return true
     },
-    [permissions, canManageRoleNav],
+    [stablePermissions, canManageRoleNav],
   )
   const resumeAttemptedRef = useRef(false)
   const previewEnabledRef = useRef(true)
@@ -761,29 +768,46 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   }, [])
 
   const sectionDataLoadedRef = useRef<Partial<Record<ConfigSection, boolean>>>({})
-  useEffect(() => {
-    if (!tabEntriesReadyRef.current) {
-      // Primera vez: marcamos listo sin forzar cambio de pestaña
-      tabEntriesReadyRef.current = true
-      return
-    }
-    const ids = configTabEntries.map(([k]) => k)
-    if (!ids.includes(configSection) && ids[0]) {
-      setConfigSection(ids[0])
-    }
-  }, [configTabEntries, configSection])
+  const lastPushedSlugRef = useRef<string | null>(null)
 
+  // Solo al montar: inicializar estado desde URL real (no reactivo a searchParams)
   useEffect(() => {
-    const slug = searchParams.get('tab')
+    const slug = new URLSearchParams(window.location.search).get('tab')
     const fromUrl = tabSlugToConfigSection(slug)
-    if (fromUrl && canSeeConfigTab(fromUrl)) setConfigSection(fromUrl)
-  }, [searchParams, canSeeConfigTab])
+    const ids = configTabEntries.map(([k]) => k)
+    if (fromUrl && ids.includes(fromUrl)) {
+      setConfigSection(fromUrl)
+      lastPushedSlugRef.current = slug
+    } else if (ids.length && !ids.includes(configSection)) {
+      setConfigSection(ids[0])
+      lastPushedSlugRef.current = configSectionToTabSlug(ids[0])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
+  // Estado → URL manual (sin router.replace para evitar re-render)
   useEffect(() => {
     const slug = configSectionToTabSlug(configSection)
-    if (searchParams.get('tab') === slug) return
-    router.replace(`/config?tab=${encodeURIComponent(slug)}`, { scroll: false })
-  }, [configSection, router, searchParams])
+    if (lastPushedSlugRef.current === slug) return
+    lastPushedSlugRef.current = slug
+    const url = `/config?tab=${encodeURIComponent(slug)}`
+    window.history.replaceState({ tab: slug }, '', url)
+  }, [configSection])
+
+  // Back/forward
+  useEffect(() => {
+    const onPop = () => {
+      const slug = new URLSearchParams(window.location.search).get('tab')
+      const fromUrl = tabSlugToConfigSection(slug)
+      const ids = configTabEntries.map(([k]) => k)
+      if (fromUrl && ids.includes(fromUrl)) {
+        setConfigSection(fromUrl)
+        lastPushedSlugRef.current = slug
+      }
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [configTabEntries])
 
   useEffect(() => {
     const key = configSection
