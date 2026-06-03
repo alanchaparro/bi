@@ -5,6 +5,7 @@ SELECT
     DAY(p.date) AS dia,
     p.id,
     apw.id AS payment_way_id,
+    CONCAT_WS(' ', gestor_user.first_name, gestor_user.last_name) AS Gestor,
     (
 -- @include sql/common/un_rules.sql
     ) AS UN,
@@ -35,6 +36,8 @@ LEFT JOIN branches b
     ON p.branch_id = b.id
 LEFT JOIN payment_methods pm
     ON apw.payment_method_id = pm.id
+LEFT JOIN users gestor_user
+    ON c.last_collection_manager_id = gestor_user.id
 WHERE p.status = 1
   AND p.type < 2
   AND p.date >= '2020-01-01'
