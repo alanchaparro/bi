@@ -918,7 +918,12 @@ def refresh_mv_options_tables(db: Session, affected_months: set[str], month_seri
         for r in rows_cohorte
     ]
     if cohorte_mappings:
-        db.bulk_insert_mappings(MvOptionsCohorte, cohorte_mappings)
+        table = MvOptionsCohorte.__table__
+        stmt = pg_insert(table).values(cohorte_mappings)
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=["cutoff_month", "un", "supervisor", "via_cobro", "categoria"]
+        )
+        db.execute(stmt)
 
     db.query(MvOptionsRendimiento).filter(MvOptionsRendimiento.gestion_month.in_(months)).delete(synchronize_session=False)
     rows_rend = (
@@ -1072,7 +1077,12 @@ def bootstrap_mv_options_full(db: Session, month_serial) -> dict[str, int]:
         if month_serial(str(r.cutoff_month or "").strip()) > 0
     ]
     if cohorte_mappings:
-        db.bulk_insert_mappings(MvOptionsCohorte, cohorte_mappings)
+        table = MvOptionsCohorte.__table__
+        stmt = pg_insert(table).values(cohorte_mappings)
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=["cutoff_month", "un", "supervisor", "via_cobro", "categoria"]
+        )
+        db.execute(stmt)
 
     db.query(MvOptionsRendimiento).delete(synchronize_session=False)
     rows_rend = (
