@@ -20,6 +20,8 @@ import {
   clearSession,
   getStoredRefreshToken,
   setStoredRefreshToken,
+  setStoredAccessToken,
+  getStoredAccessToken,
 } from "./sessionStorage";
 import {
   API_BASE_URL,
@@ -50,9 +52,57 @@ export function setOnUnauthorized(callback: (() => void) | null) {
 export function setAuthToken(token: string | null) {
   if (token) {
     api.defaults.headers.common.Authorization = `Bearer ${token}`;
+    setStoredAccessToken(token);
   } else {
     delete api.defaults.headers.common.Authorization;
+    setStoredAccessToken(null);
   }
+}
+
+/* restore persisted access token on module load so headers survive full page reloads */
+if (typeof window !== "undefined") {
+  const saved = getStoredAccessToken();
+  if (saved) {
+    api.defaults.headers.common.Authorization = `Bearer ${saved}`;
+  }
+}
+
+let _isRefreshing: boolean = false;
+let _refreshPromise: Promise<void> | null = null;
+
+type RefreshResult = { ok: true; accessToken: string } | { ok: false };
+
+function _doRefresh(): Promise<RefreshResult> {
+  if (_refreshPromise) {
+    return _refreshPromise.then(() =>
+      api.defaults.headers.common.Authorization
+        ? { ok: true, accessToken: String(api.defaults.headers.common.Authorization).replace(/^Bearer\s+/, "") }
+        : { ok: false },
+    );
+  }
+  const stored = getStoredRefreshToken();
+  if (!stored) {
+    return Promise.resolve({ ok: false });
+  }
+  _isRefreshing = true;
+  _refreshPromise = refreshToken(stored)
+    .then((data) => {
+      setAuthToken(data.access_token);
+      if (data.refresh_token) setStoredRefreshToken(data.refresh_token);
+    })
+    .catch(() => {
+      clearSession();
+      setAuthToken(null);
+    })
+    .finally(() => {
+      _isRefreshing = false;
+      _refreshPromise = null;
+    });
+  return _refreshPromise.then(() =>
+    api.defaults.headers.common.Authorization
+      ? { ok: true, accessToken: String(api.defaults.headers.common.Authorization).replace(/^Bearer\s+/, "") }
+      : { ok: false },
+  );
 }
 
 export async function login(payload: LoginRequest): Promise<LoginResponse> {
@@ -112,29 +162,25 @@ function setupAuthInterceptor() {
         onUnauthorized?.();
         return Promise.reject(err);
       }
-      const stored = getStoredRefreshToken();
-      if (!stored) {
+      if (!getStoredRefreshToken()) {
         setAuthToken(null);
         onUnauthorized?.();
         return Promise.reject(err);
       }
       originalRequest._retry = true;
-      try {
-        const data = await refreshToken(stored);
-        setAuthToken(data.access_token);
-        if (data.refresh_token) setStoredRefreshToken(data.refresh_token);
-        if (originalRequest.headers)
-          originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
-        return api(originalRequest);
-      } catch {
-        clearSession();
+      const result = await _doRefresh();
+      if (!result.ok) {
         setAuthToken(null);
         onUnauthorized?.();
         return Promise.reject(err);
       }
+      if (originalRequest.headers)
+        originalRequest.headers.Authorization = `Bearer ${result.accessToken}`;
+      return api(originalRequest);
     },
   );
 }
+
 setupAuthInterceptor();
 
 type PerfApiCall = {
