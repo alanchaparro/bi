@@ -330,6 +330,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   )
   const resumeAttemptedRef = useRef(false)
   const previewEnabledRef = useRef(true)
+  const tabEntriesReadyRef = useRef(false)
   const [configSection, setConfigSection] = useState<ConfigSection>('usuarios')
   const [health, setHealth] = useState<{ ok?: boolean; db_ok?: boolean; mysql_ok?: boolean | null; service?: string; error?: string } | null>(null)
   const [healthLoading, setHealthLoading] = useState(false)
@@ -760,8 +761,12 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   }, [])
 
   const sectionDataLoadedRef = useRef<Partial<Record<ConfigSection, boolean>>>({})
-
   useEffect(() => {
+    if (!tabEntriesReadyRef.current) {
+      // Primera vez: marcamos listo sin forzar cambio de pestaña
+      tabEntriesReadyRef.current = true
+      return
+    }
     const ids = configTabEntries.map(([k]) => k)
     if (!ids.includes(configSection) && ids[0]) {
       setConfigSection(ids[0])
