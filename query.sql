@@ -1,8 +1,7 @@
 SELECT
-    CASE
-        WHEN c.request_financing_number IS NOT NULL THEN 'ODONTOLOGIA TTO'
-        ELSE e.name
-    END AS UN,
+    (
+-- @include sql/common/un_rules.sql
+    ) AS UN,
     b.name AS sucursal,
     ccd.contract_id AS id_contrato,
     c.date AS fecha_contrato,
@@ -25,12 +24,13 @@ SELECT
     c.observation AS observacion,
     pml.name AS producto,
     CONCAT_WS(' ', seller.first_name, seller.last_name) AS Vendedor,
-    CASE
-        WHEN UPPER(REPLACE(REPLACE(TRIM(CONCAT_WS(' ', sup.first_name, sup.last_name)), '.', ''), '  ', ' ')) = 'FVBROKEREAS'
-         AND UPPER(REPLACE(REPLACE(TRIM(CONCAT_WS(' ', seller.first_name, seller.last_name)), '.', ''), '  ', ' ')) = 'FVBROKEREASCDE'
-        THEN CONCAT_WS(' ', seller.first_name, seller.last_name)
-        ELSE CONCAT_WS(' ', sup.first_name, sup.last_name)
-    END AS Supervisor,
+    (
+-- @include sql/common/supervisor_rules.sql
+    ) AS Supervisor,
+    COALESCE(
+        dcp_gestor.gestor_name,
+        CONCAT_WS(' ', gestor_user.first_name, gestor_user.last_name)
+    ) AS Gestor,
     DATE_FORMAT(ccd.closed_date, '%Y/%m/%d') AS fecha_cierre,
     ccd.quotas_expirations AS cuotas_vencidas,
     ccd.expired_amount AS monto_vencido,
@@ -75,7 +75,7 @@ SELECT
     ccd.next_expiration_to_pay AS proximo_vencimiento,
     ccd.check_discount_status AS estado_descuento_cheque,
     ccd.last_collection_manager_id AS id_ultimo_gestor,
-    cs.date AS fecha_culminacion,
+    cs.fecha_culminacion AS fecha_culminacion,
     CASE c.client_sales_process
         WHEN 1 THEN 'OIMA'
         WHEN 2 THEN 'TAPO'
@@ -83,26 +83,44 @@ SELECT
     END AS Cartera_Vendida,
     ccd.residue_iva_invoice AS iva_a_facturar
 FROM epem.contract_closed_dates ccd
-JOIN epem.contracts c 
+JOIN epem.contracts c
     ON ccd.contract_id = c.id
-JOIN epem.clients cl 
+JOIN epem.clients cl
     ON c.account_holder_id = cl.id
-JOIN epem.enterprises e 
+JOIN epem.enterprises e
     ON c.enterprise_id = e.id
-JOIN epem.branches b 
+JOIN epem.branches b
     ON c.branch_id = b.id
-LEFT JOIN epem.insurances i 
+LEFT JOIN epem.insurances i
     ON c.insurance_id = i.id
-LEFT JOIN epem.product_money_loans pml 
+LEFT JOIN epem.product_money_loans pml
     ON c.product_money_loan_id = pml.id
 LEFT JOIN epem.users seller
     ON c.seller_id = seller.id
 LEFT JOIN epem.users sup
     ON c.seller_supervisor_id = sup.id
-LEFT JOIN epem.contract_situations cs 
-    ON cs.contract_id = c.id 
-    AND cs.type = 3 
-    AND cs.status = 1
+LEFT JOIN epem.users gestor_user
+    ON ccd.last_collection_manager_id = gestor_user.id
+LEFT JOIN (
+    SELECT
+        dcp.contract_id,
+        MIN(CONCAT_WS(' ', u.first_name, u.last_name)) AS gestor_name
+    FROM epem.detail_client_portfolios dcp
+    JOIN epem.client_portfolios cp ON dcp.clientportfolio_id = cp.id
+    JOIN epem.users u ON cp.manager_id = u.id
+    GROUP BY dcp.contract_id
+) dcp_gestor
+    ON c.id = dcp_gestor.contract_id
+LEFT JOIN (
+    SELECT
+        contract_id,
+        MAX(date) AS fecha_culminacion
+    FROM epem.contract_situations
+    WHERE type = 3
+      AND status = 1
+    GROUP BY contract_id
+) cs
+    ON cs.contract_id = c.id
 LEFT JOIN (
     SELECT
         ce.contract_id,
@@ -113,5 +131,7 @@ LEFT JOIN (
     GROUP BY ce.contract_id
 ) ce_via
     ON ce_via.contract_id = c.id
-WHERE ccd.closed_date > '2020-12-31' 
-  AND c.enterprise_id IN (1, 2, 5);
+WHERE ccd.closed_date > '2020-12-31'
+  AND (
+-- @include sql/common/enterprise_scope.sql
+  );

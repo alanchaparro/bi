@@ -27,7 +27,10 @@ SELECT
     (
 -- @include sql/common/supervisor_rules.sql
     ) AS Supervisor,
-    CONCAT_WS(' ', gestor_user.first_name, gestor_user.last_name) AS Gestor,
+    COALESCE(
+        dcp_gestor.gestor_name,
+        CONCAT_WS(' ', gestor_user.first_name, gestor_user.last_name)
+    ) AS Gestor,
     DATE_FORMAT(ccd.closed_date, '%Y/%m/%d') AS fecha_cierre,
     ccd.quotas_expirations AS cuotas_vencidas,
     ccd.expired_amount AS monto_vencido,
@@ -98,6 +101,16 @@ LEFT JOIN epem.users sup
     ON c.seller_supervisor_id = sup.id
 LEFT JOIN epem.users gestor_user
     ON ccd.last_collection_manager_id = gestor_user.id
+LEFT JOIN (
+    SELECT
+        dcp.contract_id,
+        MIN(CONCAT_WS(' ', u.first_name, u.last_name)) AS gestor_name
+    FROM epem.detail_client_portfolios dcp
+    JOIN epem.client_portfolios cp ON dcp.clientportfolio_id = cp.id
+    JOIN epem.users u ON cp.manager_id = u.id
+    GROUP BY dcp.contract_id
+) dcp_gestor
+    ON c.id = dcp_gestor.contract_id
 LEFT JOIN (
     SELECT
         contract_id,

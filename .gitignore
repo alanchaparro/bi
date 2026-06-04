@@ -62,3 +62,7 @@ sync_restart_probe_job.json
 
 # Local work documents (not for git)
 mejoras.md
+
+# Backups
+*.bak
+*.bak.*

@@ -372,6 +372,7 @@ class CobranzasFact(Base):
     contract_id = Column(String(64), nullable=False)
     gestion_month = Column(String(7), nullable=False, index=True)
     supervisor = Column(String(128), nullable=False, default="S/D")
+    gestor = Column(String(128), nullable=False, default="S/D")
     un = Column(String(128), nullable=False, default="S/D")
     via = Column(String(32), nullable=False, default="S/D")
     payment_date = Column(Date, nullable=False, index=True)

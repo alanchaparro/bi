@@ -1632,6 +1632,7 @@ def _upsert_fact_rows(
                 {
                     "gestion_month": excluded.gestion_month,
                     "supervisor": excluded.supervisor,
+                    "gestor": excluded.gestor,
                     "un": excluded.un,
                     "via": excluded.via,
                     "tramo": excluded.tramo,
