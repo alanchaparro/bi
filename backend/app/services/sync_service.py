@@ -1426,7 +1426,7 @@ def _delete_target_window_fact(
         if target_months:
             q = q.filter(model.gestion_month.in_(target_months))
         elif mode == "full_year" and year_from is not None:
-            q = q.filter(func.substr(model.gestion_month, 4, 4) == str(year_from))
+            q = q.filter(func.right(model.gestion_month, 4) == str(year_from))
         elif mode == "full_all":
             pass
     q.delete(synchronize_session=False)

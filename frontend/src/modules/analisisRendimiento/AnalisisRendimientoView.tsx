@@ -670,7 +670,7 @@ export function AnalisisRendimientoView() {
         }
         const fp = await getRendimientoFirstPaint(payload)
         setSummary(toSummaryFromFirstPaint(fp))
-        await markPerfReady('rendimiento')
+        void markPerfReady('rendimiento')
         void loadSummary(nextFilters, true).catch((e: unknown) => setError(getApiErrorMessage(e)))
       } catch (e: unknown) {
         setError(getApiErrorMessage(e))
@@ -689,7 +689,7 @@ export function AnalisisRendimientoView() {
         setFilters(next)
         setAppliedFilters(next)
         await loadSummary(next, true)
-        await markPerfReady('rendimiento')
+        void markPerfReady('rendimiento')
       } catch (e: unknown) {
         setError(getApiErrorMessage(e))
       } finally {
@@ -982,7 +982,7 @@ export function AnalisisRendimientoView() {
       setFilters(resetFilters)
       setAppliedFilters(resetFilters)
       await loadSummary(resetFilters, true)
-      await markPerfReady('rendimiento')
+      void markPerfReady('rendimiento')
     } catch (e: unknown) {
       setError(getApiErrorMessage(e))
     } finally {

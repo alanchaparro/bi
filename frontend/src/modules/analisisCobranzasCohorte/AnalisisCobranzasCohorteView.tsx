@@ -462,7 +462,7 @@ export function AnalisisCobranzasCohorteView() {
         setAppliedFilters(nextFilters)
         setApplying(true)
         await loadFirstPaint(nextFilters, true)
-        await markPerfReady('cohorte')
+        void markPerfReady('cohorte')
       } catch (e: unknown) {
         setError(getApiErrorMessage(e))
       } finally {

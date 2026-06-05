@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 # (key -> (payload, expiry_ts, endpoint, filters_data))
 _cache: OrderedDict[str, tuple[Any, float, str, dict[str, Any]]] = OrderedDict()
-_DEFAULT_TTL_SECONDS = 60
+_DEFAULT_TTL_SECONDS = 300
 _MAX_ENTRIES = 1000
 _lock = Lock()
 

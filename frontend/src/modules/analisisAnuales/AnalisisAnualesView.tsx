@@ -109,7 +109,7 @@ export function AnalisisAnualesView() {
         setApplying(true);
         const fp = await getAnualesFirstPaint({});
         setSummary({ rows: fp.rows_top || [], cutoff: fp.cutoff || "-", meta: fp.meta });
-        await markPerfReady("anuales");
+        void markPerfReady("anuales");
         void loadSummary(defaults).catch((e: unknown) => setError(getApiErrorMessage(e)));
       } catch (e: unknown) {
         setError(getApiErrorMessage(e));
@@ -135,7 +135,7 @@ export function AnalisisAnualesView() {
           contract_month: next.contractMonths,
         });
         setSummary({ rows: fp.rows_top || [], cutoff: fp.cutoff || "-", meta: fp.meta });
-        await markPerfReady("anuales");
+        void markPerfReady("anuales");
         void loadSummary(next).catch((e: unknown) => setError(getApiErrorMessage(e)));
       } catch (e: unknown) {
         setError(getApiErrorMessage(e));
@@ -313,7 +313,7 @@ export function AnalisisAnualesView() {
       setAppliedFilters(reset);
       const fp = await getAnualesFirstPaint({});
       setSummary({ rows: fp.rows_top || [], cutoff: fp.cutoff || "-", meta: fp.meta });
-      await markPerfReady("anuales");
+      void markPerfReady("anuales");
       void loadSummary(reset).catch((e: unknown) => setError(getApiErrorMessage(e)));
     } catch (e: unknown) {
       setError(getApiErrorMessage(e));

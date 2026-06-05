@@ -747,7 +747,7 @@ def refresh_analytics_snapshot(
     if target_months:
         query = query.filter(AnalyticsContractSnapshot.sale_month.in_(target_months))
     elif mode == "full_year" and year_from is not None:
-        query = query.filter(func.substr(AnalyticsContractSnapshot.sale_month, 4, 4) == str(year_from))
+        query = query.filter(AnalyticsContractSnapshot.sale_year == year_from)
     elif mode == "full_all":
         pass
     query.delete(synchronize_session=False)
@@ -810,7 +810,7 @@ def refresh_analytics_snapshot(
     while True:
         fact_query = db.query(AnalyticsFact).filter(AnalyticsFact.id > last_id).order_by(AnalyticsFact.id.asc())
         if mode == "full_year" and year_from is not None:
-            fact_query = fact_query.filter(func.substr(AnalyticsFact.gestion_month, 4, 4) == str(year_from))
+            fact_query = fact_query.filter(AnalyticsFact.close_year == year_from)
         elif mode != "full_all" and target_months:
             fact_query = fact_query.filter(AnalyticsFact.gestion_month.in_(target_months))
         rows = fact_query.limit(page_size).all()

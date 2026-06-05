@@ -47,7 +47,7 @@ engine_kwargs = {
 if not is_sqlite:
     engine_kwargs.update(
         {
-            'pool_size': max(1, int(settings.db_pool_size or 10)),
+            'pool_size': max(1, int(settings.db_pool_size or 20)),
             'max_overflow': max(0, int(settings.db_max_overflow or 20)),
             'pool_timeout': max(1, int(settings.db_pool_timeout or 30)),
             'pool_recycle': max(30, int(settings.db_pool_recycle or 1800)),

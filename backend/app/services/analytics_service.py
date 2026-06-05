@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 
 from sqlalchemy import Integer, Numeric, String, and_, case, cast, func, literal
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Query, Session
 
 from app.core.config import settings
 from app.domain import (
@@ -660,7 +660,7 @@ class AnalyticsService:
             )
         if year_filter:
             grouped_q = grouped_q.filter(
-                func.substr(AnalyticsContractSnapshot.sale_month, 4, 4).in_(year_filter)
+                AnalyticsContractSnapshot.sale_year.in_([int(y) for y in year_filter])
             )
         grouped_q = grouped_q.group_by(
             AnalyticsContractSnapshot.sale_month,
@@ -1090,6 +1090,39 @@ class AnalyticsService:
         return q
 
     @staticmethod
+    def _fetch_distinct_options(
+        q: Query, model: type, source_table: str
+    ) -> dict:
+        """Consolidated distinct fetch: 1 query instead of 8 per source."""
+        # Padrão de colunas: (col, nome, filtro_fn, ordenar)
+        cols = [
+            (model.un, "un", lambda v: str(v).strip().upper(), False),
+            (model.supervisor, "supervisor", lambda v: str(v).strip().upper(), False),
+            (model.via_cobro, "via", lambda v: str(v).strip().upper(), False),
+            (model.tramo, "tramo", lambda v: str(v), True),
+            (model.categoria, "categoria", lambda v: str(v).strip().upper(), False),
+            (model.gestion_month, "gestion_month", lambda v: str(v), False),
+            (model.close_month, "close_month", lambda v: str(v), False),
+            (model.contract_year, "contract_year", lambda v: str(v), True),
+        ]
+        order_cols = [c[0] for c in cols if c[3]]
+        rows = q.with_entities(*[c[0] for c in cols]).distinct().order_by(*order_cols).all()
+        result = {}
+        for i, (col_attr, name, fmt, _) in enumerate(cols):
+            values = [
+                fmt(r[i]) for r in rows
+                if r[i] is not None and (name != "contract_year" or int(r[i]) > 0)
+            ]
+            # tramo: ordenar como int, contract_year: ya ordenado
+            if name == "tramo":
+                values = sorted(set(values), key=lambda x: int(float(x)))
+            elif name == "contract_year":
+                values = sorted(set(values), key=lambda x: int(float(x)))
+            result[name] = values
+        result["source_table"] = source_table
+        return result
+
+    @staticmethod
     def fetch_portfolio_corte_options_v2(
         db: Session, filters: AnalyticsFilters
     ) -> dict:
@@ -1126,120 +1159,12 @@ class AnalyticsService:
             if years:
                 q = q.filter(MvOptionsCartera.contract_year.in_(years))
 
-        uns = [
-            str(v[0]).strip().upper()
-            for v in q.with_entities(MvOptionsCartera.un).distinct().all()
-            if str(v[0] or "").strip()
-        ]
-        supervisors = [
-            str(v[0]).strip().upper()
-            for v in q.with_entities(MvOptionsCartera.supervisor).distinct().all()
-            if str(v[0] or "").strip()
-        ]
-        vias = [
-            str(v[0]).strip().upper()
-            for v in q.with_entities(MvOptionsCartera.via_cobro).distinct().all()
-            if str(v[0] or "").strip()
-        ]
-        tramos = [
-            str(v[0])
-            for v in q.with_entities(MvOptionsCartera.tramo)
-            .distinct()
-            .order_by(MvOptionsCartera.tramo)
-            .all()
-            if v[0] is not None
-        ]
-        categories = [
-            str(v[0]).strip().upper()
-            for v in q.with_entities(MvOptionsCartera.categoria).distinct().all()
-            if str(v[0] or "").strip()
-        ]
-        gestion_months = [
-            str(v[0])
-            for v in q.with_entities(MvOptionsCartera.gestion_month).distinct().all()
-            if str(v[0] or "").strip()
-        ]
-        close_months = [
-            str(v[0])
-            for v in q.with_entities(MvOptionsCartera.close_month).distinct().all()
-            if str(v[0] or "").strip()
-        ]
-        contract_years = [
-            str(v[0])
-            for v in q.with_entities(MvOptionsCartera.contract_year)
-            .distinct()
-            .order_by(MvOptionsCartera.contract_year)
-            .all()
-            if v[0] is not None and int(v[0]) > 0
-        ]
-
-        source_table = "mv_options_cartera"
-        if not any(
-            [
-                uns,
-                supervisors,
-                vias,
-                tramos,
-                categories,
-                gestion_months,
-                close_months,
-                contract_years,
-            ]
-        ):
+        opts = AnalyticsService._fetch_distinct_options(q, MvOptionsCartera, "mv_options_cartera")
+        if not any(opts.get(k) for k in ["un", "supervisor", "via", "tramo", "categoria", "gestion_month", "close_month", "contract_year"]):
             base = AnalyticsService._portfolio_corte_base(db, filters)
-            uns = [
-                str(v[0]).strip().upper()
-                for v in base.with_entities(CarteraCorteAgg.un).distinct().all()
-                if str(v[0] or "").strip()
-            ]
-            supervisors = [
-                str(v[0]).strip().upper()
-                for v in base.with_entities(CarteraCorteAgg.supervisor).distinct().all()
-                if str(v[0] or "").strip()
-            ]
-            vias = [
-                str(v[0]).strip().upper()
-                for v in base.with_entities(CarteraCorteAgg.via_cobro).distinct().all()
-                if str(v[0] or "").strip()
-            ]
-            tramos = [
-                str(v[0])
-                for v in base.with_entities(CarteraCorteAgg.tramo)
-                .distinct()
-                .order_by(CarteraCorteAgg.tramo)
-                .all()
-                if v[0] is not None
-            ]
-            categories = [
-                str(v[0]).strip().upper()
-                for v in base.with_entities(CarteraCorteAgg.categoria).distinct().all()
-                if str(v[0] or "").strip()
-            ]
-            gestion_months = [
-                str(v[0])
-                for v in base.with_entities(CarteraCorteAgg.gestion_month)
-                .distinct()
-                .all()
-                if str(v[0] or "").strip()
-            ]
-            close_months = [
-                str(v[0])
-                for v in base.with_entities(CarteraCorteAgg.close_month)
-                .distinct()
-                .all()
-                if str(v[0] or "").strip()
-            ]
-            contract_years = [
-                str(v[0])
-                for v in base.with_entities(CarteraCorteAgg.contract_year)
-                .distinct()
-                .order_by(CarteraCorteAgg.contract_year)
-                .all()
-                if v[0] is not None and int(v[0]) > 0
-            ]
-            source_table = "cartera_corte_agg"
+            opts = AnalyticsService._fetch_distinct_options(base, CarteraCorteAgg, "cartera_corte_agg")
 
-        uns = sorted(set(uns) | set(_fetch_canonical_uns(db)))
+        uns = sorted(set(opts.get("un", [])) | set(_fetch_canonical_uns(db)))
         agg_gestion = [
             str(v[0])
             for v in db.query(CarteraCorteAgg.gestion_month).distinct().all()
@@ -1250,8 +1175,8 @@ class AnalyticsService:
             for v in db.query(CarteraCorteAgg.close_month).distinct().all()
             if str(v[0] or "").strip() and _month_serial(str(v[0]).strip()) > 0
         ]
-        gestion_months_data = sorted(set(gestion_months), key=_month_serial)
-        close_months_data = sorted(set(close_months), key=_month_serial)
+        gestion_months_data = sorted(set(opts.get("gestion_month", [])), key=_month_serial)
+        close_months_data = sorted(set(opts.get("close_month", [])), key=_month_serial)
         standard_gestion_months = _standard_calendar_months(
             STANDARD_GESTION_CALENDAR_START
         )
@@ -1269,20 +1194,20 @@ class AnalyticsService:
         return {
             "options": {
                 "uns": sorted(set(uns)),
-                "supervisors": sorted(set(supervisors)),
-                "vias": sorted(set(vias)),
+                "supervisors": sorted(set(opts.get("supervisor", []))),
+                "vias": sorted(set(opts.get("via", []))),
                 "tramos": sorted(
-                    set(tramos), key=lambda x: int(x) if str(x).isdigit() else 999
+                    set(opts.get("tramo", [])), key=lambda x: int(x) if str(x).isdigit() else 999
                 ),
-                "categories": sorted(set(categories)),
+                "categories": sorted(set(opts.get("categoria", []))),
                 "gestion_months": all_gestion_months,
                 "close_months": all_close_months,
                 "contract_years": sorted(
-                    set(contract_years), key=lambda x: int(x) if x.isdigit() else 0
+                    set(opts.get("contract_year", [])), key=lambda x: int(x) if x.isdigit() else 0
                 ),
             },
             "meta": {
-                "source_table": source_table,
+                "source_table": opts.get("source_table", ""),
                 "last_data_gestion_month": gestion_months_data[-1]
                 if gestion_months_data
                 else None,
