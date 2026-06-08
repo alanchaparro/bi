@@ -274,10 +274,24 @@ function CloseIcon() {
   );
 }
 
+function SidebarBadge({ tone }: { tone: "live" | "warn" | "error" }) {
+  const toneMap = {
+    live: "bg-emerald-400",
+    warn: "bg-amber-400",
+    error: "bg-red-400",
+  };
+  return (
+    <span className="dashboard-sidebar-badge" aria-hidden>
+      <span className={`dashboard-sidebar-badge-dot ${toneMap[tone]}`} />
+    </span>
+  );
+}
+
 function SidebarBrandMark() {
   return (
     <div className="dashboard-sidebar-brand-mark" aria-hidden>
       <span className="material-symbols-outlined dashboard-sidebar-brand-ms-icon">insights</span>
+      <div className="dashboard-sidebar-brand-ping" />
     </div>
   );
 }
@@ -750,6 +764,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                               <SidebarMaterialIcon id={item.id} active={isActive} />
                             </span>
                             <span className="dashboard-sidebar-link-text">{item.label}</span>
+                            {item.id === "config" && (showSync || showSchedule) && <SidebarBadge tone={syncTone === "error" ? "error" : "live"} />}
                           </Link>
                           <Button
                             type="button"
