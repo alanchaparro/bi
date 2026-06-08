@@ -1,7 +1,8 @@
 import React, { memo } from "react";
 import { render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DashboardLayout, useSyncLive } from "./DashboardLayout";
+import { DashboardLayout } from "./DashboardLayout";
+import { useSyncLive } from "./SyncLiveContext";
 
 const replaceMock = vi.fn();
 const logoutMock = vi.fn();

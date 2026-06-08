@@ -1,5 +1,5 @@
-import React, { useMemo } from "react";
-import { Button, Popover } from "@heroui/react";
+import React, { useMemo, useState } from "react";
+import { Button, Tooltip } from "@heroui/react";
 import raw from "./glosario_cuentas.json";
 
 export type EerrGlosarioEntry = {
@@ -90,51 +90,48 @@ export function EerrGlosarioInfo({ kind, label, eerrBlock, mayorHint, className 
 
   const title = kind === "mayor" ? "Cuentas en este mayor (glosario)" : "Qué se registra en esta cuenta";
 
+  // Mejora UX #9: Panel glosario flotante al hover (Tooltip en vez de Popover/click)
+  const tooltipContent = (() => {
+    if (kind === "cuenta" && matches.length === 1) {
+      return matches[0].descripcion ?? "Sin descripción en el glosario.";
+    }
+    return (
+      <div className="max-w-[20rem]">
+        <p className="text-xs font-semibold mb-1 text-[var(--color-text)]">{title}</p>
+        <ul className="space-y-1">
+          {matches.map((e, idx) => (
+            <li key={`${e.grupo_epem}-${e.rubro}-${e.cuenta_concepto}-${idx}`}>
+              <span className="font-medium text-[0.72rem]">{e.cuenta_concepto}</span>{" "}
+              <span className="text-[0.65rem] opacity-70">({e.grupo_epem})</span>
+              {e.descripcion ? (
+                <p className="text-[0.68rem] text-[var(--color-text-muted)] mt-0.5">{e.descripcion}</p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  })();
+
   return (
-    <Popover.Root>
-      <Popover.Trigger>
+    <Tooltip delay={200} closeDelay={200}>
+      <Tooltip.Trigger>
         <Button
           type="button"
           variant="ghost"
           size="sm"
           isIconOnly
           aria-label={`Glosario: ${label}`}
-          aria-haspopup="dialog"
           className={`h-6 w-6 min-w-6 shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-primary)] ${className ?? ""}`}
         >
           <span className="material-symbols-outlined text-[16px] leading-none" aria-hidden>
             info
           </span>
         </Button>
-      </Popover.Trigger>
-      <Popover.Content placement="top start" offset={8} className="eerr-glosario-popover-content">
-        <Popover.Dialog className="eerr-glosario-popover-dialog">
-          <p className="eerr-glosario-popover-title">{title}</p>
-          {kind === "cuenta" && matches.length === 1 ? (
-            <p className="eerr-glosario-popover-body">
-              {matches[0].descripcion ?? "Sin descripción en el glosario."}
-            </p>
-          ) : (
-            <ul className="eerr-glosario-popover-list">
-              {matches.map((e, idx) => (
-                <li key={`${e.grupo_epem}-${e.rubro}-${e.cuenta_concepto}-${idx}`}>
-                  <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                    <span className="font-medium text-[0.78rem] text-[var(--color-text)]">{e.cuenta_concepto}</span>
-                    <span className="text-[0.65rem] text-[var(--color-text-muted)]">{e.grupo_epem}</span>
-                  </div>
-                  {e.descripcion ? (
-                    <p className="eerr-glosario-popover-body mt-1.5 text-[var(--color-text-muted)]">{e.descripcion}</p>
-                  ) : (
-                    <p className="eerr-glosario-popover-body mt-1.5 italic text-[var(--color-text-muted)]">
-                      Sin descripción.
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Popover.Dialog>
-      </Popover.Content>
-    </Popover.Root>
+      </Tooltip.Trigger>
+      <Tooltip.Content placement="top start" className="max-w-[22rem] text-xs">
+        {tooltipContent}
+      </Tooltip.Content>
+    </Tooltip>
   );
 }

@@ -16,6 +16,8 @@ import {
   cycleDarkThemePresetId,
   getStoredThemePresetId,
   getThemePresetById,
+  THEME_PRESETS,
+  type ThemePreset,
 } from "@/shared/themePresets";
 
 
@@ -139,12 +141,69 @@ function SidebarMaterialIcon({ id, active, size = "md" }: { id: string; active?:
   );
 }
 
-/** Oscuro: paleta (ciclo de variantes); claro: luna (volver a oscuro). */
+/** Glifo del tema actual */
 function SidebarThemeToggleIcon({ isDark }: { isDark: boolean }) {
   return (
     <span className="material-symbols-outlined dashboard-sidebar-action-ms" aria-hidden>
       {isDark ? "palette" : "dark_mode"}
     </span>
+  );
+}
+
+/**
+ * Mejora UX #8: Selector visual de theme presets en vez de solo ciclado.
+ */
+function ThemePresetSelector({
+  currentId,
+  onSelect,
+}: {
+  currentId: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <Popover.Root>
+      <Popover.Trigger>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          isIconOnly
+          aria-label="Cambiar tema"
+          className="min-h-9 min-w-9 shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+        >
+          <SidebarThemeToggleIcon isDark={getThemePresetById(currentId).mode === "dark"} />
+        </Button>
+      </Popover.Trigger>
+      <Popover.Content placement="bottom end" offset={6} className="dashboard-user-popover-content">
+        <Popover.Dialog className="dashboard-user-popover-dialog min-w-[16rem]">
+          <p className="text-xs text-[var(--color-text-muted)] mb-2">Seleccioná un tema</p>
+          <div className="flex flex-col gap-1">
+            {THEME_PRESETS.map((preset: ThemePreset) => (
+              <Button
+                key={preset.id}
+                type="button"
+                variant={currentId === preset.id ? "primary" : "ghost"}
+                size="sm"
+                className="w-full justify-start gap-2 text-xs"
+                onPress={() => onSelect(preset.id)}
+              >
+                <span
+                  className="inline-block w-4 h-4 rounded-full border border-[var(--color-border)]"
+                  style={{ backgroundColor: preset.swatches[0] }}
+                  aria-hidden="true"
+                />
+                <span className="flex-1 text-left">{preset.label}</span>
+                {preset.mode === "dark" ? (
+                  <span className="text-[10px] text-[var(--color-text-muted)] opacity-60">Oscuro</span>
+                ) : (
+                  <span className="text-[10px] text-[var(--color-text-muted)] opacity-60">Claro</span>
+                )}
+              </Button>
+            ))}
+          </div>
+        </Popover.Dialog>
+      </Popover.Content>
+    </Popover.Root>
   );
 }
 
@@ -317,21 +376,7 @@ function SidebarUserCard({ auth, themePresetId, onToggleTheme, onLogout }: Sideb
         </div>
       </div>
       <div className="dashboard-sidebar-user-actions">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          isIconOnly
-          aria-label={
-            isDark
-              ? `Siguiente tema oscuro (${getThemePresetById(themePresetId).label})`
-              : "Activar tema oscuro Obsidiana"
-          }
-          onPress={onToggleTheme}
-          className="min-h-9 min-w-9 shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-        >
-          <SidebarThemeToggleIcon isDark={isDark} />
-        </Button>
+        <ThemePresetSelector currentId={themePresetId} onSelect={onToggleTheme} />
         <Button
           type="button"
           size="sm"
@@ -727,7 +772,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                           className={`dashboard-sidebar-link ${isActive ? "is-active" : ""} ${isRendimiento ? "sidebar-item-rendimiento" : ""}`}
                           aria-current={isActive ? "page" : undefined}
                           aria-label={item.label}
-                          title={item.label}
+                          title={item.tooltip || item.label}
                           data-testid={item.id === "config" ? "nav-config" : isRendimiento ? "nav-rendimiento-cartera" : undefined}
                         >
                           <span className="dashboard-sidebar-link-icon" aria-hidden>
@@ -748,7 +793,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                                 className={`dashboard-sidebar-sublink ${isChildActive ? "is-active" : ""}`}
                                 aria-current={isChildActive ? "page" : undefined}
                                 aria-label={child.label}
-                                title={child.label}
+                                title={child.tooltip || child.label}
                               >
                                 <span className="dashboard-sidebar-sublink-icon-wrap" aria-hidden>
                                   <SidebarMaterialIcon id={child.id} active={isChildActive} size="sm" />

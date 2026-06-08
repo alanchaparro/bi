@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import {
   clearAnalyticsApiCache,
   login,
@@ -20,12 +20,16 @@ import { LoginView } from './modules/auth/LoginView'
 import { NAV_SECTIONS } from './config/navSections'
 import { SidebarNav } from './components/SidebarNav'
 import { ErrorState } from './components/feedback/ErrorState'
-import { ConfigView } from './modules/config/ConfigView'
-import { AnalisisCarteraView } from './modules/analisisCartera/AnalisisCarteraView'
-import { AnalisisCobranzasCohorteView } from './modules/analisisCobranzasCohorte/AnalisisCobranzasCohorteView'
-import { AnalisisRendimientoView } from './modules/analisisRendimiento/AnalisisRendimientoView'
-import { AnalisisAnualesView } from './modules/analisisAnuales/AnalisisAnualesView'
-import { EerrView } from './modules/eerr/EerrView'
+import { LoadingState } from './components/feedback/LoadingState'
+
+// ── Mejora 1: Code splitting con React.lazy ──
+const ConfigView = React.lazy(() => import('./modules/config/ConfigView').then(m => ({ default: m.ConfigView })))
+const AnalisisCarteraView = React.lazy(() => import('./modules/analisisCartera/AnalisisCarteraView').then(m => ({ default: m.AnalisisCarteraView })))
+const AnalisisAnualesView = React.lazy(() => import('./modules/analisisAnuales/AnalisisAnualesView').then(m => ({ default: m.AnalisisAnualesView })))
+const AnalisisRendimientoView = React.lazy(() => import('./modules/analisisRendimiento/AnalisisRendimientoView').then(m => ({ default: m.AnalisisRendimientoView })))
+const AnalisisCobranzasCohorteView = React.lazy(() => import('./modules/analisisCobranzasCohorte/AnalisisCobranzasCohorteView').then(m => ({ default: m.AnalisisCobranzasCohorteView })))
+const EerrView = React.lazy(() => import('./modules/eerr/EerrView').then(m => ({ default: m.EerrView })))
+
 import {
   applyThemePreset,
   cycleDarkThemePresetId,
@@ -306,29 +310,31 @@ export default function App() {
         <main className="app-content">
           {error ? <ErrorState message={error} className="mb-3" /> : null}
 
-          <section id="analisisCartera" className={`app-section ${activeSectionId === 'analisisCartera' ? '' : 'hidden'}`}>
-            <AnalisisCarteraView />
-          </section>
+          <Suspense fallback={<LoadingState message="Cargando panel..." className="mt-8" />}>
+            <section id="analisisCartera" className={`app-section ${activeSectionId === 'analisisCartera' ? '' : 'hidden'}`}>
+              <AnalisisCarteraView />
+            </section>
 
-          <section id="analisisCarteraAnuales" className={`app-section ${activeSectionId === 'analisisCarteraAnuales' ? '' : 'hidden'}`}>
-            <AnalisisAnualesView />
-          </section>
+            <section id="analisisCarteraAnuales" className={`app-section ${activeSectionId === 'analisisCarteraAnuales' ? '' : 'hidden'}`}>
+              <AnalisisAnualesView />
+            </section>
 
-          <section id="analisisCarteraRendimiento" className={`app-section ${activeSectionId === 'analisisCarteraRendimiento' ? '' : 'hidden'}`}>
-            <AnalisisRendimientoView />
-          </section>
+            <section id="analisisCarteraRendimiento" className={`app-section ${activeSectionId === 'analisisCarteraRendimiento' ? '' : 'hidden'}`}>
+              <AnalisisRendimientoView />
+            </section>
 
-          <section id="analisisCobranzaCohorte" className={`app-section ${activeSectionId === 'analisisCobranzaCohorte' ? '' : 'hidden'}`}>
-            <AnalisisCobranzasCohorteView />
-          </section>
+            <section id="analisisCobranzaCohorte" className={`app-section ${activeSectionId === 'analisisCobranzaCohorte' ? '' : 'hidden'}`}>
+              <AnalisisCobranzasCohorteView />
+            </section>
 
-          <section id="eerr" className={`app-section ${activeSectionId === 'eerr' ? '' : 'hidden'}`}>
-            <EerrView />
-          </section>
+            <section id="eerr" className={`app-section ${activeSectionId === 'eerr' ? '' : 'hidden'}`}>
+              <EerrView />
+            </section>
 
-          <section id="config" className={`app-section ${activeSectionId === 'config' ? '' : 'hidden'}`}>
-            <ConfigView onSyncLiveChange={setGlobalSyncLive} onScheduleLiveChange={setGlobalScheduleLive} />
-          </section>
+            <section id="config" className={`app-section ${activeSectionId === 'config' ? '' : 'hidden'}`}>
+              <ConfigView onSyncLiveChange={setGlobalSyncLive} onScheduleLiveChange={setGlobalScheduleLive} />
+            </section>
+          </Suspense>
         </main>
       </div>
     </>

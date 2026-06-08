@@ -1358,3 +1358,72 @@ body {
 .analysis-stack-hoverline {
     color: var(--color-text-muted);
 }
+
+/* ==========================================================================
+   Mejora UX #7: focus-visible en controles interactivos
+   Reemplaza focus ring agresivo por :focus-visible accesible
+   ========================================================================== */
+*:focus-visible {
+    outline: 2px solid var(--color-primary) !important;
+    outline-offset: 2px !important;
+}
+
+*:focus:not(:focus-visible) {
+    outline: none !important;
+}
+
+/* Asegurar compatibilidad con HeroUI y elementos propios */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="checkbox"]:focus-visible,
+[role="radio"]:focus-visible,
+[role="menuitem"]:focus-visible {
+    outline: 2px solid var(--color-primary) !important;
+    outline-offset: 2px !important;
+    border-radius: 6px;
+}
+
+/* Tablas y celdas */
+table td:focus-visible,
+table th:focus-visible {
+    outline: 2px solid var(--color-primary) !important;
+    outline-offset: -2px !important;
+}
+
+/* Barras de scroll personalizadas */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: var(--sidebar-border);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-muted);
+}
+
+/* Mejora UX #5: Reduced motion global */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+    .dashboard-page-enter,
+    .dashboard-sidebar,
+    .dashboard-sidebar-overlay,
+    .dashboard-shell {
+        animation: none !important;
+        transition: none !important;
+    }
+}

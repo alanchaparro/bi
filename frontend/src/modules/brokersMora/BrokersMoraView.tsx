@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { Input } from '@heroui/react'
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
+import { VirtualTable } from '../../components/tables/VirtualTable'
 import { EmptyState } from '../../components/feedback/EmptyState'
 
 type Row = {
@@ -93,36 +94,20 @@ export function BrokersMoraView({ rows }: Props) {
           suggestion="Probá limpiar o ampliar los filtros por supervisor, UN o vía."
         />
       ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Año</th>
-                <th>Mes</th>
-                <th>Supervisor</th>
-                <th>UN</th>
-                <th>Vía</th>
-                <th>Contratos</th>
-                <th>Mora 3M</th>
-                <th>Monto cuota</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r, idx) => (
-                <tr key={`${r.month}-${r.supervisor}-${r.un}-${idx}`}>
-                  <td>{r.year}</td>
-                  <td>{r.month}</td>
-                  <td>{r.supervisor}</td>
-                  <td>{r.un}</td>
-                  <td>{r.via}</td>
-                  <td>{r.count}</td>
-                  <td>{r.mora3m}</td>
-                  <td>{Number(r.montoCuota || 0).toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <VirtualTable
+          data={filtered}
+          virtualizeThreshold={100}
+          columns={[
+            { key: "year", label: "Año", accessor: (r) => r.year },
+            { key: "month", label: "Mes", accessor: (r) => r.month },
+            { key: "supervisor", label: "Supervisor", accessor: (r) => r.supervisor },
+            { key: "un", label: "UN", accessor: (r) => r.un },
+            { key: "via", label: "Vía", accessor: (r) => r.via },
+            { key: "count", label: "Contratos", accessor: (r) => r.count, className: "p-2 text-sm text-right font-mono" },
+            { key: "mora3m", label: "Mora 3M", accessor: (r) => r.mora3m, className: "p-2 text-sm text-right font-mono" },
+            { key: "montoCuota", label: "Monto cuota", accessor: (r) => Number(r.montoCuota || 0).toFixed(2), className: "p-2 text-sm text-right font-mono" },
+          ]}
+        />
       )}
     </section>
   )

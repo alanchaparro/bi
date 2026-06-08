@@ -16,6 +16,7 @@ import { VIA_DEBITO_COBRADOR_ABBREV_OPTIONS } from '../../components/filters/ana
 import { AnalyticsPageHeader } from '../../components/analytics/AnalyticsPageHeader'
 import { AnalyticsMetaBadges } from '../../components/analytics/AnalyticsMetaBadges'
 import { AnalysisSelectionSummary } from '../../components/analytics/AnalysisSelectionSummary'
+import { CohorteKpiPresets } from '../../components/analytics/CohorteKpiPresets'
 import { MetricExplainer } from '../../components/analytics/MetricExplainer'
 import { AnalysisFiltersSkeleton } from '../../components/feedback/AnalysisFiltersSkeleton'
 import { EmptyState } from '../../components/feedback/EmptyState'
@@ -937,7 +938,17 @@ export function AnalisisCobranzasCohorteView() {
                 cobro_cutoff_month: (
                   <div className="analysis-filter-control">
                     <label className="input-label" id="cutoff-month-label">Mes de cobro</label>
-                    <CobranzasCohorteCutoffRangeControl
+                    <CohorteKpiPresets
+              cutoffOptions={options.cutoffMonths}
+              onApplyPreset={(months) => {
+                setCohorteCutoffYears(
+                  distinctYearsFromMonthOptions(months)
+                )
+                setFilters((f) => ({ ...f, cutoffMonth: months[0] || '', cutoffMonths: months }))
+                void commitAndLoad({ ...appliedFilters, cutoffMonth: months[0] || '', cutoffMonths: months })
+              }}
+            />
+            <CobranzasCohorteCutoffRangeControl
                       cutoffOptions={options.cutoffMonths}
                       cohorteYears={cohorteYears}
                       selectedYears={cohorteCutoffYears}
@@ -1049,8 +1060,27 @@ export function AnalisisCobranzasCohorteView() {
           >
             <Tabs.ListContainer>
               <Tabs.List>
-                <Tabs.Tab id="principal">Vista cohorte</Tabs.Tab>
-                <Tabs.Tab id="sin_cierre_cartera">Cobranzas sin cierre cartera</Tabs.Tab>
+                {/* Mejora UX #10: Badges con conteo en tabs */}
+                <Tabs.Tab id="principal">
+                  <span className="flex items-center gap-2">
+                    Vista cohorte
+                    {summary?.by_tramo && Object.keys(summary.by_tramo).length > 0 && (
+                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-[var(--color-primary)]/15 text-[var(--color-primary)] text-[10px] font-semibold tabular-nums">
+                        {Object.keys(summary.by_tramo).length}
+                      </span>
+                    )}
+                  </span>
+                </Tabs.Tab>
+                <Tabs.Tab id="sin_cierre_cartera">
+                  <span className="flex items-center gap-2">
+                    Cobranzas sin cierre cartera
+                    {orphanDetail?.total_items != null && (
+                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-[var(--color-primary)]/15 text-[var(--color-primary)] text-[10px] font-semibold tabular-nums">
+                        {formatCount(orphanDetail.total_items)}
+                      </span>
+                    )}
+                  </span>
+                </Tabs.Tab>
               </Tabs.List>
             </Tabs.ListContainer>
           </Tabs>
