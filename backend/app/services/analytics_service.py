@@ -793,41 +793,35 @@ class AnalyticsService:
         if category_filter:
             base = base.filter(category_expr.in_(category_filter))
 
-        uns = [
-            str(v[0]).strip().upper()
-            for v in base.with_entities(CarteraFact.un).distinct().all()
-            if str(v[0] or "").strip()
-        ]
-        months = [
-            str(v[0])
-            for v in base.with_entities(CarteraFact.gestion_month).distinct().all()
-            if str(v[0] or "").strip()
-        ]
-        close_months = [
-            str(v[0])
-            for v in base.with_entities(CarteraFact.close_month).distinct().all()
-            if str(v[0] or "").strip()
-        ]
-        vias = [
-            str(v[0]).strip().upper()
-            for v in base.with_entities(via_expr.label("via_class")).distinct().all()
-            if str(v[0] or "").strip()
-        ]
-        tramos = [
-            str(v[0])
-            for v in base.with_entities(CarteraFact.tramo)
-            .distinct()
-            .order_by(CarteraFact.tramo)
-            .all()
-            if v[0] is not None
-        ]
-        categories = [
-            str(v[0])
-            for v in base.with_entities(category_expr.label("category"))
-            .distinct()
-            .all()
-            if str(v[0] or "").strip()
-        ]
+        # Optimizado: usar MvOptionsCartera en vez de DISTINCT sobre cartera_fact (3.7GB → 40MB)
+        opts_q = db.query(MvOptionsCartera)
+        if supervisor_filter:
+            opts_q = opts_q.filter(MvOptionsCartera.supervisor.in_(supervisor_filter))
+        if un_filter:
+            opts_q = opts_q.filter(MvOptionsCartera.un.in_(un_filter))
+        if via_filter:
+            opts_q = opts_q.filter(MvOptionsCartera.via_cobro.in_(via_filter))
+        if year_filter:
+            years = [int(y) for y in year_filter if y.isdigit()]
+            if years:
+                opts_q = opts_q.filter(MvOptionsCartera.contract_year.in_(years))
+        if month_filter:
+            opts_q = opts_q.filter(MvOptionsCartera.gestion_month.in_(month_filter))
+        if close_month_filter:
+            opts_q = opts_q.filter(MvOptionsCartera.close_month.in_(close_month_filter))
+        if tramo_filter:
+            tramos = [int(t) for t in tramo_filter if str(t).isdigit()]
+            if tramos:
+                opts_q = opts_q.filter(MvOptionsCartera.tramo.in_(tramos))
+        if category_filter:
+            opts_q = opts_q.filter(MvOptionsCartera.categoria.in_(category_filter))
+        opts = AnalyticsService._fetch_distinct_options(opts_q, MvOptionsCartera, "mv_options_cartera")
+        uns = sorted(set(opts.get("un", [])))
+        months = sorted(set(opts.get("gestion_month", [])))
+        close_months = sorted(set(opts.get("close_month", [])))
+        vias = sorted(set(opts.get("via", [])))
+        tramos = [str(t) for t in opts.get("tramo", [])]
+        categories = sorted(set(opts.get("categoria", [])))
 
         return {
             "options": {
@@ -3514,39 +3508,38 @@ class AnalyticsService:
             AnalyticsService._rendimiento_filtered_cartera_query(db, filters)
         )
 
-        uns = [
-            str(v[0]).strip().upper()
-            for v in base.with_entities(CarteraFact.un).distinct().all()
-            if str(v[0] or "").strip()
+        # Optimizado: usar MvOptionsRendimiento en vez de DISTINCT sobre cartera_fact
+        opts_q = db.query(MvOptionsRendimiento)
+        if un_filter:
+            opts_q = opts_q.filter(MvOptionsRendimiento.un.in_(list(un_filter)))
+        if tramo_filter:
+            tramo_int = [int(t) for t in tramo_filter if str(t).isdigit()]
+            if tramo_int:
+                opts_q = opts_q.filter(MvOptionsRendimiento.tramo.in_(tramo_int))
+        if gestion_filter:
+            opts_q = opts_q.filter(MvOptionsRendimiento.gestion_month.in_(gestion_filter))
+        if via_cobro_filter:
+            opts_q = opts_q.filter(MvOptionsRendimiento.via_cobro.in_(list(via_cobro_filter)))
+        if categoria_filter:
+            opts_q = opts_q.filter(MvOptionsRendimiento.categoria.in_(list(categoria_filter)))
+        if supervisor_filter:
+            opts_q = opts_q.filter(MvOptionsRendimiento.supervisor.in_(list(supervisor_filter)))
+        # Usamos _fetch_distinct_options adaptado para rendimiento
+        cols = [
+            (MvOptionsRendimiento.un, "un"),
+            (MvOptionsRendimiento.supervisor, "supervisor"),
+            (MvOptionsRendimiento.via_cobro, "via_cobro"),
+            (MvOptionsRendimiento.categoria, "categoria"),
+            (MvOptionsRendimiento.tramo, "tramo"),
+            (MvOptionsRendimiento.gestion_month, "gestion_month"),
         ]
-        tramos = [
-            str(v[0])
-            for v in base.with_entities(CarteraFact.tramo)
-            .distinct()
-            .order_by(CarteraFact.tramo)
-            .all()
-            if v[0] is not None
-        ]
-        gestion_months = [
-            str(v[0]).strip()
-            for v in base.with_entities(CarteraFact.gestion_month).distinct().all()
-            if str(v[0] or "").strip()
-        ]
-        vias_cobro = [
-            str(v[0]).strip().upper()
-            for v in base.with_entities(via_expr).distinct().all()
-            if str(v[0] or "").strip()
-        ]
-        categorias = [
-            str(v[0]).strip().upper()
-            for v in base.with_entities(categoria_expr).distinct().all()
-            if str(v[0] or "").strip()
-        ]
-        supervisors = [
-            str(v[0]).strip().upper()
-            for v in base.with_entities(CarteraFact.supervisor).distinct().all()
-            if str(v[0] or "").strip()
-        ]
+        rows = opts_q.with_entities(*[c[0] for c in cols]).distinct().order_by(MvOptionsRendimiento.tramo).all()
+        uns = sorted({str(r[0]).strip().upper() for r in rows if str(r[0] or "").strip()})
+        tramos = sorted({str(r[4]) for r in rows if r[4] is not None}, key=lambda x: int(x) if str(x).isdigit() else 999)
+        gestion_months = sorted({str(r[5]).strip() for r in rows if str(r[5] or "").strip()}, key=_month_serial)
+        vias_cobro = sorted({str(r[2]).strip().upper() for r in rows if str(r[2] or "").strip()})
+        categorias = sorted({str(r[3]).strip().upper() for r in rows if str(r[3] or "").strip()})
+        supervisors = sorted({str(r[1]).strip().upper() for r in rows if str(r[1] or "").strip()})
 
         via_pago_set: set[str] = set()
         q_via_pago = db.query(CobranzasFact.payment_via_class).distinct()

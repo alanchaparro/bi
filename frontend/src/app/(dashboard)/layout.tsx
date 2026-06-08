@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { FilterLayoutConfigProvider } from "@/components/filters/FilterLayoutConfigContext";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { LoadingState } from "@/components/feedback/LoadingState";
+import { ErrorBoundary } from "@/components/feedback/ErrorBoundary";
 
 export default function Layout({
   children,
@@ -17,7 +18,7 @@ export default function Layout({
       }
     >
       <DashboardLayout>
-        <FilterLayoutConfigProvider>{children}</FilterLayoutConfigProvider>
+        <FilterLayoutConfigProvider><ErrorBoundary>{children}</ErrorBoundary></FilterLayoutConfigProvider>
       </DashboardLayout>
     </Suspense>
   );

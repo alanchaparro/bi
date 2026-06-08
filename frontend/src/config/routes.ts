@@ -32,7 +32,7 @@ export type NavItem = {
   label: string;
   href: string;
   group: string;
-  children?: readonly NavChildItem[];
+  subItems?: readonly NavChildItem[];
 };
 
 export const NAV_ITEMS = [
@@ -47,7 +47,7 @@ export const NAV_ITEMS = [
     label: "Análisis de Cartera",
     href: ROUTES.analisisCartera,
     group: "Análisis de Cartera",
-    children: [{ id: "roloCartera", label: "Rolo de Cartera", href: ROUTES.roloCartera }],
+    subItems: [{ id: "roloCartera", label: "Rolo de Cartera", href: ROUTES.roloCartera }],
   },
   { id: "analisisCarteraAnuales", label: "Análisis Anuales", href: ROUTES.analisisAnuales, group: "Análisis de Cartera" },
   { id: "analisisCarteraRendimiento", label: "Rendimiento de Cartera", href: ROUTES.rendimiento, group: "Análisis de Cartera" },
@@ -58,7 +58,7 @@ export const NAV_ITEMS = [
     label: "Configuración",
     href: ROUTES.config,
     group: "Sistema",
-    children: [
+    subItems: [
       { id: "config_usuarios", label: "Usuarios", href: `${ROUTES.config}?tab=usuarios` },
       { id: "config_roles_menus", label: "Roles y menús", href: `${ROUTES.config}?tab=roles-menus` },
       { id: "config_layouts_filtros", label: "Layouts filtros", href: `${ROUTES.config}?tab=layouts-filtros` },

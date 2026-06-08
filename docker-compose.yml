@@ -11,7 +11,7 @@ services:
       -c pg_stat_statements.max=10000
       -c pg_stat_statements.track=all
       -c shared_buffers=1GB
-      -c effective_cache_size=3GB
+      -c effective_cache_size=5GB
       -c work_mem=8MB
       -c maintenance_work_mem=256MB
       -c random_page_cost=1.3

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Suspense } from "react";
-import { useSyncLive } from "@/components/layout/DashboardLayout";
+import { useSyncLive } from "@/components/layout/SyncLiveContext";
 import { LoadingState } from "@/components/feedback/LoadingState";
 import { ConfigView } from "@/modules/config/ConfigView";
 
@@ -28,3 +28,4 @@ export default function ConfigPage() {
     </Suspense>
   );
 }
+

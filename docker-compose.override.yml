@@ -1,21 +1,35 @@
-version: "3.8"
 services:
   postgres:
     mem_limit: 2048m
     memswap_limit: 2048m
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   api-v1-lan:
     mem_limit: 1024m
     memswap_limit: 1280m
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   sync-worker-lan:
     mem_limit: 2048m
     memswap_limit: 3072m
     restart: unless-stopped
     tmpfs:
-      - /tmp:noexec,nosuid,size=512m
+      - /tmp:noexec,nosuid,size=2g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   frontend-prod-lan:
     mem_limit: 512m

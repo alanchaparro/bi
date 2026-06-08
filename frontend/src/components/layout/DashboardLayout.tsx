@@ -9,6 +9,8 @@ import type { LoginResponse } from "@/shared/contracts";
 import { CONFIG_SECTION_NAV_IDS, hasConfigNavPermission } from "@/config/roleNav";
 import { NAV_ITEMS, type NavItem } from "@/config/routes";
 import { LoadingState } from "@/components/feedback/LoadingState";
+import { SyncLiveContext, useSyncLive, type SyncLive, type ScheduleLive, type SyncLiveContextValue } from "@/components/layout/SyncLiveContext";
+import { PageBreadcrumbs } from "@/components/layout/PageBreadcrumbs";
 import {
   applyThemePreset,
   cycleDarkThemePresetId,
@@ -16,42 +18,7 @@ import {
   getThemePresetById,
 } from "@/shared/themePresets";
 
-type SyncLive = {
-  running?: boolean;
-  currentDomain?: string | null;
-  progressPct?: number;
-  message?: string;
-  currentQueryFile?: string | null;
-  etaSeconds?: number | null;
-  jobStep?: string | null;
-  queuePosition?: number | null;
-  chunkKey?: string | null;
-  chunkStatus?: string | null;
-  skippedUnchangedChunks?: number;
-  error?: string | null;
-  lastUpdatedAt?: string | null;
-};
 
-type ScheduleLive = {
-  runningCount: number;
-  domains: string[];
-  progressPct?: number | null;
-  lastUpdatedAt?: string | null;
-};
-
-type SyncLiveContextValue = {
-  syncLive: SyncLive | null;
-  scheduleLive: ScheduleLive | null;
-  setSyncLive: (v: SyncLive | null) => void;
-  setScheduleLive: (v: ScheduleLive | null) => void;
-};
-
-const SyncLiveContext = React.createContext<SyncLiveContextValue | null>(null);
-
-export function useSyncLive() {
-  const ctx = React.useContext(SyncLiveContext);
-  return ctx ?? { syncLive: null, scheduleLive: null, setSyncLive: () => {}, setScheduleLive: () => {} };
-}
 
 function groupNavItems(items: readonly NavItem[]) {
   const map = new Map<string, NavItem[]>();
@@ -107,13 +74,13 @@ function filterNavByPermissions(permissions: string[] | undefined): NavItem[] {
   const out: NavItem[] = [];
   for (const item of NAV_ITEMS as readonly NavItem[]) {
     const selfOk = item.id === "config" ? configNavAllowed(allowed) : allowed.has(item.id);
-    const rawChildren = item.children;
-    if (rawChildren?.length) {
-      const kids = rawChildren.filter((c) => allowed.has(c.id));
+    const rawSubItems = item.subItems;
+    if (rawSubItems?.length) {
+      const kids = rawSubItems.filter((c) => allowed.has(c.id));
       if (!selfOk && kids.length === 0) continue;
       out.push({
         ...item,
-        children: kids.length ? kids : undefined,
+        subItems: kids.length ? kids : undefined,
       });
       continue;
     }
@@ -139,7 +106,7 @@ function navHrefMatchesLocation(pathname: string, searchRaw: string, href: strin
 function computeSubmenuDefaultOpen(pathname: string, searchRaw: string, items: readonly NavItem[]): Record<string, boolean> {
   const out: Record<string, boolean> = {};
   for (const item of items) {
-    const kids = item.children;
+    const kids = item.subItems;
     if (!kids?.length) continue;
     const parentMatch = navHrefMatchesLocation(pathname, searchRaw, item.href);
     const childMatch = kids.some((c) => navHrefMatchesLocation(pathname, searchRaw, c.href));
@@ -718,12 +685,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <div className="dashboard-sidebar-links">
                 {items.map((item) => {
                   const isActive = navHrefMatchesLocation(pathname, navSearchRaw, item.href);
-                  const showChildren = Boolean(item.children?.length);
-                  const submenuOpen = showChildren ? isSubmenuExpanded(item.id) : false;
+                  const showSubItems = Boolean(item.subItems?.length);
+                  const submenuOpen = showSubItems ? isSubmenuExpanded(item.id) : false;
                   const isRendimiento = item.id === "analisisCarteraRendimiento";
                   return (
                     <div key={item.id} className="dashboard-sidebar-item-block">
-                      {showChildren ? (
+                      {showSubItems ? (
                         <div className="dashboard-sidebar-link-row">
                           <Link
                             href={item.href}
@@ -769,9 +736,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                           <span className="dashboard-sidebar-link-text">{item.label}</span>
                         </Link>
                       )}
-                      {showChildren && submenuOpen ? (
+                      {showSubItems && submenuOpen ? (
                         <div id={`nav-submenu-${item.id}`} className="dashboard-sidebar-submenu">
-                          {item.children?.map((child) => {
+                          {item.subItems?.map((child) => {
                             const isChildActive = navHrefMatchesLocation(pathname, navSearchRaw, child.href);
                             return (
                               <Link
@@ -838,6 +805,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           {sidebarOpen ? <ChevronLeftIcon /> : <HamburgerIcon />}
         </Button>
         <main className="dashboard-main-content overflow-x-auto px-2.5 pb-6 pt-14 lg:px-3 lg:pt-5 xl:px-4 xl:pt-6">
+          <PageBreadcrumbs />
           <div className="container-main dashboard-page-enter">{children}</div>
         </main>
       </div>

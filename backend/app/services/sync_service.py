@@ -49,6 +49,7 @@ from app.models.brokers import (
     ContratosFact,
     DimNegocioUnMap,
     EerrFact,
+    MvOptionsCartera,
     GestoresFact,
     SyncChunkManifest,
     SyncExtractLog,
@@ -654,7 +655,8 @@ def _set_state(domain: str, updates: dict) -> None:
 
 
 def _persist_runtime_state_snapshot(
-    domain: str, snapshot: dict[str, Any] | None, *, force: bool = False
+    domain: str, snapshot: dict[str, Any] | None, *,
+    force: bool = False, db: Session | None = None
 ) -> None:
     if not snapshot:
         return
@@ -679,10 +681,9 @@ def _persist_runtime_state_snapshot(
     should_persist = force or (now_ts - prev_ts >= 1.5) or (prev_fp != fingerprint)
     if not should_persist:
         return
-    db = SessionLocal()
+    _db = db or SessionLocal()
     try:
-        _persist_sync_run(
-            db,
+        _persist_sync_run(_db,
             {
                 "job_id": job_id,
                 "domain": domain,
@@ -737,7 +738,8 @@ def _persist_runtime_state_snapshot(
     except Exception:
         logger.exception("[sync:%s] no se pudo persistir snapshot runtime", domain)
     finally:
-        db.close()
+        if db is None:
+            _db.close()
     with _state_lock:
         _last_persist_by_domain[domain] = {"ts": now_ts, "fp": fingerprint}
 
@@ -1844,10 +1846,11 @@ def _effective_cartera_month_by_cutoff(
     if not valid_cutoffs:
         return {}
 
+    # Optimizado: usar MvOptionsCartera (40MB) en vez de cartera_fact (3.7GB)
     cartera_months = sorted(
         {
             str(v[0] or "").strip()
-            for v in db.query(CarteraFact.gestion_month).distinct().all()
+            for v in db.query(MvOptionsCartera.gestion_month).distinct().all()
             if _month_serial(str(v[0] or "").strip()) > 0
         },
         key=_month_serial,
@@ -2289,17 +2292,25 @@ def _reconcile_chunk_manifest(
     changed: set[str] = set()
     skipped = 0
     now = datetime.utcnow()
+
+    chunk_keys = list(chunk_signals.keys())
+    existing_rows = (
+        db.query(SyncChunkManifest)
+        .filter(
+            SyncChunkManifest.domain == domain,
+            SyncChunkManifest.chunk_key.in_(chunk_keys),
+        )
+        .all()
+    )
+    manifest_by_key: dict[str, SyncChunkManifest] = {
+        row.chunk_key: row for row in existing_rows
+    }
+
     for chunk_key, signal in chunk_signals.items():
         row_count = int(signal.get("count") or 0)
         chunk_hash = _chunk_hash_finalize(signal)
-        row = (
-            db.query(SyncChunkManifest)
-            .filter(
-                SyncChunkManifest.domain == domain,
-                SyncChunkManifest.chunk_key == chunk_key,
-            )
-            .first()
-        )
+        row = manifest_by_key.get(chunk_key)
+
         if row is None:
             row = SyncChunkManifest(
                 domain=domain,
@@ -3289,10 +3300,18 @@ def _execute_job(
             if temp_rows_file is not None:
                 _flush_temp_rows(force=True)
                 temp_rows_file.close()
+                # os.unlink MOVED: el archivo todavia se necesita en la fase de upsert
+                # (lineas 3591, 3648). Se limpia correctamente al final del upsert.
             for month_key, f in temp_file_by_month.items():
                 try:
                     _flush_temp_rows_month(month_key, force=True)
                     f.close()
+                    fp = temp_rows_by_month.get(month_key)
+                    if fp and os.path.exists(fp):
+                        try:
+                            os.unlink(fp)
+                        except Exception:
+                            pass
                 except Exception:
                     pass
 

@@ -24,6 +24,8 @@ if settings.app_env != 'prod' and not settings.db_bootstrap_on_start:
 app = FastAPI(title=settings.app_name, version='1.0.0')
 
 _dev_origins = [
+    'http://tablero.grupoepem.com.py:8088',
+    
     'http://localhost:3000', 'http://localhost:8080', 'http://localhost:5173',
     'http://127.0.0.1:3000', 'http://127.0.0.1:8080', 'http://127.0.0.1:5173',
 ]
@@ -61,6 +63,22 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
+
+# Chrome Private Network Access: https://developer.chrome.com/blog/private-network-access-update
+@app.middleware("http")
+async def _private_network_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
+    return response
+
+# Private Network Access: Chrome bloquea peticiones de orígenes públicos (http://tablero...)
+# a IPs privadas (Docker 172.x / 192.168.x) sin este header.
+# Ver: https://developer.chrome.com/blog/private-network-access-update
+@app.middleware("http")
+async def add_private_network_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
+    return response
 
 
 from app.core.logging_config import log_request, structured_log
