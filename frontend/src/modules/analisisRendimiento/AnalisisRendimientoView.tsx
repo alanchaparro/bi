@@ -1190,7 +1190,7 @@ export function AnalisisRendimientoView() {
   }, [])
 
   return (
-    <section className="analysis-card analysis-panel-card rendimiento-panel">
+    <section className="card analysis-card analysis-panel-card rendimiento-panel">
       <div className="rendimiento-hero">
         <AnalyticsPageHeader
           kicker="RENDIMIENTO"

@@ -370,7 +370,7 @@ export function AnalisisAnualesView() {
   }, [applying, loadingOptions, summary]);
 
   return (
-    <section className="analysis-card rendimiento-panel">
+    <section className="card analysis-card analysis-panel-card rendimiento-panel">
       <AnalyticsPageHeader
         kicker="ANUALES"
         pill="Analytics v2"

@@ -1076,7 +1076,7 @@ export function AnalisisCarteraView() {
   }, []);
 
   return (
-    <section className="analysis-card rendimiento-panel">
+    <section className="card analysis-card analysis-panel-card rendimiento-panel">
       <AnalyticsPageHeader
         kicker="CARTERA"
         pill="Analytics v2"

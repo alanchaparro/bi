@@ -99,10 +99,8 @@ def refresh_dim_contract_month_and_catalogs(db: Session, affected_months: set[st
             }
         )
     if mappings:
-        CHUNK = 500
-        for i in range(0, len(mappings), CHUNK):
-            db.bulk_insert_mappings(DimContractMonth, mappings[i:i + CHUNK])
-            db.commit()
+        db.bulk_insert_mappings(DimContractMonth, mappings)
+        db.commit()
 
     db.query(DimUn).delete(synchronize_session=False)
     db.query(DimSupervisor).delete(synchronize_session=False)

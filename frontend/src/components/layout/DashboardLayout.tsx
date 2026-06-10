@@ -499,7 +499,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
   const navSearchRaw = searchParams.toString();
   const [themePresetId, setThemePresetId] = useState<string>("epem_obsidiana");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const sidebarCloseTimerRef = React.useRef<number | null>(null);
   const [syncLive, setSyncLive] = useState<SyncLive | null>(null);
   const [scheduleLive, setScheduleLive] = useState<ScheduleLive | null>(null);
@@ -691,7 +691,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         onMouseEnter={openSidebarFromEdge}
       />
       <aside
-        className={`dashboard-sidebar fixed inset-y-0 left-0 z-[150] flex h-[100dvh] min-h-[100dvh] w-[85vw] max-w-[22rem] flex-col transition-transform duration-[calc(300ms*var(--motion-scale))] ease-out lg:w-[var(--sidebar-width)] ${
+        className={`dashboard-sidebar fixed inset-y-0 left-0 z-[150] flex h-[100dvh] min-h-[100dvh] w-[85vw] max-w-72 flex-col transition-transform duration-[calc(300ms*var(--motion-scale))] ease-out lg:w-[var(--sidebar-width)] ${
           sidebarOpen ? "translate-x-0 pointer-events-auto lg:translate-x-0" : "-translate-x-full pointer-events-none lg:-translate-x-full"
         }`}
         onMouseEnter={clearScheduledSidebarClose}

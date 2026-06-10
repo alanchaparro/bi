@@ -519,7 +519,7 @@ export function AnalisisRoloCarteraView() {
 
   return (
     <>
-      <section className="analysis-card analysis-panel-card rendimiento-panel">
+      <section className="card analysis-card analysis-panel-card rendimiento-panel">
         <AnalyticsPageHeader
           kicker="ROLO"
           pill="Analytics v2"
