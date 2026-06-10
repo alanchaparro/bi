@@ -23,7 +23,7 @@ function viteApiBaseUrl(): string {
 export const API_BASE_URL =
   (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_API_BASE_URL : undefined) ||
   viteApiBaseUrl() ||
-  "http://localhost:8000/api/v1";
+  "/api/v1";
 export const USE_FRONTEND_PERF_TELEMETRY = (getEnv("NEXT_PUBLIC_USE_FRONTEND_PERF_TELEMETRY") || getEnv("VITE_USE_FRONTEND_PERF_TELEMETRY") || "1").trim() !== "0";
 export const USE_STRICT_UI_TOKENS = (getEnv("NEXT_PUBLIC_USE_STRICT_UI_TOKENS") || getEnv("VITE_USE_STRICT_UI_TOKENS") || "1").trim() !== "0";
 export const USE_UI_IOS_REFINEMENT = (getEnv("NEXT_PUBLIC_USE_UI_IOS_REFINEMENT") || getEnv("VITE_USE_UI_IOS_REFINEMENT") || "0").trim() === "1";

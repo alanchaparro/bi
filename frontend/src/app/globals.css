@@ -152,7 +152,7 @@
     --text-base: 1rem; /* 16px cuerpo */
     --text-heading: 1.25rem; /* 20px títulos sección */
     --text-display: 1.5rem; /* 24px títulos página */
-    --container-max: 1800px;
+    --container-max: 2400px;
     --touch-min: 44px;
     /* Layout: app bar y sidebar (DashboardLayout usa --header-height y --sidebar-width; ver spec appbar/sidebar) */
     --header-height: 3.5rem;
@@ -241,7 +241,7 @@
     --text-base: 1rem;
     --text-heading: 1.25rem;
     --text-display: 1.5rem;
-    --container-max: 1800px;
+    --container-max: 2400px;
     --touch-min: 44px;
     --header-height: 3.5rem;
     --sidebar-width: 18rem;
@@ -291,7 +291,7 @@ html {
         --text-heading: 1rem;
         --text-display: 1.18rem;
         /* ~+15% respecto a 1480px: mejor uso del ancho con sidebar */
-        --container-max: 1700px;
+        --container-max: 2200px;
         --touch-min: 34px;
         --header-height: 2.85rem;
         /* Ancho legible para ítems largos (“Rendimiento de Cartera”, etc.) */
@@ -1011,10 +1011,8 @@ body {
     }
 
     .container-main {
-        max-width: min(
-            var(--container-max),
-            calc(100vw - var(--sidebar-width) - 1.25rem)
-        );
+        max-width: calc(100vw - var(--sidebar-width) - 0.5rem);
+        width: 100%;
     }
 
     .table-wrap table thead th {
@@ -1109,7 +1107,7 @@ body {
     border: none;
     box-shadow: none;
     position: relative;
-    overflow: hidden;
+    overflow: visible;
 }
 
 
@@ -1353,18 +1351,16 @@ body {
 .container-main {
     width: 100%;
     min-width: 0;
-    max-width: var(--container-max);
-    margin-left: auto;
-    margin-right: auto;
+    max-width: none;
+    margin-left: 0;
+    margin-right: 0;
     overflow-x: visible;
 }
 
 @media (min-width: 1024px) {
     .container-main {
-        max-width: min(
-            var(--container-max),
-            calc(100vw - var(--sidebar-width) - 2rem)
-        );
+        max-width: calc(100vw - var(--sidebar-width) - 0.5rem);
+        width: 100%;
     }
 }
 
@@ -1540,4 +1536,222 @@ table th:focus-visible {
         animation: none !important;
         transition: none !important;
     }
+}
+
+
+/* Fix: Eliminar box gris contenedor en paginas de analisis */
+.analysis-panel-card,
+.rendimiento-panel {
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    border-radius: 0 !important;
+}
+
+.analysis-panel-card::before,
+.rendimiento-panel::before {
+    display: none !important;
+}
+
+/* Fix: Sidebar textos sin cortar */
+.dashboard-sidebar-link-text {
+    overflow: visible !important;
+    white-space: nowrap !important;
+    word-break: normal !important;
+    text-overflow: ellipsis;
+}
+
+/* Compactar cabecera de paginas de analisis */
+/* Reducir padding del panel de filtros */
+.rendimiento-filters-panel {
+    padding: 0.45rem 0.6rem 0.4rem !important;
+    gap: 0.4rem !important;
+}
+
+/* Reducir espacio entre filas de filtros */
+.analysis-filters-grid,
+.cohorte-filters-grid-3 {
+    gap: 0.35rem 0.45rem !important;
+}
+
+/* Reducir altura de controles de filtro */
+.rendimiento-filters-panel .dashboard-filter-slot {
+    margin-bottom: 0 !important;
+    padding: 0 !important;
+}
+
+/* Reducir espacio de botones de accion */
+.analysis-actions-row {
+    margin-top: 0.3rem !important;
+    margin-bottom: 0.3rem !important;
+    gap: 0.4rem !important;
+}
+
+/* Reducir padding de botones */
+.rendimiento-filters-panel .btn,
+.rendimiento-filters-panel .button {
+    padding: 0.35rem 0.6rem !important;
+    min-height: 32px !important;
+    font-size: 0.82rem !important;
+}
+
+/* Metadata bar mas compacta */
+.analysis-meta-chip,
+.analysis-meta-row {
+    padding: 0.15rem 0.3rem !important;
+    margin-bottom: 0.2rem !important;
+    font-size: 0.75rem !important;
+    gap: 0.3rem !important;
+}
+
+/* Titulo y subtitulo mas compacto */
+.analysis-card h2,
+.analysis-card h3 {
+    margin-bottom: 0.2rem !important;
+    margin-top: 0.2rem !important;
+    font-size: 1.05rem !important;
+}
+
+/* Reducir padding general de analysis-card */
+.analysis-card {
+    padding: 0.6rem 0.8rem !important;
+}
+
+/* Tabs UN mas compactos */
+.rendimiento-filters-panel .analytics-abbrev-filter__btn {
+    min-height: 1.6rem !important;
+    padding: 0.12rem 0.2rem !important;
+    font-size: 0.72rem !important;
+}
+
+/* Resumen de seleccion mas compacto */
+.analysis-active-count,
+.analysis-selection-summary {
+    padding: 0.2rem 0.4rem !important;
+    margin: 0.2rem 0 !important;
+    font-size: 0.78rem !important;
+}
+
+/* KPI cards grid mas pegado arriba */
+.summary-grid {
+    margin-top: 0.4rem !important;
+    gap: 0.5rem !important;
+}
+
+/* Reducir padding interno de KPI cards */
+.kpi-card {
+    padding: 0.6rem 0.7rem !important;
+}
+
+/* Charts tabs mas compactas */
+.analisis-cartera-charts-tabs,
+.charts-grid {
+    margin-top: 0.4rem !important;
+}
+
+/* COMPACTAR MAS — reducir espacio vertical de filtros */
+/* Reducir espacio label+control */
+.analysis-filters-grid .input-label,
+.cohorte-filters-grid-3 .input-label,
+.rendimiento-filters-panel .input-label {
+    margin-bottom: 0.05rem !important;
+    font-size: 0.72rem !important;
+    line-height: 1.1 !important;
+}
+
+/* Compactar triggers de dropdown */
+.multi-select-trigger,
+.analysis-filter-control .input,
+.cohorte-filter-control .input {
+    min-height: 1.4rem !important;
+    padding-top: 0.1rem !important;
+    padding-bottom: 0.1rem !important;
+}
+
+/* Compactar tabs UN */
+.analytics-abbrev-filter__btn {
+    min-height: 1.4rem !important;
+    padding: 0.1rem 0.2rem !important;
+    font-size: 0.72rem !important;
+}
+
+/* Compactar metadata bar */
+.analysis-meta-row,
+.analysis-meta-row--with-info {
+    margin-top: 0.1rem !important;
+    margin-bottom: 0.1rem !important;
+    gap: 0.2rem !important;
+}
+.analysis-meta-chip {
+    min-height: 18px !important;
+    padding: 0.05rem 0.3rem !important;
+    font-size: 0.7rem !important;
+}
+
+/* Compactar botones de accion */
+.analysis-actions-row {
+    margin-top: 0.1rem !important;
+    margin-bottom: 0.1rem !important;
+}
+.analysis-actions-row .btn,
+.analysis-actions-row .button {
+    padding: 0.25rem 0.5rem !important;
+    min-height: 28px !important;
+    font-size: 0.78rem !important;
+}
+
+/* Compactar panel */
+.rendimiento-filters-panel {
+    gap: 0.25rem !important;
+    padding: 0.3rem 0.5rem 0.25rem !important;
+}
+
+/* Compactar filas de filtros */
+.analysis-filters-grid,
+.cohorte-filters-grid-3 {
+    gap: 0.25rem 0.35rem !important;
+}
+
+/* Subir KPIs */
+.summary-grid {
+    margin-top: 0.2rem !important;
+    gap: 0.4rem !important;
+}
+
+/* Reducir padding de tarjetas KPI */
+.kpi-card {
+    padding: 0.5rem 0.6rem !important;
+}
+
+/* Compactar seleccion activa */
+.analysis-selection-summary,
+.analysis-active-count {
+    padding: 0.1rem 0.3rem !important;
+    margin: 0.1rem 0 !important;
+    font-size: 0.72rem !important;
+}
+
+/* Compactar titulo card */
+.analysis-card h2,
+.analysis-card h3 {
+    margin-bottom: 0.1rem !important;
+    margin-top: 0.1rem !important;
+    font-size: 1rem !important;
+}
+
+/* Reducir gap entre elementos del panel */
+.rendimiento-filters-panel > * {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+/* Ocultar hints de filtros */
+.rendimiento-filter-hints {
+    display: none !important;
 }

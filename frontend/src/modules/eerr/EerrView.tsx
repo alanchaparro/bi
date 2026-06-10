@@ -1373,7 +1373,7 @@ export function EerrView() {
   const headerMeta = summaryL?.meta || summaryR?.meta;
 
   return (
-    <section className="card analysis-card analysis-panel-card rendimiento-panel">
+    <section className="analysis-card analysis-panel-card rendimiento-panel">
       <AnalyticsPageHeader
         kicker="EERR"
         pill="Analytics v2"

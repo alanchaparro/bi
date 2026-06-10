@@ -915,7 +915,7 @@ export function AnalisisCobranzasCohorteView() {
 
   return (
     <section className="analysis-card-wrap">
-      <Card className="cohorte-panel-root analysis-panel-card border border-[var(--color-border)] shadow-lg overflow-visible p-6">
+      <Card className="cohorte-panel-root border border-[var(--color-border)] shadow-lg overflow-visible p-6">
         <AnalyticsPageHeader
         kicker="COHORTE"
         pill="Analytics v2"

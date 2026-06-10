@@ -1590,7 +1590,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
     void executeSyncFlow(true)
   }, [executeSyncFlow])
 
-  const baseUrl = api.defaults.baseURL || 'http://localhost:8000/api/v1'
+  const baseUrl = api.defaults.baseURL || '/api/v1'
   const showSyncResult = Boolean(syncResult) && !syncLoading && !syncLive?.running
 
   const displayLog = syncLive?.log ?? syncResult?.log ?? []
@@ -1641,7 +1641,7 @@ export function ConfigView({ onReloadBrokers, onSyncLiveChange, onScheduleLiveCh
   }, [buildImportLogText])
 
   return (
-    <section className="card config-card">
+    <section className="config-card">
       <AnalyticsPageHeader
         kicker="SISTEMA"
         title="Configuración"
