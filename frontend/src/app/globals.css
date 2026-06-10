@@ -1541,3 +1541,17 @@ table th:focus-visible {
         transition: none !important;
     }
 }
+
+/* === COMPACTACION CABECERA — solo contenedores, NO botones/selects === */
+.rendimiento-filters-panel { padding: 0.35rem 0.5rem 0.3rem !important; }
+.rendimiento-filters-panel,
+.rendimiento-hero,
+.rendimiento-selection-block { gap: 0.35rem !important; }
+.rendimiento-filters-panel .analysis-filters-grid,
+.rendimiento-filters-panel .cohorte-filters-grid-3 { gap: 0.3rem 0.4rem !important; }
+.analysis-meta-row,
+.analysis-meta-row--with-info { margin-top: 0.15rem !important; margin-bottom: 0.15rem !important; }
+.summary-grid { margin-top: 0.3rem !important; }
+.analysis-actions-row { margin-top: 0.2rem !important; margin-bottom: 0.2rem !important; }
+.analysis-selection-summary,
+.analysis-active-count { margin: 0.15rem 0 !important; }
