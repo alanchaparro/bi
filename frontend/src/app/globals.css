@@ -1555,3 +1555,22 @@ table th:focus-visible {
 .analysis-actions-row { margin-top: 0.2rem !important; margin-bottom: 0.2rem !important; }
 .analysis-selection-summary,
 .analysis-active-count { margin: 0.15rem 0 !important; }
+/* === FIX: Eliminar box gris contenedor en paginas de analisis === */
+.analysis-panel-card,
+.rendimiento-panel {
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    border-radius: 0 !important;
+}
+
+.analysis-panel-card::before,
+.rendimiento-panel::before {
+    display: none !important;
+}
